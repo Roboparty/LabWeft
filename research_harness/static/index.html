@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>LabWeft · 科研工作台</title>
+<link rel="stylesheet" href="/app.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<header class="topbar"><div class="brand"><span class="brandmark">L<span>W</span></span><div>LabWeft<small>RESEARCH WORKSPACE · v0.1 PROTOTYPE</small></div></div><div class="topright"><span id="mode" class="pill">LOCAL FIRST</span><span id="revision" class="muted"></span><button id="refresh" class="iconbutton" title="刷新已有记录，不调用模型">↻ 刷新</button></div></header>
+<div class="shell">
+<aside class="sidebar"><div class="eyebrow">WORKSPACE</div><div id="project-name" class="project-name">正在读取项目…</div><div id="synthetic" hidden class="synthetic">合成示例 · 非真实实验</div><nav id="nav"><button data-view="map" class="active"><span>⌘</span>研究地图</button><button data-view="compare"><span>▤</span>Cell 对比</button><button data-view="decisions"><span>◇</span>结论与决策</button><button data-view="sources"><span>▧</span>证据来源</button><button data-view="history"><span>↺</span>更新记录</button></nav><div class="sidebar-note"><span class="status-dot"></span> One conversation. One workspace.<p>使用你自己的 agent。<br>浏览地图不需要调用模型。</p><button id="copy-prompt" class="smallbtn">复制整理指令 ↗</button></div><div class="sidebar-foot">本地记录 · 默认不上传<br><span id="source-count"></span></div></aside>
+<main><section class="heading"><div><div class="eyebrow">FROM EXPERIMENTS TO EVIDENCE</div><h1 id="page-title">你的研究，不再从头解释。</h1><p id="page-subtitle">按问题展开，追到每一次运行，继承已经确认的判断。</p></div><div class="heading-actions"><button id="export-json" class="smallbtn">导出记录 JSON</button></div></section>
+<section id="stats" class="stats"></section>
+<div id="notice" class="notice" hidden></div>
+<div class="workspace-body"><section id="content" class="content"></section><aside id="detail" class="detail"></aside></div>
+<footer>研究记录与模型判断分开保存。扫描 ≠ 理解；图表 ≠ 科学证明。<span id="footer-state"></span></footer>
+</main></div>
+<div id="modal" class="modal" hidden><section><header><div><strong id="modal-title">证据快照</strong><small id="modal-subtitle"></small></div><button id="close-modal" class="iconbutton">关闭 ×</button></header><pre id="evidence-content"></pre></section></div>
+<div id="toast" class="toast" hidden></div>
+</body></html>

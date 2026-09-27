@@ -1,0 +1,8 @@
+{
+  "metrics": {
+    "success_rate": 0.72
+  },
+  "note": "Hand-authored fixture. No training performed.",
+  "status": "completed",
+  "synthetic": true
+}

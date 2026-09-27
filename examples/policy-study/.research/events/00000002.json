@@ -1,0 +1,419 @@
+{
+  "actor": "demo-fixture",
+  "at": "2026-09-27T18:17:29+00:00",
+  "edges": [
+    {
+      "id": "edge-history",
+      "relation": "compares",
+      "source": "cell-af29b9da2cdfda4b000c",
+      "target": "cell-499f137148fd32f17357"
+    },
+    {
+      "id": "edge-aux",
+      "relation": "compares",
+      "source": "cell-a1a236a72c3aad889051",
+      "target": "cell-af29b9da2cdfda4b000c"
+    },
+    {
+      "id": "edge-hardware",
+      "relation": "compares",
+      "source": "cell-41136989fd25783f1af4",
+      "target": "cell-a1a236a72c3aad889051"
+    }
+  ],
+  "files": [],
+  "hash": "d568be9bb81b1211ef0fa6c9cdb5e7310f78148420ded20aed27765a1541bfff",
+  "nodes": [
+    {
+      "attrs": {
+        "order": 0
+      },
+      "description": "梳理输入信息与策略表征的关系。所有结果均为合成示例。",
+      "evidence": [],
+      "id": "module-representation",
+      "kind": "module",
+      "label": "表征与历史输入",
+      "parent_id": "project-a40c8d9ae4ae45dbb3868c18c5e71434",
+      "status": "recorded"
+    },
+    {
+      "attrs": {
+        "order": 1
+      },
+      "description": "区分目标函数改变、运行事实与可支持的结论。",
+      "evidence": [],
+      "id": "module-objective",
+      "kind": "module",
+      "label": "预测目标与训练",
+      "parent_id": "project-a40c8d9ae4ae45dbb3868c18c5e71434",
+      "status": "recorded"
+    },
+    {
+      "attrs": {
+        "order": 2
+      },
+      "description": "环境信息一直保留；被已有证据覆盖的差异，不再无理由重复验证。",
+      "evidence": [],
+      "id": "module-runtime",
+      "kind": "module",
+      "label": "环境与可复用判断",
+      "parent_id": "project-a40c8d9ae4ae45dbb3868c18c5e71434",
+      "status": "recorded"
+    },
+    {
+      "attrs": {},
+      "description": "比较 C0 与 C1，仅研究当前设定下 history_length 的变化。这里的实验数值是演示数据，不构成真实科学结论。",
+      "evidence": [
+        {
+          "file_id": "file-fdbf6685537cb0744d4a",
+          "locator": "full file",
+          "sha256": "63f274c1af61234075e6c87f64258e751c380a33ac3ffa11ad0071a6cfbf2a5a"
+        }
+      ],
+      "id": "question-history",
+      "kind": "question",
+      "label": "历史输入是否提供增益？",
+      "parent_id": "module-representation",
+      "status": "provisional"
+    },
+    {
+      "attrs": {
+        "next_action": "先检查要支持的结论。只有要声称不依赖历史输入时，才讨论额外 cell；不自动把矩阵填满。"
+      },
+      "description": "复用 C1 作为基线，与 C2 比较。不能从有历史条件下的结果推广到无历史条件。",
+      "evidence": [
+        {
+          "file_id": "file-fdbf6685537cb0744d4a",
+          "locator": "full file",
+          "sha256": "63f274c1af61234075e6c87f64258e751c380a33ac3ffa11ad0071a6cfbf2a5a"
+        }
+      ],
+      "id": "question-aux",
+      "kind": "question",
+      "label": "辅助预测目标是否必要？",
+      "parent_id": "module-objective",
+      "status": "provisional"
+    },
+    {
+      "attrs": {},
+      "description": "展示历史判断的复用机制。范围内硬件变化不自动触发新实验；相关实质条件改变时重新检查。",
+      "evidence": [
+        {
+          "file_id": "file-fdbf6685537cb0744d4a",
+          "locator": "full file",
+          "sha256": "63f274c1af61234075e6c87f64258e751c380a33ac3ffa11ad0071a6cfbf2a5a"
+        }
+      ],
+      "id": "question-hardware",
+      "kind": "question",
+      "label": "不同硬件需要再做消融吗？",
+      "parent_id": "module-runtime",
+      "status": "accepted"
+    },
+    {
+      "attrs": {
+        "assignment": "provisional exact config match; not scientific equivalence",
+        "config": {
+          "dataset_version": "toy-v1",
+          "eval_protocol": "heldout-v1",
+          "hardware": "GPU-A",
+          "history_length": 0,
+          "implementation_id": "synthetic-policy-v1",
+          "precision": "fp32",
+          "prediction_weight": 0.0,
+          "train_steps": 20000
+        }
+      },
+      "description": "合成数据中的一个明确实验条件。下方三个 run 分别对应三个独立 seed。",
+      "evidence": [
+        {
+          "file_id": "file-4258718aa70190a998e8",
+          "locator": "full file",
+          "sha256": "84ec8b6513da09980fed5ddb1d34fa6d889397f5b08da8abfdd03fa8649488d0"
+        },
+        {
+          "file_id": "file-a625f91f408e61819c80",
+          "locator": "full file",
+          "sha256": "7e561102166aff7d2d5a72ce4b5371d2385e27da6610a780a3ad8e0e33418794"
+        }
+      ],
+      "id": "cell-499f137148fd32f17357",
+      "kind": "cell",
+      "label": "C0 · 基础策略",
+      "parent_id": "question-history",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "assignment": "provisional exact config match; not scientific equivalence",
+        "config": {
+          "dataset_version": "toy-v1",
+          "eval_protocol": "heldout-v1",
+          "hardware": "GPU-A",
+          "history_length": 3,
+          "implementation_id": "synthetic-policy-v1",
+          "precision": "fp32",
+          "prediction_weight": 0.0,
+          "train_steps": 20000
+        }
+      },
+      "description": "合成数据中的一个明确实验条件。下方三个 run 分别对应三个独立 seed。",
+      "evidence": [
+        {
+          "file_id": "file-5069e1b5ffd33a434c16",
+          "locator": "full file",
+          "sha256": "30c3cbbf23e712fc25ae230e221f20a85c4d93dc32ea36b55b95d8406fbc2e52"
+        },
+        {
+          "file_id": "file-4acce541738d03c75d29",
+          "locator": "full file",
+          "sha256": "f8987991eb8ecb800cab7d5cf6fcf9f33f6edea47550d2da45d903569c03038a"
+        }
+      ],
+      "id": "cell-af29b9da2cdfda4b000c",
+      "kind": "cell",
+      "label": "C1 · 加入历史",
+      "parent_id": "question-history",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "assignment": "provisional exact config match; not scientific equivalence",
+        "config": {
+          "dataset_version": "toy-v1",
+          "eval_protocol": "heldout-v1",
+          "hardware": "GPU-A",
+          "history_length": 3,
+          "implementation_id": "synthetic-policy-v1",
+          "precision": "fp32",
+          "prediction_weight": 0.1,
+          "train_steps": 20000
+        }
+      },
+      "description": "合成数据中的一个明确实验条件。下方三个 run 分别对应三个独立 seed。",
+      "evidence": [
+        {
+          "file_id": "file-515e656293c56d56121f",
+          "locator": "full file",
+          "sha256": "861c17175b206c1ccf87854691a11b6670d69342c8707471933172b738da8471"
+        },
+        {
+          "file_id": "file-e4a524485715e0791113",
+          "locator": "full file",
+          "sha256": "a98f1633cf546efe9e47ff2b53688bb2ccacd5e13a9dec38f777a27e7cae48d9"
+        }
+      ],
+      "id": "cell-a1a236a72c3aad889051",
+      "kind": "cell",
+      "label": "C2 · 加入预测目标",
+      "parent_id": "question-aux",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "assignment": "provisional exact config match; not scientific equivalence",
+        "config": {
+          "dataset_version": "toy-v1",
+          "eval_protocol": "heldout-v1",
+          "hardware": "GPU-B",
+          "history_length": 3,
+          "implementation_id": "synthetic-policy-v1",
+          "precision": "fp32",
+          "prediction_weight": 0.1,
+          "train_steps": 20000
+        }
+      },
+      "description": "合成数据中的一个明确实验条件。下方三个 run 分别对应三个独立 seed。",
+      "evidence": [
+        {
+          "file_id": "file-b31192b61dbd68f24c72",
+          "locator": "full file",
+          "sha256": "9101b16d2b8fd326e18e66c8189d0eeb8c5e3488af1ee4de22b648a3355ae8e2"
+        },
+        {
+          "file_id": "file-f9659dcf81cac39ed2e2",
+          "locator": "full file",
+          "sha256": "9902f47232f2db8e59fc621f8046905e7284dada036e90879872edd8f66cc75f"
+        }
+      ],
+      "id": "cell-41136989fd25783f1af4",
+      "kind": "cell",
+      "label": "C3 · 已有硬件对照",
+      "parent_id": "question-hardware",
+      "status": "completed"
+    },
+    {
+      "attrs": {},
+      "description": "仅从文件识别的运行。研究动机和 cell 关系需要 agent 核对，不从目录名猜测。",
+      "evidence": [],
+      "id": "question-unclassified",
+      "kind": "question",
+      "label": "待归类的实验 / Needs mapping",
+      "parent_id": "project-a40c8d9ae4ae45dbb3868c18c5e71434",
+      "status": "archived"
+    },
+    {
+      "attrs": {
+        "scope": {
+          "dataset": "toy-v1",
+          "history_length": 3,
+          "metric": "success_rate"
+        }
+      },
+      "description": "示例数据中 C2 均值高于 C1。只能描述当前条件，不等于已证明一般必要性；不把演示数字用于任何真实论文。",
+      "evidence": [
+        {
+          "file_id": "file-fdbf6685537cb0744d4a",
+          "locator": "full file",
+          "sha256": "63f274c1af61234075e6c87f64258e751c380a33ac3ffa11ad0071a6cfbf2a5a"
+        }
+      ],
+      "evidence_ids": [
+        "cell-af29b9da2cdfda4b000c",
+        "cell-a1a236a72c3aad889051"
+      ],
+      "id": "claim-aux",
+      "kind": "claim",
+      "label": "当前有历史设定下的增量作用",
+      "parent_id": "question-aux",
+      "status": "provisional"
+    },
+    {
+      "attrs": {
+        "action": "reuse",
+        "question_id": "question-hardware",
+        "reopen_if": "实现、精度、数据、训练预算或评估协议改变；出现新冲突证据。新 seed 只属于重复验证，不自动触发硬件消融。",
+        "scope": {
+          "covered_values": {
+            "hardware": [
+              "GPU-A",
+              "GPU-B"
+            ]
+          },
+          "replication_keys": [
+            "seed"
+          ],
+          "required_context": {
+            "dataset_version": "toy-v1",
+            "eval_protocol": "heldout-v1",
+            "history_length": 3,
+            "implementation_id": "synthetic-policy-v1",
+            "precision": "fp32",
+            "prediction_weight": 0.1,
+            "train_steps": 20000
+          }
+        }
+      },
+      "description": "演示用人工决策：同一实现、精度、数据、预算与评估协议下，GPU-A / GPU-B 已检查。后续不因为只换了这两个硬件就再次提出消融。",
+      "evidence": [
+        {
+          "file_id": "file-fdbf6685537cb0744d4a",
+          "locator": "full file",
+          "sha256": "63f274c1af61234075e6c87f64258e751c380a33ac3ffa11ad0071a6cfbf2a5a"
+        },
+        {
+          "file_id": "file-63dd9c78ee967502d818",
+          "locator": "reported JSON metrics",
+          "sha256": "699fab5cf85a55beabbe0e28d992aace34565bf44ae2c4bc1c8ac9f84475985d"
+        },
+        {
+          "file_id": "file-515e656293c56d56121f",
+          "locator": "full file",
+          "sha256": "861c17175b206c1ccf87854691a11b6670d69342c8707471933172b738da8471"
+        },
+        {
+          "file_id": "file-e4a524485715e0791113",
+          "locator": "full file",
+          "sha256": "a98f1633cf546efe9e47ff2b53688bb2ccacd5e13a9dec38f777a27e7cae48d9"
+        },
+        {
+          "file_id": "file-270679906f9a5d6a59da",
+          "locator": "reported JSON metrics",
+          "sha256": "9273e7f1260e32ab5df363f0c842f4465ef8478b25a92287502e20be85a3cf41"
+        },
+        {
+          "file_id": "file-0240affb86911d697efd",
+          "locator": "full file",
+          "sha256": "e98b529341b7104be76091e3d5b7435de9ee3f7d14fa591f0f7b86921a39ea56"
+        },
+        {
+          "file_id": "file-945ce627d5a9be7cb8d0",
+          "locator": "full file",
+          "sha256": "2e787d1d1acfffe6800b2b7595bbf98fba0dceeb41420037c1386d4d28f2205d"
+        },
+        {
+          "file_id": "file-a3d5603cd8cdb74f54b2",
+          "locator": "reported JSON metrics",
+          "sha256": "1650da68b65a52f46da5cb254037232d769b635696f510f1197f8bd64dff2f46"
+        },
+        {
+          "file_id": "file-2187a80420d8ce63eaca",
+          "locator": "full file",
+          "sha256": "f32a01ee6224de77561e94306dce5de951217066b094b25184b3ef8a65b89a96"
+        },
+        {
+          "file_id": "file-584e920954b91c0fef42",
+          "locator": "full file",
+          "sha256": "17ee0315628378c600768dbc47b74cb775d2cd2778763bc2d189ec61fb4059dd"
+        },
+        {
+          "file_id": "file-17b1470e88c69f4aef5c",
+          "locator": "reported JSON metrics",
+          "sha256": "db8ad60d7510e2f9763ae77c3ddb81ede232a47cb5400872f0f0b3d84e9f32d5"
+        },
+        {
+          "file_id": "file-b31192b61dbd68f24c72",
+          "locator": "full file",
+          "sha256": "9101b16d2b8fd326e18e66c8189d0eeb8c5e3488af1ee4de22b648a3355ae8e2"
+        },
+        {
+          "file_id": "file-f9659dcf81cac39ed2e2",
+          "locator": "full file",
+          "sha256": "9902f47232f2db8e59fc621f8046905e7284dada036e90879872edd8f66cc75f"
+        },
+        {
+          "file_id": "file-938f31f17f3136254247",
+          "locator": "reported JSON metrics",
+          "sha256": "1650da68b65a52f46da5cb254037232d769b635696f510f1197f8bd64dff2f46"
+        },
+        {
+          "file_id": "file-6e9d341f0277ff752300",
+          "locator": "full file",
+          "sha256": "f4dff9282e69a22802b016d27ff02bf607c314a9cc5933479d7b211adf2fcb5e"
+        },
+        {
+          "file_id": "file-890f29270e291f8c3ea0",
+          "locator": "full file",
+          "sha256": "874ecc5901e0478e55457fbf0cd3bb5652afac4910542294bf68299f8e604737"
+        },
+        {
+          "file_id": "file-ab6961c9fdf9afaa921a",
+          "locator": "reported JSON metrics",
+          "sha256": "1650da68b65a52f46da5cb254037232d769b635696f510f1197f8bd64dff2f46"
+        },
+        {
+          "file_id": "file-e142a94d579a44bcc629",
+          "locator": "full file",
+          "sha256": "a60e9f930bc8116fc5fd9b4593c0b6ab031f1a534c722216bb812212db5eaf6b"
+        },
+        {
+          "file_id": "file-98f796f181a15356af6b",
+          "locator": "full file",
+          "sha256": "71187941b7507555b0d950db6ab26cf9dc0f5463fda7f53a95036bc485ea01f4"
+        }
+      ],
+      "evidence_ids": [
+        "cell-a1a236a72c3aad889051",
+        "cell-41136989fd25783f1af4"
+      ],
+      "id": "decision-hardware",
+      "kind": "decision",
+      "label": "硬件差异：范围内复用已有判断",
+      "parent_id": "question-hardware",
+      "status": "accepted"
+    }
+  ],
+  "previous_hash": "8a09e97df3e3e1ae15e59dc7d4a41636aee63f2e15b134d80014dbcb70860d59",
+  "reason": "Synthetic semantic mapping: research questions, cells, evidence and bounded decisions",
+  "revision": 2
+}

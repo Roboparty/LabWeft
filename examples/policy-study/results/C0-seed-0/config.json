@@ -1,0 +1,11 @@
+{
+  "dataset_version": "toy-v1",
+  "eval_protocol": "heldout-v1",
+  "hardware": "GPU-A",
+  "history_length": 0,
+  "implementation_id": "synthetic-policy-v1",
+  "precision": "fp32",
+  "prediction_weight": 0.0,
+  "seed": 0,
+  "train_steps": 20000
+}

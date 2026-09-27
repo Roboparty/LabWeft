@@ -1,0 +1,8 @@
+{
+  "code_revision": "SYNTHETIC-CODE-v1-NOT-A-GIT-COMMIT",
+  "dataset_version": "toy-v1",
+  "eval_protocol": "heldout-v1",
+  "run_id": "synthetic-C0-0",
+  "seed": 0,
+  "status": "completed"
+}

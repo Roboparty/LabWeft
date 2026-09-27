@@ -1,0 +1,4 @@
+# This checked-in workspace is synthetic only. Never use this exception for real research records.
+local.json
+writer.lock
+.tmp-*

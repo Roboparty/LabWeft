@@ -1,0 +1,1389 @@
+{
+  "actor": "scanner",
+  "at": "2026-09-27T18:17:29+00:00",
+  "edges": [],
+  "files": [
+    {
+      "id": "file-2a2aa28b3eb27b52de6a",
+      "missing": false,
+      "path": "README.md",
+      "sha256": "c43f23af651a7fa77d59b5fd79924b48d40e18802b9624fb77748d80b914236c",
+      "size": 213,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-fdbf6685537cb0744d4a",
+      "missing": false,
+      "path": "research-notes.md",
+      "sha256": "63f274c1af61234075e6c87f64258e751c380a33ac3ffa11ad0071a6cfbf2a5a",
+      "size": 952,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-4af4e423ed43321058b4",
+      "missing": false,
+      "path": "code/policy.py",
+      "sha256": "89881e518668663fd7da4af36701877cf720e26f42aef8b75e2e321ddf593573",
+      "size": 537,
+      "snapshot": "text_snapshot",
+      "source": "project",
+      "symbols": [
+        {
+          "kind": "ClassDef",
+          "line": 3,
+          "name": "HistoryEncoder"
+        },
+        {
+          "kind": "FunctionDef",
+          "line": 11,
+          "name": "auxiliary_objective"
+        },
+        {
+          "kind": "FunctionDef",
+          "line": 4,
+          "name": "__init__"
+        },
+        {
+          "kind": "FunctionDef",
+          "line": 7,
+          "name": "encode"
+        }
+      ]
+    },
+    {
+      "id": "file-a625f91f408e61819c80",
+      "missing": false,
+      "path": "results/C0-seed-0/config.json",
+      "sha256": "7e561102166aff7d2d5a72ce4b5371d2385e27da6610a780a3ad8e0e33418794",
+      "size": 247,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-f7f34bdf4c8d75384e86",
+      "missing": false,
+      "path": "results/C0-seed-0/metrics.json",
+      "sha256": "80003efea285975890ec6d0e61485ca6acde18c28712ca9850b37fdde5530748",
+      "size": 153,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-4258718aa70190a998e8",
+      "missing": false,
+      "path": "results/C0-seed-0/run.json",
+      "sha256": "84ec8b6513da09980fed5ddb1d34fa6d889397f5b08da8abfdd03fa8649488d0",
+      "size": 192,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-59d0028a5669cacda3ac",
+      "missing": false,
+      "path": "results/C0-seed-1/config.json",
+      "sha256": "5c149373b4f64ae77159eb9e90e7f9bd3a9bb797533852ed58dafc0b718ea213",
+      "size": 247,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-a7f9c7a013b46fa27137",
+      "missing": false,
+      "path": "results/C0-seed-1/metrics.json",
+      "sha256": "f7839e1a835ef7a232222b3afe37b139496de14d9b9234f698d08e7e916d0c3f",
+      "size": 153,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-2867ed92718cc619e9fe",
+      "missing": false,
+      "path": "results/C0-seed-1/run.json",
+      "sha256": "96811afdd38130fedc7cc3b5a3aee7d3041a89ab3a1f6452466791cc8c58adad",
+      "size": 192,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-4caafddd78ac6e5fac6d",
+      "missing": false,
+      "path": "results/C0-seed-2/config.json",
+      "sha256": "b238fa1cb99280513f9e3b7a9a44c6ee569b4f690bda361bc8caffeca070df7a",
+      "size": 247,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-469a64312a98d289b2ed",
+      "missing": false,
+      "path": "results/C0-seed-2/metrics.json",
+      "sha256": "3da157d3acf037befd7685123fd9ad99533634143eaf3c8ef1fea053009f3e33",
+      "size": 153,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-521f9f2cdc432e01993f",
+      "missing": false,
+      "path": "results/C0-seed-2/run.json",
+      "sha256": "3fd8d85c2999812d2d54b37ffebd609c49b7149f5433099ef3b072d6733964bf",
+      "size": 192,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-4acce541738d03c75d29",
+      "missing": false,
+      "path": "results/C1-seed-0/config.json",
+      "sha256": "f8987991eb8ecb800cab7d5cf6fcf9f33f6edea47550d2da45d903569c03038a",
+      "size": 247,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-4ee3a23382287817d75e",
+      "missing": false,
+      "path": "results/C1-seed-0/metrics.json",
+      "sha256": "53c27232c00dbc3859a9e7800ae225fd280d512751b41314ba84947887c98740",
+      "size": 153,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-5069e1b5ffd33a434c16",
+      "missing": false,
+      "path": "results/C1-seed-0/run.json",
+      "sha256": "30c3cbbf23e712fc25ae230e221f20a85c4d93dc32ea36b55b95d8406fbc2e52",
+      "size": 192,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-ea37c4ed4da11ff25177",
+      "missing": false,
+      "path": "results/C1-seed-1/config.json",
+      "sha256": "2572a2c117ed2d1d60ab649f9ac02667cd054b15d6ece2c4807339962237bff5",
+      "size": 247,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-34df6fc67768007bd3e5",
+      "missing": false,
+      "path": "results/C1-seed-1/metrics.json",
+      "sha256": "db8ad60d7510e2f9763ae77c3ddb81ede232a47cb5400872f0f0b3d84e9f32d5",
+      "size": 153,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-b9f699ff06a6b6849b18",
+      "missing": false,
+      "path": "results/C1-seed-1/run.json",
+      "sha256": "18b2b42366ca8aa75a895aa7453ba2a323aa4801555e8276f5f880f9b4ec6468",
+      "size": 192,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-786657149f7a1f4d84dd",
+      "missing": false,
+      "path": "results/C1-seed-2/config.json",
+      "sha256": "ad1755c2acc110c0b4caa65c3272ea4ac2345813748baaa53bb932de75dbb5c1",
+      "size": 247,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-571ced7075502bab827f",
+      "missing": false,
+      "path": "results/C1-seed-2/metrics.json",
+      "sha256": "6c583a8f33c08813576e5d6e9f6537aabca6be97ae4693547b60d38092f438bf",
+      "size": 153,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-825e331ce59b41729c6d",
+      "missing": false,
+      "path": "results/C1-seed-2/run.json",
+      "sha256": "eb97df2603f092e835ecb897978f7e48fbc2e775ee35f99751933a8bb7bbbc68",
+      "size": 192,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-e4a524485715e0791113",
+      "missing": false,
+      "path": "results/C2-seed-0/config.json",
+      "sha256": "a98f1633cf546efe9e47ff2b53688bb2ccacd5e13a9dec38f777a27e7cae48d9",
+      "size": 247,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-63dd9c78ee967502d818",
+      "missing": false,
+      "path": "results/C2-seed-0/metrics.json",
+      "sha256": "699fab5cf85a55beabbe0e28d992aace34565bf44ae2c4bc1c8ac9f84475985d",
+      "size": 153,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-515e656293c56d56121f",
+      "missing": false,
+      "path": "results/C2-seed-0/run.json",
+      "sha256": "861c17175b206c1ccf87854691a11b6670d69342c8707471933172b738da8471",
+      "size": 192,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-945ce627d5a9be7cb8d0",
+      "missing": false,
+      "path": "results/C2-seed-1/config.json",
+      "sha256": "2e787d1d1acfffe6800b2b7595bbf98fba0dceeb41420037c1386d4d28f2205d",
+      "size": 247,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-270679906f9a5d6a59da",
+      "missing": false,
+      "path": "results/C2-seed-1/metrics.json",
+      "sha256": "9273e7f1260e32ab5df363f0c842f4465ef8478b25a92287502e20be85a3cf41",
+      "size": 153,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-0240affb86911d697efd",
+      "missing": false,
+      "path": "results/C2-seed-1/run.json",
+      "sha256": "e98b529341b7104be76091e3d5b7435de9ee3f7d14fa591f0f7b86921a39ea56",
+      "size": 192,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-584e920954b91c0fef42",
+      "missing": false,
+      "path": "results/C2-seed-2/config.json",
+      "sha256": "17ee0315628378c600768dbc47b74cb775d2cd2778763bc2d189ec61fb4059dd",
+      "size": 247,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-a3d5603cd8cdb74f54b2",
+      "missing": false,
+      "path": "results/C2-seed-2/metrics.json",
+      "sha256": "1650da68b65a52f46da5cb254037232d769b635696f510f1197f8bd64dff2f46",
+      "size": 153,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-2187a80420d8ce63eaca",
+      "missing": false,
+      "path": "results/C2-seed-2/run.json",
+      "sha256": "f32a01ee6224de77561e94306dce5de951217066b094b25184b3ef8a65b89a96",
+      "size": 192,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-f9659dcf81cac39ed2e2",
+      "missing": false,
+      "path": "results/C3-seed-0/config.json",
+      "sha256": "9902f47232f2db8e59fc621f8046905e7284dada036e90879872edd8f66cc75f",
+      "size": 247,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-17b1470e88c69f4aef5c",
+      "missing": false,
+      "path": "results/C3-seed-0/metrics.json",
+      "sha256": "db8ad60d7510e2f9763ae77c3ddb81ede232a47cb5400872f0f0b3d84e9f32d5",
+      "size": 153,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-b31192b61dbd68f24c72",
+      "missing": false,
+      "path": "results/C3-seed-0/run.json",
+      "sha256": "9101b16d2b8fd326e18e66c8189d0eeb8c5e3488af1ee4de22b648a3355ae8e2",
+      "size": 192,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-890f29270e291f8c3ea0",
+      "missing": false,
+      "path": "results/C3-seed-1/config.json",
+      "sha256": "874ecc5901e0478e55457fbf0cd3bb5652afac4910542294bf68299f8e604737",
+      "size": 247,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-938f31f17f3136254247",
+      "missing": false,
+      "path": "results/C3-seed-1/metrics.json",
+      "sha256": "1650da68b65a52f46da5cb254037232d769b635696f510f1197f8bd64dff2f46",
+      "size": 153,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-6e9d341f0277ff752300",
+      "missing": false,
+      "path": "results/C3-seed-1/run.json",
+      "sha256": "f4dff9282e69a22802b016d27ff02bf607c314a9cc5933479d7b211adf2fcb5e",
+      "size": 192,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-98f796f181a15356af6b",
+      "missing": false,
+      "path": "results/C3-seed-2/config.json",
+      "sha256": "71187941b7507555b0d950db6ab26cf9dc0f5463fda7f53a95036bc485ea01f4",
+      "size": 247,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-ab6961c9fdf9afaa921a",
+      "missing": false,
+      "path": "results/C3-seed-2/metrics.json",
+      "sha256": "1650da68b65a52f46da5cb254037232d769b635696f510f1197f8bd64dff2f46",
+      "size": 153,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    },
+    {
+      "id": "file-e142a94d579a44bcc629",
+      "missing": false,
+      "path": "results/C3-seed-2/run.json",
+      "sha256": "a60e9f930bc8116fc5fd9b4593c0b6ab031f1a534c722216bb812212db5eaf6b",
+      "size": 192,
+      "snapshot": "text_snapshot",
+      "source": "project"
+    }
+  ],
+  "hash": "8a09e97df3e3e1ae15e59dc7d4a41636aee63f2e15b134d80014dbcb70860d59",
+  "nodes": [
+    {
+      "attrs": {},
+      "description": "仅从文件识别的运行。研究动机和 cell 关系需要 agent 核对，不从目录名猜测。",
+      "evidence": [],
+      "id": "question-unclassified",
+      "kind": "question",
+      "label": "待归类的实验 / Needs mapping",
+      "parent_id": "project-a40c8d9ae4ae45dbb3868c18c5e71434",
+      "status": "needs_review"
+    },
+    {
+      "attrs": {
+        "assignment": "provisional exact config match; not scientific equivalence",
+        "config": {
+          "dataset_version": "toy-v1",
+          "eval_protocol": "heldout-v1",
+          "hardware": "GPU-A",
+          "history_length": 0,
+          "implementation_id": "synthetic-policy-v1",
+          "precision": "fp32",
+          "prediction_weight": 0.0,
+          "train_steps": 20000
+        }
+      },
+      "description": "排除 seed 后配置相同的候选组；不同硬件不会自动合并。",
+      "evidence": [
+        {
+          "file_id": "file-4258718aa70190a998e8",
+          "locator": "full file",
+          "sha256": "84ec8b6513da09980fed5ddb1d34fa6d889397f5b08da8abfdd03fa8649488d0"
+        },
+        {
+          "file_id": "file-a625f91f408e61819c80",
+          "locator": "full file",
+          "sha256": "7e561102166aff7d2d5a72ce4b5371d2385e27da6610a780a3ad8e0e33418794"
+        }
+      ],
+      "id": "cell-499f137148fd32f17357",
+      "kind": "cell",
+      "label": "候选条件 f17357",
+      "parent_id": "question-unclassified",
+      "status": "needs_review"
+    },
+    {
+      "attrs": {
+        "code_revision": "SYNTHETIC-CODE-v1-NOT-A-GIT-COMMIT",
+        "config": {
+          "dataset_version": "toy-v1",
+          "eval_protocol": "heldout-v1",
+          "hardware": "GPU-A",
+          "history_length": 0,
+          "implementation_id": "synthetic-policy-v1",
+          "precision": "fp32",
+          "prediction_weight": 0.0,
+          "seed": 0,
+          "train_steps": 20000
+        },
+        "dataset_version": "toy-v1",
+        "eval_protocol": "heldout-v1",
+        "identity_basis": "recorded run_id",
+        "input_provenance": "recorded fields only; current code is NOT assigned as historical training code",
+        "metric_selection": "reported JSON metrics",
+        "metrics": {
+          "success_rate": 0.63
+        },
+        "run_id": "synthetic-C0-0",
+        "seed": 0
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-f7f34bdf4c8d75384e86",
+          "locator": "reported JSON metrics",
+          "sha256": "80003efea285975890ec6d0e61485ca6acde18c28712ca9850b37fdde5530748"
+        },
+        {
+          "file_id": "file-4258718aa70190a998e8",
+          "locator": "full file",
+          "sha256": "84ec8b6513da09980fed5ddb1d34fa6d889397f5b08da8abfdd03fa8649488d0"
+        },
+        {
+          "file_id": "file-a625f91f408e61819c80",
+          "locator": "full file",
+          "sha256": "7e561102166aff7d2d5a72ce4b5371d2385e27da6610a780a3ad8e0e33418794"
+        }
+      ],
+      "id": "run-3b208bd51c610c3a162c",
+      "kind": "run",
+      "label": "synthetic-C0-0",
+      "parent_id": "cell-499f137148fd32f17357",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "metrics": {
+          "success_rate": 0.63
+        },
+        "protocol": "heldout-v1",
+        "selection": "reported JSON metrics"
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-f7f34bdf4c8d75384e86",
+          "locator": "reported JSON metrics",
+          "sha256": "80003efea285975890ec6d0e61485ca6acde18c28712ca9850b37fdde5530748"
+        }
+      ],
+      "id": "evaluation-47e5cc47a24f7ca583d4",
+      "kind": "evaluation",
+      "label": "评估 / metrics.json",
+      "parent_id": "run-3b208bd51c610c3a162c",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "code_revision": "SYNTHETIC-CODE-v1-NOT-A-GIT-COMMIT",
+        "config": {
+          "dataset_version": "toy-v1",
+          "eval_protocol": "heldout-v1",
+          "hardware": "GPU-A",
+          "history_length": 0,
+          "implementation_id": "synthetic-policy-v1",
+          "precision": "fp32",
+          "prediction_weight": 0.0,
+          "seed": 1,
+          "train_steps": 20000
+        },
+        "dataset_version": "toy-v1",
+        "eval_protocol": "heldout-v1",
+        "identity_basis": "recorded run_id",
+        "input_provenance": "recorded fields only; current code is NOT assigned as historical training code",
+        "metric_selection": "reported JSON metrics",
+        "metrics": {
+          "success_rate": 0.65
+        },
+        "run_id": "synthetic-C0-1",
+        "seed": 1
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-a7f9c7a013b46fa27137",
+          "locator": "reported JSON metrics",
+          "sha256": "f7839e1a835ef7a232222b3afe37b139496de14d9b9234f698d08e7e916d0c3f"
+        },
+        {
+          "file_id": "file-2867ed92718cc619e9fe",
+          "locator": "full file",
+          "sha256": "96811afdd38130fedc7cc3b5a3aee7d3041a89ab3a1f6452466791cc8c58adad"
+        },
+        {
+          "file_id": "file-59d0028a5669cacda3ac",
+          "locator": "full file",
+          "sha256": "5c149373b4f64ae77159eb9e90e7f9bd3a9bb797533852ed58dafc0b718ea213"
+        }
+      ],
+      "id": "run-374a12ec58d99a82aa80",
+      "kind": "run",
+      "label": "synthetic-C0-1",
+      "parent_id": "cell-499f137148fd32f17357",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "metrics": {
+          "success_rate": 0.65
+        },
+        "protocol": "heldout-v1",
+        "selection": "reported JSON metrics"
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-a7f9c7a013b46fa27137",
+          "locator": "reported JSON metrics",
+          "sha256": "f7839e1a835ef7a232222b3afe37b139496de14d9b9234f698d08e7e916d0c3f"
+        }
+      ],
+      "id": "evaluation-83d2515f580605c9ab2d",
+      "kind": "evaluation",
+      "label": "评估 / metrics.json",
+      "parent_id": "run-374a12ec58d99a82aa80",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "code_revision": "SYNTHETIC-CODE-v1-NOT-A-GIT-COMMIT",
+        "config": {
+          "dataset_version": "toy-v1",
+          "eval_protocol": "heldout-v1",
+          "hardware": "GPU-A",
+          "history_length": 0,
+          "implementation_id": "synthetic-policy-v1",
+          "precision": "fp32",
+          "prediction_weight": 0.0,
+          "seed": 2,
+          "train_steps": 20000
+        },
+        "dataset_version": "toy-v1",
+        "eval_protocol": "heldout-v1",
+        "identity_basis": "recorded run_id",
+        "input_provenance": "recorded fields only; current code is NOT assigned as historical training code",
+        "metric_selection": "reported JSON metrics",
+        "metrics": {
+          "success_rate": 0.64
+        },
+        "run_id": "synthetic-C0-2",
+        "seed": 2
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-469a64312a98d289b2ed",
+          "locator": "reported JSON metrics",
+          "sha256": "3da157d3acf037befd7685123fd9ad99533634143eaf3c8ef1fea053009f3e33"
+        },
+        {
+          "file_id": "file-521f9f2cdc432e01993f",
+          "locator": "full file",
+          "sha256": "3fd8d85c2999812d2d54b37ffebd609c49b7149f5433099ef3b072d6733964bf"
+        },
+        {
+          "file_id": "file-4caafddd78ac6e5fac6d",
+          "locator": "full file",
+          "sha256": "b238fa1cb99280513f9e3b7a9a44c6ee569b4f690bda361bc8caffeca070df7a"
+        }
+      ],
+      "id": "run-81176abe61ccca204a8e",
+      "kind": "run",
+      "label": "synthetic-C0-2",
+      "parent_id": "cell-499f137148fd32f17357",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "metrics": {
+          "success_rate": 0.64
+        },
+        "protocol": "heldout-v1",
+        "selection": "reported JSON metrics"
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-469a64312a98d289b2ed",
+          "locator": "reported JSON metrics",
+          "sha256": "3da157d3acf037befd7685123fd9ad99533634143eaf3c8ef1fea053009f3e33"
+        }
+      ],
+      "id": "evaluation-5f976fdbff3a5ceee0b0",
+      "kind": "evaluation",
+      "label": "评估 / metrics.json",
+      "parent_id": "run-81176abe61ccca204a8e",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "assignment": "provisional exact config match; not scientific equivalence",
+        "config": {
+          "dataset_version": "toy-v1",
+          "eval_protocol": "heldout-v1",
+          "hardware": "GPU-A",
+          "history_length": 3,
+          "implementation_id": "synthetic-policy-v1",
+          "precision": "fp32",
+          "prediction_weight": 0.0,
+          "train_steps": 20000
+        }
+      },
+      "description": "排除 seed 后配置相同的候选组；不同硬件不会自动合并。",
+      "evidence": [
+        {
+          "file_id": "file-5069e1b5ffd33a434c16",
+          "locator": "full file",
+          "sha256": "30c3cbbf23e712fc25ae230e221f20a85c4d93dc32ea36b55b95d8406fbc2e52"
+        },
+        {
+          "file_id": "file-4acce541738d03c75d29",
+          "locator": "full file",
+          "sha256": "f8987991eb8ecb800cab7d5cf6fcf9f33f6edea47550d2da45d903569c03038a"
+        }
+      ],
+      "id": "cell-af29b9da2cdfda4b000c",
+      "kind": "cell",
+      "label": "候选条件 4b000c",
+      "parent_id": "question-unclassified",
+      "status": "needs_review"
+    },
+    {
+      "attrs": {
+        "code_revision": "SYNTHETIC-CODE-v1-NOT-A-GIT-COMMIT",
+        "config": {
+          "dataset_version": "toy-v1",
+          "eval_protocol": "heldout-v1",
+          "hardware": "GPU-A",
+          "history_length": 3,
+          "implementation_id": "synthetic-policy-v1",
+          "precision": "fp32",
+          "prediction_weight": 0.0,
+          "seed": 0,
+          "train_steps": 20000
+        },
+        "dataset_version": "toy-v1",
+        "eval_protocol": "heldout-v1",
+        "identity_basis": "recorded run_id",
+        "input_provenance": "recorded fields only; current code is NOT assigned as historical training code",
+        "metric_selection": "reported JSON metrics",
+        "metrics": {
+          "success_rate": 0.71
+        },
+        "run_id": "synthetic-C1-0",
+        "seed": 0
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-4ee3a23382287817d75e",
+          "locator": "reported JSON metrics",
+          "sha256": "53c27232c00dbc3859a9e7800ae225fd280d512751b41314ba84947887c98740"
+        },
+        {
+          "file_id": "file-5069e1b5ffd33a434c16",
+          "locator": "full file",
+          "sha256": "30c3cbbf23e712fc25ae230e221f20a85c4d93dc32ea36b55b95d8406fbc2e52"
+        },
+        {
+          "file_id": "file-4acce541738d03c75d29",
+          "locator": "full file",
+          "sha256": "f8987991eb8ecb800cab7d5cf6fcf9f33f6edea47550d2da45d903569c03038a"
+        }
+      ],
+      "id": "run-544c1410ee49003e28db",
+      "kind": "run",
+      "label": "synthetic-C1-0",
+      "parent_id": "cell-af29b9da2cdfda4b000c",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "metrics": {
+          "success_rate": 0.71
+        },
+        "protocol": "heldout-v1",
+        "selection": "reported JSON metrics"
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-4ee3a23382287817d75e",
+          "locator": "reported JSON metrics",
+          "sha256": "53c27232c00dbc3859a9e7800ae225fd280d512751b41314ba84947887c98740"
+        }
+      ],
+      "id": "evaluation-91d748fdebfc53164910",
+      "kind": "evaluation",
+      "label": "评估 / metrics.json",
+      "parent_id": "run-544c1410ee49003e28db",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "code_revision": "SYNTHETIC-CODE-v1-NOT-A-GIT-COMMIT",
+        "config": {
+          "dataset_version": "toy-v1",
+          "eval_protocol": "heldout-v1",
+          "hardware": "GPU-A",
+          "history_length": 3,
+          "implementation_id": "synthetic-policy-v1",
+          "precision": "fp32",
+          "prediction_weight": 0.0,
+          "seed": 1,
+          "train_steps": 20000
+        },
+        "dataset_version": "toy-v1",
+        "eval_protocol": "heldout-v1",
+        "identity_basis": "recorded run_id",
+        "input_provenance": "recorded fields only; current code is NOT assigned as historical training code",
+        "metric_selection": "reported JSON metrics",
+        "metrics": {
+          "success_rate": 0.73
+        },
+        "run_id": "synthetic-C1-1",
+        "seed": 1
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-34df6fc67768007bd3e5",
+          "locator": "reported JSON metrics",
+          "sha256": "db8ad60d7510e2f9763ae77c3ddb81ede232a47cb5400872f0f0b3d84e9f32d5"
+        },
+        {
+          "file_id": "file-b9f699ff06a6b6849b18",
+          "locator": "full file",
+          "sha256": "18b2b42366ca8aa75a895aa7453ba2a323aa4801555e8276f5f880f9b4ec6468"
+        },
+        {
+          "file_id": "file-ea37c4ed4da11ff25177",
+          "locator": "full file",
+          "sha256": "2572a2c117ed2d1d60ab649f9ac02667cd054b15d6ece2c4807339962237bff5"
+        }
+      ],
+      "id": "run-df08eb9c7bf0fc9ff4fb",
+      "kind": "run",
+      "label": "synthetic-C1-1",
+      "parent_id": "cell-af29b9da2cdfda4b000c",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "metrics": {
+          "success_rate": 0.73
+        },
+        "protocol": "heldout-v1",
+        "selection": "reported JSON metrics"
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-34df6fc67768007bd3e5",
+          "locator": "reported JSON metrics",
+          "sha256": "db8ad60d7510e2f9763ae77c3ddb81ede232a47cb5400872f0f0b3d84e9f32d5"
+        }
+      ],
+      "id": "evaluation-1762d09444c5e2fcda5c",
+      "kind": "evaluation",
+      "label": "评估 / metrics.json",
+      "parent_id": "run-df08eb9c7bf0fc9ff4fb",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "code_revision": "SYNTHETIC-CODE-v1-NOT-A-GIT-COMMIT",
+        "config": {
+          "dataset_version": "toy-v1",
+          "eval_protocol": "heldout-v1",
+          "hardware": "GPU-A",
+          "history_length": 3,
+          "implementation_id": "synthetic-policy-v1",
+          "precision": "fp32",
+          "prediction_weight": 0.0,
+          "seed": 2,
+          "train_steps": 20000
+        },
+        "dataset_version": "toy-v1",
+        "eval_protocol": "heldout-v1",
+        "identity_basis": "recorded run_id",
+        "input_provenance": "recorded fields only; current code is NOT assigned as historical training code",
+        "metric_selection": "reported JSON metrics",
+        "metrics": {
+          "success_rate": 0.72
+        },
+        "run_id": "synthetic-C1-2",
+        "seed": 2
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-571ced7075502bab827f",
+          "locator": "reported JSON metrics",
+          "sha256": "6c583a8f33c08813576e5d6e9f6537aabca6be97ae4693547b60d38092f438bf"
+        },
+        {
+          "file_id": "file-825e331ce59b41729c6d",
+          "locator": "full file",
+          "sha256": "eb97df2603f092e835ecb897978f7e48fbc2e775ee35f99751933a8bb7bbbc68"
+        },
+        {
+          "file_id": "file-786657149f7a1f4d84dd",
+          "locator": "full file",
+          "sha256": "ad1755c2acc110c0b4caa65c3272ea4ac2345813748baaa53bb932de75dbb5c1"
+        }
+      ],
+      "id": "run-d5a47e80cf22d7d81434",
+      "kind": "run",
+      "label": "synthetic-C1-2",
+      "parent_id": "cell-af29b9da2cdfda4b000c",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "metrics": {
+          "success_rate": 0.72
+        },
+        "protocol": "heldout-v1",
+        "selection": "reported JSON metrics"
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-571ced7075502bab827f",
+          "locator": "reported JSON metrics",
+          "sha256": "6c583a8f33c08813576e5d6e9f6537aabca6be97ae4693547b60d38092f438bf"
+        }
+      ],
+      "id": "evaluation-eee31af4537b3c374563",
+      "kind": "evaluation",
+      "label": "评估 / metrics.json",
+      "parent_id": "run-d5a47e80cf22d7d81434",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "assignment": "provisional exact config match; not scientific equivalence",
+        "config": {
+          "dataset_version": "toy-v1",
+          "eval_protocol": "heldout-v1",
+          "hardware": "GPU-A",
+          "history_length": 3,
+          "implementation_id": "synthetic-policy-v1",
+          "precision": "fp32",
+          "prediction_weight": 0.1,
+          "train_steps": 20000
+        }
+      },
+      "description": "排除 seed 后配置相同的候选组；不同硬件不会自动合并。",
+      "evidence": [
+        {
+          "file_id": "file-515e656293c56d56121f",
+          "locator": "full file",
+          "sha256": "861c17175b206c1ccf87854691a11b6670d69342c8707471933172b738da8471"
+        },
+        {
+          "file_id": "file-e4a524485715e0791113",
+          "locator": "full file",
+          "sha256": "a98f1633cf546efe9e47ff2b53688bb2ccacd5e13a9dec38f777a27e7cae48d9"
+        }
+      ],
+      "id": "cell-a1a236a72c3aad889051",
+      "kind": "cell",
+      "label": "候选条件 889051",
+      "parent_id": "question-unclassified",
+      "status": "needs_review"
+    },
+    {
+      "attrs": {
+        "code_revision": "SYNTHETIC-CODE-v1-NOT-A-GIT-COMMIT",
+        "config": {
+          "dataset_version": "toy-v1",
+          "eval_protocol": "heldout-v1",
+          "hardware": "GPU-A",
+          "history_length": 3,
+          "implementation_id": "synthetic-policy-v1",
+          "precision": "fp32",
+          "prediction_weight": 0.1,
+          "seed": 0,
+          "train_steps": 20000
+        },
+        "dataset_version": "toy-v1",
+        "eval_protocol": "heldout-v1",
+        "identity_basis": "recorded run_id",
+        "input_provenance": "recorded fields only; current code is NOT assigned as historical training code",
+        "metric_selection": "reported JSON metrics",
+        "metrics": {
+          "success_rate": 0.74
+        },
+        "run_id": "synthetic-C2-0",
+        "seed": 0
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-63dd9c78ee967502d818",
+          "locator": "reported JSON metrics",
+          "sha256": "699fab5cf85a55beabbe0e28d992aace34565bf44ae2c4bc1c8ac9f84475985d"
+        },
+        {
+          "file_id": "file-515e656293c56d56121f",
+          "locator": "full file",
+          "sha256": "861c17175b206c1ccf87854691a11b6670d69342c8707471933172b738da8471"
+        },
+        {
+          "file_id": "file-e4a524485715e0791113",
+          "locator": "full file",
+          "sha256": "a98f1633cf546efe9e47ff2b53688bb2ccacd5e13a9dec38f777a27e7cae48d9"
+        }
+      ],
+      "id": "run-ce7cb771a45fef80314a",
+      "kind": "run",
+      "label": "synthetic-C2-0",
+      "parent_id": "cell-a1a236a72c3aad889051",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "metrics": {
+          "success_rate": 0.74
+        },
+        "protocol": "heldout-v1",
+        "selection": "reported JSON metrics"
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-63dd9c78ee967502d818",
+          "locator": "reported JSON metrics",
+          "sha256": "699fab5cf85a55beabbe0e28d992aace34565bf44ae2c4bc1c8ac9f84475985d"
+        }
+      ],
+      "id": "evaluation-b4dadbf137517e498399",
+      "kind": "evaluation",
+      "label": "评估 / metrics.json",
+      "parent_id": "run-ce7cb771a45fef80314a",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "code_revision": "SYNTHETIC-CODE-v1-NOT-A-GIT-COMMIT",
+        "config": {
+          "dataset_version": "toy-v1",
+          "eval_protocol": "heldout-v1",
+          "hardware": "GPU-A",
+          "history_length": 3,
+          "implementation_id": "synthetic-policy-v1",
+          "precision": "fp32",
+          "prediction_weight": 0.1,
+          "seed": 1,
+          "train_steps": 20000
+        },
+        "dataset_version": "toy-v1",
+        "eval_protocol": "heldout-v1",
+        "identity_basis": "recorded run_id",
+        "input_provenance": "recorded fields only; current code is NOT assigned as historical training code",
+        "metric_selection": "reported JSON metrics",
+        "metrics": {
+          "success_rate": 0.76
+        },
+        "run_id": "synthetic-C2-1",
+        "seed": 1
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-270679906f9a5d6a59da",
+          "locator": "reported JSON metrics",
+          "sha256": "9273e7f1260e32ab5df363f0c842f4465ef8478b25a92287502e20be85a3cf41"
+        },
+        {
+          "file_id": "file-0240affb86911d697efd",
+          "locator": "full file",
+          "sha256": "e98b529341b7104be76091e3d5b7435de9ee3f7d14fa591f0f7b86921a39ea56"
+        },
+        {
+          "file_id": "file-945ce627d5a9be7cb8d0",
+          "locator": "full file",
+          "sha256": "2e787d1d1acfffe6800b2b7595bbf98fba0dceeb41420037c1386d4d28f2205d"
+        }
+      ],
+      "id": "run-02b74f3cfcdcb26e2168",
+      "kind": "run",
+      "label": "synthetic-C2-1",
+      "parent_id": "cell-a1a236a72c3aad889051",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "metrics": {
+          "success_rate": 0.76
+        },
+        "protocol": "heldout-v1",
+        "selection": "reported JSON metrics"
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-270679906f9a5d6a59da",
+          "locator": "reported JSON metrics",
+          "sha256": "9273e7f1260e32ab5df363f0c842f4465ef8478b25a92287502e20be85a3cf41"
+        }
+      ],
+      "id": "evaluation-25f644e3200f50f9944e",
+      "kind": "evaluation",
+      "label": "评估 / metrics.json",
+      "parent_id": "run-02b74f3cfcdcb26e2168",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "code_revision": "SYNTHETIC-CODE-v1-NOT-A-GIT-COMMIT",
+        "config": {
+          "dataset_version": "toy-v1",
+          "eval_protocol": "heldout-v1",
+          "hardware": "GPU-A",
+          "history_length": 3,
+          "implementation_id": "synthetic-policy-v1",
+          "precision": "fp32",
+          "prediction_weight": 0.1,
+          "seed": 2,
+          "train_steps": 20000
+        },
+        "dataset_version": "toy-v1",
+        "eval_protocol": "heldout-v1",
+        "identity_basis": "recorded run_id",
+        "input_provenance": "recorded fields only; current code is NOT assigned as historical training code",
+        "metric_selection": "reported JSON metrics",
+        "metrics": {
+          "success_rate": 0.75
+        },
+        "run_id": "synthetic-C2-2",
+        "seed": 2
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-a3d5603cd8cdb74f54b2",
+          "locator": "reported JSON metrics",
+          "sha256": "1650da68b65a52f46da5cb254037232d769b635696f510f1197f8bd64dff2f46"
+        },
+        {
+          "file_id": "file-2187a80420d8ce63eaca",
+          "locator": "full file",
+          "sha256": "f32a01ee6224de77561e94306dce5de951217066b094b25184b3ef8a65b89a96"
+        },
+        {
+          "file_id": "file-584e920954b91c0fef42",
+          "locator": "full file",
+          "sha256": "17ee0315628378c600768dbc47b74cb775d2cd2778763bc2d189ec61fb4059dd"
+        }
+      ],
+      "id": "run-d029f273bb2cfdfabc0c",
+      "kind": "run",
+      "label": "synthetic-C2-2",
+      "parent_id": "cell-a1a236a72c3aad889051",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "metrics": {
+          "success_rate": 0.75
+        },
+        "protocol": "heldout-v1",
+        "selection": "reported JSON metrics"
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-a3d5603cd8cdb74f54b2",
+          "locator": "reported JSON metrics",
+          "sha256": "1650da68b65a52f46da5cb254037232d769b635696f510f1197f8bd64dff2f46"
+        }
+      ],
+      "id": "evaluation-3f35deb3dd283284da14",
+      "kind": "evaluation",
+      "label": "评估 / metrics.json",
+      "parent_id": "run-d029f273bb2cfdfabc0c",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "assignment": "provisional exact config match; not scientific equivalence",
+        "config": {
+          "dataset_version": "toy-v1",
+          "eval_protocol": "heldout-v1",
+          "hardware": "GPU-B",
+          "history_length": 3,
+          "implementation_id": "synthetic-policy-v1",
+          "precision": "fp32",
+          "prediction_weight": 0.1,
+          "train_steps": 20000
+        }
+      },
+      "description": "排除 seed 后配置相同的候选组；不同硬件不会自动合并。",
+      "evidence": [
+        {
+          "file_id": "file-b31192b61dbd68f24c72",
+          "locator": "full file",
+          "sha256": "9101b16d2b8fd326e18e66c8189d0eeb8c5e3488af1ee4de22b648a3355ae8e2"
+        },
+        {
+          "file_id": "file-f9659dcf81cac39ed2e2",
+          "locator": "full file",
+          "sha256": "9902f47232f2db8e59fc621f8046905e7284dada036e90879872edd8f66cc75f"
+        }
+      ],
+      "id": "cell-41136989fd25783f1af4",
+      "kind": "cell",
+      "label": "候选条件 3f1af4",
+      "parent_id": "question-unclassified",
+      "status": "needs_review"
+    },
+    {
+      "attrs": {
+        "code_revision": "SYNTHETIC-CODE-v1-NOT-A-GIT-COMMIT",
+        "config": {
+          "dataset_version": "toy-v1",
+          "eval_protocol": "heldout-v1",
+          "hardware": "GPU-B",
+          "history_length": 3,
+          "implementation_id": "synthetic-policy-v1",
+          "precision": "fp32",
+          "prediction_weight": 0.1,
+          "seed": 0,
+          "train_steps": 20000
+        },
+        "dataset_version": "toy-v1",
+        "eval_protocol": "heldout-v1",
+        "identity_basis": "recorded run_id",
+        "input_provenance": "recorded fields only; current code is NOT assigned as historical training code",
+        "metric_selection": "reported JSON metrics",
+        "metrics": {
+          "success_rate": 0.73
+        },
+        "run_id": "synthetic-C3-0",
+        "seed": 0
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-17b1470e88c69f4aef5c",
+          "locator": "reported JSON metrics",
+          "sha256": "db8ad60d7510e2f9763ae77c3ddb81ede232a47cb5400872f0f0b3d84e9f32d5"
+        },
+        {
+          "file_id": "file-b31192b61dbd68f24c72",
+          "locator": "full file",
+          "sha256": "9101b16d2b8fd326e18e66c8189d0eeb8c5e3488af1ee4de22b648a3355ae8e2"
+        },
+        {
+          "file_id": "file-f9659dcf81cac39ed2e2",
+          "locator": "full file",
+          "sha256": "9902f47232f2db8e59fc621f8046905e7284dada036e90879872edd8f66cc75f"
+        }
+      ],
+      "id": "run-43ef97a50dbe63f2197c",
+      "kind": "run",
+      "label": "synthetic-C3-0",
+      "parent_id": "cell-41136989fd25783f1af4",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "metrics": {
+          "success_rate": 0.73
+        },
+        "protocol": "heldout-v1",
+        "selection": "reported JSON metrics"
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-17b1470e88c69f4aef5c",
+          "locator": "reported JSON metrics",
+          "sha256": "db8ad60d7510e2f9763ae77c3ddb81ede232a47cb5400872f0f0b3d84e9f32d5"
+        }
+      ],
+      "id": "evaluation-4f9562d3150e5d0e25bc",
+      "kind": "evaluation",
+      "label": "评估 / metrics.json",
+      "parent_id": "run-43ef97a50dbe63f2197c",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "code_revision": "SYNTHETIC-CODE-v1-NOT-A-GIT-COMMIT",
+        "config": {
+          "dataset_version": "toy-v1",
+          "eval_protocol": "heldout-v1",
+          "hardware": "GPU-B",
+          "history_length": 3,
+          "implementation_id": "synthetic-policy-v1",
+          "precision": "fp32",
+          "prediction_weight": 0.1,
+          "seed": 1,
+          "train_steps": 20000
+        },
+        "dataset_version": "toy-v1",
+        "eval_protocol": "heldout-v1",
+        "identity_basis": "recorded run_id",
+        "input_provenance": "recorded fields only; current code is NOT assigned as historical training code",
+        "metric_selection": "reported JSON metrics",
+        "metrics": {
+          "success_rate": 0.75
+        },
+        "run_id": "synthetic-C3-1",
+        "seed": 1
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-938f31f17f3136254247",
+          "locator": "reported JSON metrics",
+          "sha256": "1650da68b65a52f46da5cb254037232d769b635696f510f1197f8bd64dff2f46"
+        },
+        {
+          "file_id": "file-6e9d341f0277ff752300",
+          "locator": "full file",
+          "sha256": "f4dff9282e69a22802b016d27ff02bf607c314a9cc5933479d7b211adf2fcb5e"
+        },
+        {
+          "file_id": "file-890f29270e291f8c3ea0",
+          "locator": "full file",
+          "sha256": "874ecc5901e0478e55457fbf0cd3bb5652afac4910542294bf68299f8e604737"
+        }
+      ],
+      "id": "run-1258ffce442b95733e62",
+      "kind": "run",
+      "label": "synthetic-C3-1",
+      "parent_id": "cell-41136989fd25783f1af4",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "metrics": {
+          "success_rate": 0.75
+        },
+        "protocol": "heldout-v1",
+        "selection": "reported JSON metrics"
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-938f31f17f3136254247",
+          "locator": "reported JSON metrics",
+          "sha256": "1650da68b65a52f46da5cb254037232d769b635696f510f1197f8bd64dff2f46"
+        }
+      ],
+      "id": "evaluation-a0a2915ae03346c810a2",
+      "kind": "evaluation",
+      "label": "评估 / metrics.json",
+      "parent_id": "run-1258ffce442b95733e62",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "code_revision": "SYNTHETIC-CODE-v1-NOT-A-GIT-COMMIT",
+        "config": {
+          "dataset_version": "toy-v1",
+          "eval_protocol": "heldout-v1",
+          "hardware": "GPU-B",
+          "history_length": 3,
+          "implementation_id": "synthetic-policy-v1",
+          "precision": "fp32",
+          "prediction_weight": 0.1,
+          "seed": 2,
+          "train_steps": 20000
+        },
+        "dataset_version": "toy-v1",
+        "eval_protocol": "heldout-v1",
+        "identity_basis": "recorded run_id",
+        "input_provenance": "recorded fields only; current code is NOT assigned as historical training code",
+        "metric_selection": "reported JSON metrics",
+        "metrics": {
+          "success_rate": 0.75
+        },
+        "run_id": "synthetic-C3-2",
+        "seed": 2
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-ab6961c9fdf9afaa921a",
+          "locator": "reported JSON metrics",
+          "sha256": "1650da68b65a52f46da5cb254037232d769b635696f510f1197f8bd64dff2f46"
+        },
+        {
+          "file_id": "file-e142a94d579a44bcc629",
+          "locator": "full file",
+          "sha256": "a60e9f930bc8116fc5fd9b4593c0b6ab031f1a534c722216bb812212db5eaf6b"
+        },
+        {
+          "file_id": "file-98f796f181a15356af6b",
+          "locator": "full file",
+          "sha256": "71187941b7507555b0d950db6ab26cf9dc0f5463fda7f53a95036bc485ea01f4"
+        }
+      ],
+      "id": "run-1259169f9dbe15c64a78",
+      "kind": "run",
+      "label": "synthetic-C3-2",
+      "parent_id": "cell-41136989fd25783f1af4",
+      "status": "completed"
+    },
+    {
+      "attrs": {
+        "metrics": {
+          "success_rate": 0.75
+        },
+        "protocol": "heldout-v1",
+        "selection": "reported JSON metrics"
+      },
+      "description": "",
+      "evidence": [
+        {
+          "file_id": "file-ab6961c9fdf9afaa921a",
+          "locator": "reported JSON metrics",
+          "sha256": "1650da68b65a52f46da5cb254037232d769b635696f510f1197f8bd64dff2f46"
+        }
+      ],
+      "id": "evaluation-2acc2187029470b1baee",
+      "kind": "evaluation",
+      "label": "评估 / metrics.json",
+      "parent_id": "run-1259169f9dbe15c64a78",
+      "status": "completed"
+    }
+  ],
+  "previous_hash": "",
+  "reason": "Read-only source scan and conservative run ingestion",
+  "revision": 1,
+  "scan": {
+    "complete": true,
+    "file_count": 39,
+    "note": "Current filesystem inventory; not proof of historical training inputs. Known secret filenames skipped; this is not a comprehensive secret scanner.",
+    "source_aliases": [
+      "project"
+    ],
+    "warnings": []
+  }
+}

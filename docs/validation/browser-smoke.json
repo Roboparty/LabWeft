@@ -1,0 +1,16 @@
+{
+  "browser": "Chromium / Linux, system executable",
+  "checks": [
+    "Offline data loaded; modules and history cells expanded by default",
+    "Expand/collapse changes visible hierarchy without a model request",
+    "Matrix means match Python aggregation for the synthetic fixture",
+    "Difference-only matrix and run drill-down",
+    "Immutable evidence opens as escaped text with line numbers",
+    "Relationship view renders typed-record connections",
+    "Decisions, revision history, paginated sources",
+    "390px mobile layout has no page-level horizontal overflow"
+  ],
+  "page_errors": [],
+  "live_test": "not completed in this browser environment: Page.goto: net::ERR_BLOCKED_BY_ADMINISTRATOR at http://127.0.0.1:39667/?token=browser-test-private-token",
+  "note": "Offline snapshot JS exercised using set_content; file:// navigation is blocked by the environment browser policy."
+}

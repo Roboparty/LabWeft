@@ -1,0 +1,152 @@
+{
+  "actor": "human:synthetic-reviewer",
+  "at": "2026-09-27T18:17:29+00:00",
+  "edges": [],
+  "files": [],
+  "hash": "9ed51a8dd1f5f38a140845f58e8ef0569ed8309088f42288d70d549bbcf318ca",
+  "nodes": [
+    {
+      "attrs": {
+        "action": "reuse",
+        "question_id": "question-hardware",
+        "reopen_if": "实现、精度、数据、训练预算或评估协议改变；出现新冲突证据。新 seed 只属于重复验证，不自动触发硬件消融。",
+        "scope": {
+          "covered_values": {
+            "hardware": [
+              "GPU-A",
+              "GPU-B"
+            ]
+          },
+          "replication_keys": [
+            "seed"
+          ],
+          "required_context": {
+            "dataset_version": "toy-v1",
+            "eval_protocol": "heldout-v1",
+            "history_length": 3,
+            "implementation_id": "synthetic-policy-v1",
+            "precision": "fp32",
+            "prediction_weight": 0.1,
+            "train_steps": 20000
+          }
+        }
+      },
+      "confirmation": {
+        "at": "2026-09-27T18:17:29+00:00",
+        "note": "合成示例中的人工确认；仅用于测试有范围的历史复用，不是实际硬件结论。",
+        "reviewer": "synthetic-reviewer"
+      },
+      "description": "演示用人工决策：同一实现、精度、数据、预算与评估协议下，GPU-A / GPU-B 已检查。后续不因为只换了这两个硬件就再次提出消融。",
+      "evidence": [
+        {
+          "file_id": "file-fdbf6685537cb0744d4a",
+          "locator": "full file",
+          "sha256": "63f274c1af61234075e6c87f64258e751c380a33ac3ffa11ad0071a6cfbf2a5a"
+        },
+        {
+          "file_id": "file-63dd9c78ee967502d818",
+          "locator": "reported JSON metrics",
+          "sha256": "699fab5cf85a55beabbe0e28d992aace34565bf44ae2c4bc1c8ac9f84475985d"
+        },
+        {
+          "file_id": "file-515e656293c56d56121f",
+          "locator": "full file",
+          "sha256": "861c17175b206c1ccf87854691a11b6670d69342c8707471933172b738da8471"
+        },
+        {
+          "file_id": "file-e4a524485715e0791113",
+          "locator": "full file",
+          "sha256": "a98f1633cf546efe9e47ff2b53688bb2ccacd5e13a9dec38f777a27e7cae48d9"
+        },
+        {
+          "file_id": "file-270679906f9a5d6a59da",
+          "locator": "reported JSON metrics",
+          "sha256": "9273e7f1260e32ab5df363f0c842f4465ef8478b25a92287502e20be85a3cf41"
+        },
+        {
+          "file_id": "file-0240affb86911d697efd",
+          "locator": "full file",
+          "sha256": "e98b529341b7104be76091e3d5b7435de9ee3f7d14fa591f0f7b86921a39ea56"
+        },
+        {
+          "file_id": "file-945ce627d5a9be7cb8d0",
+          "locator": "full file",
+          "sha256": "2e787d1d1acfffe6800b2b7595bbf98fba0dceeb41420037c1386d4d28f2205d"
+        },
+        {
+          "file_id": "file-a3d5603cd8cdb74f54b2",
+          "locator": "reported JSON metrics",
+          "sha256": "1650da68b65a52f46da5cb254037232d769b635696f510f1197f8bd64dff2f46"
+        },
+        {
+          "file_id": "file-2187a80420d8ce63eaca",
+          "locator": "full file",
+          "sha256": "f32a01ee6224de77561e94306dce5de951217066b094b25184b3ef8a65b89a96"
+        },
+        {
+          "file_id": "file-584e920954b91c0fef42",
+          "locator": "full file",
+          "sha256": "17ee0315628378c600768dbc47b74cb775d2cd2778763bc2d189ec61fb4059dd"
+        },
+        {
+          "file_id": "file-17b1470e88c69f4aef5c",
+          "locator": "reported JSON metrics",
+          "sha256": "db8ad60d7510e2f9763ae77c3ddb81ede232a47cb5400872f0f0b3d84e9f32d5"
+        },
+        {
+          "file_id": "file-b31192b61dbd68f24c72",
+          "locator": "full file",
+          "sha256": "9101b16d2b8fd326e18e66c8189d0eeb8c5e3488af1ee4de22b648a3355ae8e2"
+        },
+        {
+          "file_id": "file-f9659dcf81cac39ed2e2",
+          "locator": "full file",
+          "sha256": "9902f47232f2db8e59fc621f8046905e7284dada036e90879872edd8f66cc75f"
+        },
+        {
+          "file_id": "file-938f31f17f3136254247",
+          "locator": "reported JSON metrics",
+          "sha256": "1650da68b65a52f46da5cb254037232d769b635696f510f1197f8bd64dff2f46"
+        },
+        {
+          "file_id": "file-6e9d341f0277ff752300",
+          "locator": "full file",
+          "sha256": "f4dff9282e69a22802b016d27ff02bf607c314a9cc5933479d7b211adf2fcb5e"
+        },
+        {
+          "file_id": "file-890f29270e291f8c3ea0",
+          "locator": "full file",
+          "sha256": "874ecc5901e0478e55457fbf0cd3bb5652afac4910542294bf68299f8e604737"
+        },
+        {
+          "file_id": "file-ab6961c9fdf9afaa921a",
+          "locator": "reported JSON metrics",
+          "sha256": "1650da68b65a52f46da5cb254037232d769b635696f510f1197f8bd64dff2f46"
+        },
+        {
+          "file_id": "file-e142a94d579a44bcc629",
+          "locator": "full file",
+          "sha256": "a60e9f930bc8116fc5fd9b4593c0b6ab031f1a534c722216bb812212db5eaf6b"
+        },
+        {
+          "file_id": "file-98f796f181a15356af6b",
+          "locator": "full file",
+          "sha256": "71187941b7507555b0d950db6ab26cf9dc0f5463fda7f53a95036bc485ea01f4"
+        }
+      ],
+      "evidence_ids": [
+        "cell-a1a236a72c3aad889051",
+        "cell-41136989fd25783f1af4"
+      ],
+      "id": "decision-hardware",
+      "kind": "decision",
+      "label": "硬件差异：范围内复用已有判断",
+      "parent_id": "question-hardware",
+      "protected": true,
+      "status": "accepted"
+    }
+  ],
+  "previous_hash": "d568be9bb81b1211ef0fa6c9cdb5e7310f78148420ded20aed27765a1541bfff",
+  "reason": "Human confirmation: 合成示例中的人工确认；仅用于测试有范围的历史复用，不是实际硬件结论。",
+  "revision": 3
+}

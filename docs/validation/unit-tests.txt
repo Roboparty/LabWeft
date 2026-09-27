@@ -1,0 +1,49 @@
+test_changed_protocol_reopens_not_automatic_training (test_harness.DecisionTests.test_changed_protocol_reopens_not_automatic_training) ... ok
+test_changed_source_does_not_silently_rewrite_decision (test_harness.DecisionTests.test_changed_source_does_not_silently_rewrite_decision) ... ok
+test_demo_noop_scan (test_harness.DecisionTests.test_demo_noop_scan) ... ok
+test_hardware_coverage_is_inherited (test_harness.DecisionTests.test_hardware_coverage_is_inherited) ... ok
+test_missing_context_not_treated_as_equal (test_harness.DecisionTests.test_missing_context_not_treated_as_equal) ... ok
+test_new_factor_requires_scope_review (test_harness.DecisionTests.test_new_factor_requires_scope_review) ... ok
+test_unknown_hardware_not_covered (test_harness.DecisionTests.test_unknown_hardware_not_covered) ... ok
+test_user_confirmation_required (test_harness.DecisionTests.test_user_confirmation_required) ... ok
+test_api_requires_token (test_harness.ServerTests.test_api_requires_token) ... ok
+test_cross_site_read_blocked (test_harness.ServerTests.test_cross_site_read_blocked) ... ok
+test_invalid_host_blocked (test_harness.ServerTests.test_invalid_host_blocked) ... ok
+test_unknown_evidence_cannot_traverse (test_harness.ServerTests.test_unknown_evidence_cannot_traverse) ... ok
+test_accepted_claim_requires_immutable_source (test_harness.WorkspaceTests.test_accepted_claim_requires_immutable_source) ... ok
+test_agent_cannot_fabricate_confirmation (test_harness.WorkspaceTests.test_agent_cannot_fabricate_confirmation) ... ok
+test_agent_semantics_survive_rescan (test_harness.WorkspaceTests.test_agent_semantics_survive_rescan) ... ok
+test_changed_config_does_not_silently_relabel_cell (test_harness.WorkspaceTests.test_changed_config_does_not_silently_relabel_cell) ... ok
+test_conflicting_recorded_run_id_not_pooled (test_harness.WorkspaceTests.test_conflicting_recorded_run_id_not_pooled) ... ok
+test_deleted_file_keeps_original_snapshot (test_harness.WorkspaceTests.test_deleted_file_keeps_original_snapshot) ... ok
+test_duplicate_seed_not_double_counted (test_harness.WorkspaceTests.test_duplicate_seed_not_double_counted) ... ok
+test_event_corruption_detected (test_harness.WorkspaceTests.test_event_corruption_detected) ... ok
+test_evidence_snapshot_corruption_detected (test_harness.WorkspaceTests.test_evidence_snapshot_corruption_detected) ... ok
+test_id_survives_workspace_copy (test_harness.WorkspaceTests.test_id_survives_workspace_copy) ... ok
+test_initialize_is_idempotent (test_harness.WorkspaceTests.test_initialize_is_idempotent) ... ok
+test_installer_does_not_touch_agents_md (test_harness.WorkspaceTests.test_installer_does_not_touch_agents_md) ... ok
+test_invalid_evidence_rejected (test_harness.WorkspaceTests.test_invalid_evidence_rejected) ... ok
+test_invalid_json_warns_without_executing (test_harness.WorkspaceTests.test_invalid_json_warns_without_executing) ... ok
+test_invalid_parent_and_cycle_rejected (test_harness.WorkspaceTests.test_invalid_parent_and_cycle_rejected) ... ok
+test_missing_protocol_not_pooled (test_harness.WorkspaceTests.test_missing_protocol_not_pooled) ... ok
+test_multiple_metric_files_not_silently_pooled (test_harness.WorkspaceTests.test_multiple_metric_files_not_silently_pooled) ... ok
+test_no_invented_historical_commit (test_harness.WorkspaceTests.test_no_invented_historical_commit) ... ok
+test_offline_export_escapes_script_injection (test_harness.WorkspaceTests.test_offline_export_escapes_script_injection) ... ok
+test_protected_node_cannot_be_overwritten (test_harness.WorkspaceTests.test_protected_node_cannot_be_overwritten) ... ok
+test_revision_conflict_no_partial_update (test_harness.WorkspaceTests.test_revision_conflict_no_partial_update) ... ok
+test_sample_standard_deviation (test_harness.WorkspaceTests.test_sample_standard_deviation) ... ok
+test_scan_limit_preserves_unseen_files (test_harness.WorkspaceTests.test_scan_limit_preserves_unseen_files) ... ok
+test_second_scan_is_noop (test_harness.WorkspaceTests.test_second_scan_is_noop) ... ok
+test_secret_names_not_copied (test_harness.WorkspaceTests.test_secret_names_not_copied) ... ok
+test_seed_not_new_cell_hardware_is (test_harness.WorkspaceTests.test_seed_not_new_cell_hardware_is) ... ok
+test_skill_install_refuses_user_overwrite (test_harness.WorkspaceTests.test_skill_install_refuses_user_overwrite) ... ok
+test_source_text_not_executed (test_harness.WorkspaceTests.test_source_text_not_executed) ... ok
+test_symlink_escape_skipped (test_harness.WorkspaceTests.test_symlink_escape_skipped) ... ok
+test_toml_and_csv_are_supported (test_harness.WorkspaceTests.test_toml_and_csv_are_supported) ... ok
+test_unverified_completion_not_pooled (test_harness.WorkspaceTests.test_unverified_completion_not_pooled) ... ok
+test_weights_metadata_only (test_harness.WorkspaceTests.test_weights_metadata_only) ... ok
+
+----------------------------------------------------------------------
+Ran 44 tests in 2.139s
+
+OK

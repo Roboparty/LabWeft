@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "research-harness-local"
+version = "0.1.0"
+description = "LabWeft: a local-first research workspace for your existing coding agent"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "LabWeft contributors"}]
+dependencies = []
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering",
+]
+
+[project.scripts]
+labweft = "research_harness.cli:main"
+rh = "research_harness.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["research_harness*"]
+
+[tool.setuptools.package-data]
+research_harness = ["static/*", "skill/research-harness/SKILL.md", "skill/research-harness/references/*.md"]
