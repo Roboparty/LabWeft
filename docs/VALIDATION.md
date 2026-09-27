@@ -1,5 +1,67 @@
 # Validation record — v0.1.0 prototype
 
+## Current local regression status (2026-09-28)
+
+After a second bounded private-project pilot, Windows Python 3.14 runs 58 tests:
+57 pass and one symlink capability test skips. `node --check` passes. A synthetic
+incremental fixture exercises a new protocol folder, new result cell and added
+training seed while preserving a previously mapped question. Separate regression
+cases verify that a file-count boundary cannot mark unseen files missing, that
+changed or missing metric evidence leaves current aggregates, and that an older
+secondary metric file cannot silently replace a removed primary file. Another
+test checks metric selection when the only available key is not `success_rate`.
+An internal agent reproduced the three baseline failures and checked the current aggregate
+and drift warning in the actual offline browser matrix. The private source files and browser artifacts remain
+outside this repository.
+
+An existing official Skill installation from the previous commit was copied into
+an isolated directory and upgraded in place. Managed-file hashes now allow an
+unchanged installation to upgrade while still refusing edited files.
+
+An independent blind agent used only a newly staged 13→22→28-file private source
+subset. It kept the corrected canonical results, separate experiment identities,
+incomplete follow-ups and an older negative result in their proper scopes. Its
+recomputation found that two reports used population and sample SD respectively
+for three training seeds. The full pilot's private evidence map now records this
+as a provisional caveat. The blind agent did not map custom summary JSON/CSV into
+Cell/Run nodes, so its empty comparison was a workflow gap; the Skill now says
+to perform evidence-bound normalization for such sources and to verify SD
+conventions. This is not a scored public benchmark or a claim of general agent
+reliability.
+
+A second staged blind run followed the revised Skill in a fresh private
+workspace with 5→12→18 selected source files. It normalized a custom mechanism
+JSON into four cells and twelve independent runs, plus one cell and three runs
+from a custom CSV. Every cell compared with three training seeds and matched
+independently recomputed mean/sample SD. `validate` passed with 30 nodes,
+no evidence errors or drift; repeated scans did not overwrite the semantic
+mapping. The run also preserved separate incomplete and negative-result scopes.
+Its feedback identified a missing minimal Cell/Run patch example, now added to
+the bundled protocol. This still lacks a public scored agent benchmark and
+does not establish broad host-model reliability.
+
+A third, narrow documentation check followed only the new protocol example in
+a fresh synthetic workspace, without consulting implementation code. One Cell
+and three completed Runs compared at mean 0.6666667 and sample SD 0.0416333;
+`validate` passed and a repeat scan did not overwrite the mapping. The example
+now spells out metric units and duplicate-seed handling. This checks clarity of
+that example, not the performance of arbitrary agents or custom formats.
+
+The final Windows Python 3.14 suite still runs 58 tests: 57 pass and one symlink
+capability test skips. JavaScript syntax and Git whitespace checks pass. Both a
+wheel and an sdist were built; the sdist manifest was corrected to include docs
+and source examples while excluding generated example workspace state and its
+machine-local source path. Each artifact installed into a separate new virtual
+environment. In both, the `labweft` entry point completed synthetic demo,
+`validate`, `compare`, offline export and project Skill installation. The demo
+produced four cells, twelve runs and a valid revision-3 workspace. Package
+installation was tested only on this Windows Python 3.14 host.
+
+These checks cover a selected small-text subset and synthetic failure cases, not
+whole-project scientific correctness, historical training replay, every agent
+client or NAS service reliability. The earlier entries below record the original
+prototype and first pilot at their respective times.
+
 Prepared 2026-09-28. Tested locally in Linux with Python 3.13.5, Node 22.16.0 for
 JavaScript syntax checking, and the system Chromium driven by Playwright.
 Node and Playwright are development/test tools, not runtime requirements.

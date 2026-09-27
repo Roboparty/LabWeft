@@ -52,7 +52,11 @@ below use legacy `rh` as shorthand for that same CLI. Quote all paths.
 2. **Scan facts.** Run `rh sync WORKSPACE`. It indexes safe small text snapshots,
    static Python symbols and recognized JSON/TOML/CSV run data. It does NOT infer
    research intent. Read warnings and note partial scans. Never claim coverage
-   beyond scan limits.
+   beyond scan limits. A changed primary metric file or conflicting protocol
+   fields leave a run in `needs_review`; inspect both source snapshots before
+   reconciling it. If review establishes the new primary result is valid, submit
+   a versioned patch for the run's status, evidence and transition marker, then
+   sync again. Do not relabel an older fallback result as the current one.
 3. **Read necessary evidence.** Run `rh files WORKSPACE --offset 0 --limit 50`;
    follow `next_offset`. Read snapshots using `rh evidence WORKSPACE --sha HASH`;
    follow `next_start_line` when needed. Inspect the actual implementation path,
@@ -63,6 +67,14 @@ below use legacy `rh` as shorthand for that same CLI. Quote all paths.
    baselines with edges rather than duplicating their run identities. A cell is
    one scientific condition, not one seed. Separate recorded purpose, agent
    inference and user-confirmed purpose. Missing historic inputs are explicit gaps.
+   If a custom JSON/CSV report contains usable per-run values but the scanner did
+   not recognize its layout, map those values to evidence-bound Cell and Run
+   nodes in the semantic patch. Verify run identity, seed, completion, protocol
+   and aggregation from the source first; do not treat an empty automatic
+   `compare` as evidence that results are absent. Recompute reported statistics
+   from per-run values where possible, and record whether SD is sample or
+   population SD before comparing variability across reports. Use the minimal
+   custom-result Cell/Run example in [PROTOCOL.md](references/PROTOCOL.md).
 5. **Check history before recommending work.** Read every relevant protected
    decision, including scope, source, and reopening conditions. Use `rh assess
    WORKSPACE PROPOSAL.json` for a bounded mechanical scope check. Treat its result
@@ -77,7 +89,9 @@ below use legacy `rh` as shorthand for that same CLI. Quote all paths.
    human-protected corrections. Review source-drift flags without declaring every
    old conclusion invalid.
 7. **Check and visualize.** Run `rh validate WORKSPACE` and `rh compare WORKSPACE`.
-   Address mechanical errors, not by weakening provenance. Export with `rh export
+   Current comparisons exclude runs whose metric evidence changed or disappeared;
+   their old snapshots remain historical evidence. Address mechanical errors,
+   not by weakening provenance. Export with `rh export
    WORKSPACE --output WORKSPACE/.research/map.html`. An export contains research
    metadata; `--include-evidence` additionally copies private source text and is
    not automatic. For a live local read-only interface, use `rh serve WORKSPACE`;

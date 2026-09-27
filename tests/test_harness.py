@@ -1,5 +1,6 @@
 from __future__ import annotations
 import copy
+import hashlib
 import http.client
 import json
 from pathlib import Path
@@ -109,6 +110,34 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(2, sum(n["kind"] == "cell" for n in kinds))
         self.assertEqual(3, sum(n["kind"] == "run" for n in kinds))
 
+    def test_incremental_folder_addition_keeps_existing_question_and_separates_cells(self):
+        self.run_file("baseline-s0", 0)
+        sync(self.store)
+        state = self.store.load()
+        cell = next(n for n in state["nodes"].values() if n["kind"] == "cell")
+        question = node("question-incremental", "question", "Synthetic ablation question", state["project"]["id"])
+        revised_cell = copy.deepcopy(cell)
+        revised_cell["parent_id"] = question["id"]
+        self.store.commit({"base_revision": state["revision"], "reason": "Agent maps the initial condition",
+                           "nodes": [question, revised_cell]})
+        new_folder = self.root / "results" / "new-ablation"
+        new_folder.mkdir()
+        (new_folder / "PROTOCOL.md").write_text("Synthetic new condition; no result yet", encoding="utf-8")
+        sync(self.store)
+        self.assertEqual(1, len([n for n in self.store.load()["nodes"].values() if n["kind"] == "run"]))
+        self.run_file("baseline-s42", 42, .7)
+        self.run_file("new-ablation", 0, .8, hardware="B")
+        sync(self.store)
+        current = self.store.load()
+        self.assertEqual("Synthetic ablation question", current["nodes"][question["id"]]["label"])
+        self.assertEqual(question["id"], current["nodes"][cell["id"]]["parent_id"])
+        rows = {row["id"]: row for row in compare(current)["rows"]}
+        self.assertEqual(2, len(rows))
+        self.assertEqual(2, rows[cell["id"]]["n"])
+        self.assertAlmostEqual(.6, rows[cell["id"]]["mean"])
+        self.assertEqual(1, next(row["n"] for row in rows.values() if row["id"] != cell["id"]))
+        self.assertFalse(sync(self.store)["changed"])
+
     def test_secret_names_not_copied(self):
         (self.root / ".env").write_text("API_KEY=dummy-secret")
         (self.root / "credentials.json").write_text('{"password":"dummy-secret"}')
@@ -149,6 +178,16 @@ class WorkspaceTests(unittest.TestCase):
         self.assertFalse(out["scan"]["complete"])
         self.assertFalse(any(f["missing"] for f in self.store.load()["files"].values()))
 
+    def test_scan_limit_at_directory_boundary_preserves_unseen_files(self):
+        (self.root / "a").mkdir()
+        (self.root / "b").mkdir()
+        (self.root / "a" / "first.md").write_text("first")
+        (self.root / "b" / "second.md").write_text("second")
+        sync(self.store)
+        out = sync(self.store, max_files=1)
+        self.assertFalse(out["scan"]["complete"])
+        self.assertFalse(any(f["missing"] for f in self.store.load()["files"].values()))
+
     def test_deleted_file_keeps_original_snapshot(self):
         p = self.root / "notes.md"
         p.write_text("initial evidence")
@@ -158,6 +197,18 @@ class WorkspaceTests(unittest.TestCase):
         sync(self.store)
         self.assertTrue(self.store.load()["files"][file["id"]]["missing"])
         self.assertEqual("initial evidence", self.store.read_blob(file["sha256"]))
+
+    def test_missing_metric_source_excludes_stale_run_from_current_aggregate(self):
+        a = self.run_file("a", 0, .4)
+        self.run_file("b", 1, .6)
+        sync(self.store)
+        self.assertEqual(2, compare(self.store.load())["rows"][0]["n"])
+        (a / "metrics.json").unlink()
+        sync(self.store)
+        row = compare(self.store.load())["rows"][0]
+        self.assertEqual(1, row["n"])
+        self.assertAlmostEqual(.6, row["mean"])
+        self.assertTrue(any("Evidence source changed or missing" in w for w in row["warnings"]))
 
     def test_revision_conflict_no_partial_update(self):
         pid = self.store.load()["project"]["id"]
@@ -237,6 +288,33 @@ class WorkspaceTests(unittest.TestCase):
         self.assertAlmostEqual(.5, row["mean"])
         self.assertAlmostEqual(.1414213562, row["sd"])
 
+    def test_compare_selects_only_available_metric_by_default(self):
+        path = self.run_file()
+        json_write(path / "metrics.json", {"status": "completed", "metrics": {"macro_sr_percent": 68.5}})
+        sync(self.store)
+        result = compare(self.store.load())
+        self.assertEqual("macro_sr_percent", result["metric"])
+        self.assertEqual(1, result["rows"][0]["n"])
+
+    def test_default_metric_ignores_stale_result_key(self):
+        stale = self.run_file("stale", hardware="A")
+        current = self.run_file("current", hardware="B")
+        json_write(current / "metrics.json", {"status": "completed", "metrics": {"macro_sr_percent": 68.5}})
+        sync(self.store)
+        (stale / "metrics.json").unlink()
+        sync(self.store)
+        result = compare(self.store.load())
+        self.assertEqual("macro_sr_percent", result["metric"])
+        self.assertEqual(1, sum(row["n"] for row in result["rows"]))
+
+    def test_compare_requires_metric_choice_when_no_default_is_unique(self):
+        path = self.run_file()
+        json_write(path / "metrics.json", {"status": "completed", "metrics": {"accuracy": .8, "loss": .2}})
+        sync(self.store)
+        result = compare(self.store.load())
+        self.assertEqual(0, result["rows"][0]["n"])
+        self.assertTrue(any("specify --metric" in w for w in result["warnings"]))
+
     def test_cell_config_disagrees_with_runs_not_pooled(self):
         self.run_file("a", 0, .4)
         self.run_file("b", 1, .6)
@@ -266,6 +344,61 @@ class WorkspaceTests(unittest.TestCase):
         out = sync(self.store)
         self.assertTrue(any("Additional metric source" in x for x in out["scan"]["warnings"]))
         self.assertEqual(.5, compare(self.store.load())["rows"][0]["mean"])
+
+    def test_old_results_file_cannot_replace_removed_primary_metric(self):
+        path = self.run_file()
+        json_write(path / "run.json", {"eval_protocol": "v1"})
+        json_write(path / "results.json", {"status": "completed", "eval_protocol": "legacy", "metrics": {"success_rate": .99}})
+        sync(self.store)
+        (path / "metrics.json").unlink()
+        out = sync(self.store)
+        self.assertTrue(any("Primary metric source changed" in w for w in out["scan"]["warnings"]))
+        self.assertTrue(any("Evaluation protocol conflict" in w for w in out["scan"]["warnings"]))
+        state = self.store.load()
+        run = next(n for n in state["nodes"].values() if n["kind"] == "run")
+        self.assertEqual("needs_review", run["status"])
+        self.assertIsNone(compare(state)["rows"][0]["mean"])
+        self.assertEqual("archived", next(n for n in state["nodes"].values()
+                                          if n["kind"] == "evaluation" and n["label"].endswith("metrics.json"))["status"])
+        again = sync(self.store)
+        self.assertFalse(again["changed"])
+        self.assertEqual("needs_review", next(n for n in self.store.load()["nodes"].values()
+                                              if n["kind"] == "run")["status"])
+
+    def test_new_primary_metric_needs_review_even_when_protocol_agrees(self):
+        path = self.run_file()
+        (path / "metrics.json").unlink()
+        json_write(path / "results.json", {"status": "completed", "eval_protocol": "v1",
+                                           "metrics": {"success_rate": .5}})
+        sync(self.store)
+        json_write(path / "metrics.json", {"status": "completed", "eval_protocol": "v1",
+                                           "metrics": {"success_rate": .8}})
+        out = sync(self.store)
+        self.assertTrue(any("Primary metric source changed" in w for w in out["scan"]["warnings"]))
+        self.assertFalse(any("Evaluation protocol conflict" in w for w in out["scan"]["warnings"]))
+        self.assertIsNone(compare(self.store.load())["rows"][0]["mean"])
+        state = self.store.load()
+        run = copy.deepcopy(next(n for n in state["nodes"].values() if n["kind"] == "run"))
+        run["status"] = "completed"
+        run["attrs"].pop("metric_source_transition")
+        run["attrs"].pop("ingestion_warning")
+        run["evidence"] = [r for r in run["evidence"]
+                           if r["file_id"] == run["attrs"]["metric_source_file_id"] or
+                           state["files"][r["file_id"]]["path"].endswith(("run.json", "config.json"))]
+        self.store.commit({"base_revision": state["revision"], "reason": "Agent checked both metric sources and protocol",
+                           "nodes": [run]})
+        sync(self.store)  # clears the scanner's old transition warning
+        self.assertFalse(sync(self.store)["changed"])
+        self.assertAlmostEqual(.8, compare(self.store.load())["rows"][0]["mean"])
+
+    def test_metric_protocol_conflict_without_source_switch_is_excluded(self):
+        path = self.run_file()
+        json_write(path / "metrics.json", {"status": "completed", "eval_protocol": "legacy",
+                                           "metrics": {"success_rate": .9}})
+        out = sync(self.store)
+        self.assertTrue(any("Evaluation protocol conflict" in w for w in out["scan"]["warnings"]))
+        self.assertFalse(any("Primary metric source changed" in w for w in out["scan"]["warnings"]))
+        self.assertIsNone(compare(self.store.load())["rows"][0]["mean"])
 
     def test_unverified_completion_not_pooled(self):
         path = self.run_file()
@@ -337,6 +470,20 @@ class WorkspaceTests(unittest.TestCase):
         p.write_text("User edited this")
         with self.assertRaises(HarnessError):
             install_skill("codex", self.root, False)
+
+    def test_skill_installer_upgrades_unchanged_managed_content(self):
+        result = install_skill("codex", self.root, False)
+        skill = Path(result["installed"][0])
+        old = b"Older bundled Skill text\n"
+        (skill / "SKILL.md").write_bytes(old)
+        marker = read_json(skill / "INSTALL_MANIFEST.json")
+        marker["managed"]["SKILL.md"] = hashlib.sha256(old).hexdigest()
+        json_write(skill / "INSTALL_MANIFEST.json", marker)
+        install_skill("codex", self.root, False)
+        source_skill = Path(__file__).resolve().parents[1] / "research_harness" / "skill" / "research-harness" / "SKILL.md"
+        self.assertEqual(source_skill.read_bytes(), (skill / "SKILL.md").read_bytes())
+        self.assertEqual(hashlib.sha256(source_skill.read_bytes()).hexdigest(),
+                         read_json(skill / "INSTALL_MANIFEST.json")["managed"]["SKILL.md"])
 
     def test_installer_does_not_touch_agents_md(self):
         p = self.root / "AGENTS.md"

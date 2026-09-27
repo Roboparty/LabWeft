@@ -19,10 +19,29 @@ def drift(state: dict) -> list[dict]:
     return out
 
 
-def compare(state: dict, cell_ids: list[str] | None = None, metric: str = "success_rate") -> dict:
+def compare(state: dict, cell_ids: list[str] | None = None, metric: str | None = None) -> dict:
     cells = [n for n in state["nodes"].values() if n["kind"] == "cell" and (not cell_ids or n["id"] in cell_ids)]
+    dirty = {item["node_id"] for item in drift(state)}
+    dirty_runs = {n["id"] for n in state["nodes"].values() if n["kind"] == "run" and n["id"] in dirty}
+    dirty_runs.update(n.get("parent_id") for n in state["nodes"].values()
+                      if n["kind"] == "evaluation" and n.get("status") != "archived" and n["id"] in dirty)
     rows = []
     warnings = []
+    if metric is None:
+        selected_ids = {c["id"] for c in cells}
+        metric_keys = {key for n in state["nodes"].values()
+                       if n["kind"] == "run" and n.get("parent_id") in selected_ids and n.get("status") == "completed"
+                       and n["id"] not in dirty_runs
+                       for key in n.get("attrs", {}).get("metrics", {})}
+        if "success_rate" in metric_keys:
+            metric = "success_rate"
+        elif len(metric_keys) == 1:
+            metric = next(iter(metric_keys))
+        elif metric_keys:
+            metric = ""
+            warnings.append("Multiple metrics are available; specify --metric to choose one before aggregating.")
+        else:
+            metric = "success_rate"
     for cell in cells:
         runs = [n for n in state["nodes"].values() if n["kind"] == "run" and n.get("parent_id") == cell["id"]]
         complete = [r for r in runs if r.get("status") == "completed"]
@@ -42,8 +61,10 @@ def compare(state: dict, cell_ids: list[str] | None = None, metric: str = "succe
         protocol_set = {canonical(r["attrs"].get("eval_protocol")) for r in complete}
         has_unknown_protocol = "null" in protocol_set
         eligible = [r for r in complete if r["attrs"].get("seed") is not None
-                    and seed_counts[canonical(r["attrs"]["seed"])] == 1]
+                    and seed_counts[canonical(r["attrs"]["seed"])] == 1 and r["id"] not in dirty_runs]
         local_warnings = []
+        if any(r["id"] in dirty_runs for r in complete):
+            local_warnings.append("Evidence source changed or missing; affected runs excluded from the current aggregate. Historical snapshots remain available.")
         recorded_conditions = {canonical({k: v for k, v in r["attrs"].get("config", {}).items() if k not in {"seed", "training.seed", "run_id"}})
                                for r in complete if isinstance(r["attrs"].get("config", {}), dict)}
         code_versions = {canonical(r["attrs"].get("code_revision")) for r in complete if r["attrs"].get("code_revision")}

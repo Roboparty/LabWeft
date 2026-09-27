@@ -2,7 +2,7 @@
 
 **Let your existing coding agent organize research—without forgetting what you already learned.**
 
-[简体中文](README.zh-CN.md) · [Architecture](docs/ARCHITECTURE.md) · [Boundaries](docs/LIMITATIONS.md) · [Development handoff](docs/HANDOFF.md)
+[简体中文](README.zh-CN.md) · [Architecture](docs/ARCHITECTURE.md) · [Boundaries](docs/LIMITATIONS.md) · [Release gates](docs/RELEASE_GATES.md) · [Development handoff](docs/HANDOFF.md)
 
 **v0.1.0 local prototype.** LabWeft is the confirmed project name. The source
 repository is [Roboparty/LabWeft](https://github.com/Roboparty/LabWeft).
@@ -68,9 +68,10 @@ For an agent without Skill discovery, ask it to read
 `research-harness` Skill ID remains for compatibility with existing installs.
 
 **Compatibility target is tool-capable agents, not arbitrary bare models.**
-Installation paths and the command protocol are implemented. A bounded private
-project pilot was run in Codex desktop by following the Skill procedure in the
-current conversation. Fresh-chat Skill discovery and other providers have not
+Installation paths and the command protocol are implemented. Two bounded private
+project pilots were run in Codex desktop by following the Skill procedure in the
+current conversation, including staged experiment folders. Fresh-chat Skill
+discovery and other providers have not
 been independently certified.
 
 ## Optional package installation
@@ -84,7 +85,8 @@ labweft install-skill --agent codex --project /path/to/your/project
 ```
 
 User-wide Skill installation (`--user`) is explicit. The installer refuses to overwrite an
-edited Skill and never overwrites `AGENTS.md` or `CLAUDE.md`.
+edited Skill, upgrades unchanged managed files and never overwrites `AGENTS.md`
+or `CLAUDE.md`.
 
 ## What this version actually does
 
@@ -188,6 +190,6 @@ Original implementation in this bundle. We borrow architectural ideas rather
 than bundling six agent frameworks. See [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md)
 for primary references and the distinction between ideas and copied code.
 
-MIT license is included for this original prototype. Confirm final maintainership,
-project name and third-party notices before publication. This checkout does not
-imply a GitHub push, release, or public visibility change.
+MIT license is included for this original prototype. Confirm final maintainership
+and third-party notices before public release. This checkout does not imply a
+package release or public visibility change.

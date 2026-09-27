@@ -49,6 +49,66 @@ text supports the claim; the agent must check it. An accepted claim/decision
 requires non-empty scope and at least one direct immutable source snapshot.
 Linked nodes aid navigation but do not replace direct evidence.
 
+## Minimal Cell/Run mapping for a custom result file
+
+After reading an unrecognized JSON or CSV source, one scientific condition is a
+Cell and each independent training seed is a child Run. The following is one
+**synthetic** completed seed. Replace the project ID, source file ID/hash,
+locator, run identity, protocol and values with verified source facts. Add one
+Run per independently completed seed; do not copy a reported aggregate into
+three invented seed runs.
+
+```json
+{
+  "base_revision": 2,
+  "reason": "Mapped a custom result after checking run completion and protocol",
+  "nodes": [
+    {
+      "id": "cell-policy-a",
+      "kind": "cell",
+      "label": "Policy A under heldout-v1",
+      "parent_id": "PROJECT_ID_FROM_CONTEXT",
+      "status": "recorded",
+      "description": "One verified condition; seed is not a cell factor.",
+      "attrs": {"config": {"model": "policy-A", "eval_protocol": "heldout-v1"}},
+      "evidence": [{"file_id": "EXISTING_FILE_ID", "sha256": "EXISTING_64_CHARACTER_HASH", "locator": "$.conditions[0]"}]
+    },
+    {
+      "id": "run-policy-a-s7",
+      "kind": "run",
+      "label": "Recorded run identifier for seed 7",
+      "parent_id": "cell-policy-a",
+      "status": "completed",
+      "description": "Completion and training-seed identity verified in the source; success_rate is a fraction in [0, 1].",
+      "attrs": {
+        "config": {"model": "policy-A", "eval_protocol": "heldout-v1", "seed": 7},
+        "seed": 7,
+        "run_id": "source-run-s7",
+        "eval_protocol": "heldout-v1",
+        "code_revision": null,
+        "metrics": {"success_rate": 0.62}
+      },
+      "evidence": [{"file_id": "EXISTING_FILE_ID", "sha256": "EXISTING_64_CHARACTER_HASH", "locator": "$.conditions[0].runs[0]"}]
+    }
+  ],
+  "edges": []
+}
+```
+
+For `compare`, each Run needs a unique training `seed`, numeric value under a
+shared metric key in `attrs.metrics`, a known `attrs.eval_protocol`, a compatible
+`attrs.config` that equals its Cell config except seed, and `status: completed`
+only when completion is supported. Record unknown code revision as `null`; never
+substitute today's checkout. Preserve metric units in the key or description.
+Retries or duplicate records of the same training seed are not independent
+replicates; resolve their identity and select the valid result before pooling.
+`compare` computes arithmetic mean and **sample SD** across eligible independent
+training seeds; with one seed the SD is unknown. Verify whether a source report
+uses sample or population SD before comparing its printed `±` to this output.
+Missing dataset version, training steps or code identity should remain explicit
+comparison limits. Run `validate` and `compare` after the patch, then rescan to
+check the semantic mapping survives incremental source indexing.
+
 ## Scope-aware reuse decision
 
 ```json

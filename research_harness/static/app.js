@@ -104,6 +104,9 @@ function renderDetail(){
 }
 function calculateRows(){
  const cells=Object.values(data.nodes).filter(n=>n.kind==='cell'&&cellSelection.has(n.id)).sort(sortNodes);
+ const dirty=new Set((data.drift||[]).map(d=>d.node_id));
+ const dirtyRuns=new Set(Object.values(data.nodes).filter(n=>n.kind==='run'&&dirty.has(n.id)).map(n=>n.id));
+ Object.values(data.nodes).filter(n=>n.kind==='evaluation'&&n.status!=='archived'&&dirty.has(n.id)).forEach(n=>dirtyRuns.add(n.parent_id));
  return cells.map(c=>{
  const runs=Object.values(data.nodes).filter(n=>n.kind==='run'&&n.parent_id===c.id),complete=runs.filter(n=>n.status==='completed');
   const cellConfig=c.attrs?.config,invalidCellConfig=cellConfig!==undefined&&(cellConfig===null||typeof cellConfig!=='object'||Array.isArray(cellConfig));
@@ -115,10 +118,10 @@ function calculateRows(){
   const protocolOK=protocols.size===1&&!protocols.has('null');
   const conditions=new Set(complete.map(r=>canonical(Object.fromEntries(Object.entries(r.attrs.config||{}).filter(([k])=>!['seed','training.seed','run_id'].includes(k))))));
   const versions=new Set(complete.filter(r=>r.attrs.code_revision).map(r=>r.attrs.code_revision));
-  const eligible=protocolOK&&conditions.size<=1&&versions.size<=1&&!invalidCellConfig&&!invalidRunConfig&&!cellConfigConflict?complete.filter(r=>r.attrs.seed!==null&&r.attrs.seed!==undefined&&counts[JSON.stringify(r.attrs.seed)]===1):[];
+  const eligible=protocolOK&&conditions.size<=1&&versions.size<=1&&!invalidCellConfig&&!invalidRunConfig&&!cellConfigConflict?complete.filter(r=>r.attrs.seed!==null&&r.attrs.seed!==undefined&&counts[JSON.stringify(r.attrs.seed)]===1&&!dirtyRuns.has(r.id)):[];
   const used=eligible.filter(r=>typeof r.attrs.metrics?.[metric]==='number'&&Number.isFinite(r.attrs.metrics[metric]));
   const vals=used.map(r=>r.attrs.metrics[metric]),mean=vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null,sd=vals.length>1?Math.sqrt(vals.reduce((a,b)=>a+(b-mean)**2,0)/(vals.length-1)):null;
-  let warnings=[];if(invalidCellConfig||invalidRunConfig)warnings.push('Cell 或 run 配置不是对象，未汇总');if(cellConfigConflict)warnings.push('Run 与所属 Cell 的记录配置冲突，未汇总');if(conditions.size>1||versions.size>1)warnings.push('条件或代码版本不同，未汇总');if(!protocolOK&&complete.length)warnings.push('协议未知或不一致，未汇总');if(Object.values(counts).some(n=>n>1))warnings.push('重复 seed 未纳入');if(complete.length!==runs.length)warnings.push('未完成/未确认运行未纳入');if(complete.some(r=>!r.attrs.code_revision))warnings.push('历史代码身份不完整');
+  let warnings=[];if(invalidCellConfig||invalidRunConfig)warnings.push('Cell 或 run 配置不是对象，未汇总');if(cellConfigConflict)warnings.push('Run 与所属 Cell 的记录配置冲突，未汇总');if(conditions.size>1||versions.size>1)warnings.push('条件或代码版本不同，未汇总');if(!protocolOK&&complete.length)warnings.push('协议未知或不一致，未汇总');if(Object.values(counts).some(n=>n>1))warnings.push('重复 seed 未纳入');if(complete.some(r=>dirtyRuns.has(r.id)))warnings.push('来源已变化或缺失，相关 run 未纳入当前汇总；历史快照仍可查看');if(complete.length!==runs.length)warnings.push('未完成/未确认运行未纳入');if(complete.some(r=>!r.attrs.code_revision))warnings.push('历史代码身份不完整');
   return {cell:c,runs,used,mean,sd,n:vals.length,warnings};
  });
 }

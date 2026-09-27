@@ -28,6 +28,9 @@ unambiguous completed seeds. There is no bootstrap CI, paired statistical test,
 equivalence test, experiment-budget optimizer, causal identification, or automatic
 ranking. Multiple protocols/configurations/code versions are not silently pooled.
 Seed is read from recorded fields; this cannot prove actual RNG independence.
+If a run's source evidence changes or disappears, the current aggregate excludes
+that run and warns; its historical snapshot remains inspectable. This does not
+determine whether the old scientific result is valid under a new protocol.
 
 ## Persistence and operations
 

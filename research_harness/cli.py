@@ -1,13 +1,14 @@
 """One controller, one durable workspace, no mandatory subagents or model account."""
 from __future__ import annotations
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import shlex
 import shutil
 import sys
 from . import __version__
-from .store import Store, HarnessError, read_json, json_write, validate_state
+from .store import Store, HarnessError, atomic_write, read_json, json_write, validate_state
 from .scan import sync
 from .reasoning import compare, assess, drift
 from .server import export_html, serve
@@ -34,6 +35,10 @@ def source_args(values: list[str]) -> dict:
     return out
 
 
+# Unmodified SKILL.md from 61f221b, before managed installation records existed.
+LEGACY_SKILL_HASHES = {"c3d6a2e5436023d383ab3649896d8e4840a1092b9d67d554a4e9b8666768db37"}
+
+
 def install_skill(agent: str, project: Path | None, user: bool) -> dict:
     if user and project:
         raise HarnessError("Choose --user or --project, not both")
@@ -46,6 +51,8 @@ def install_skill(agent: str, project: Path | None, user: bool) -> dict:
     else:
         agents = [agent]
     src = Path(__file__).parent / "skill" / "research-harness"
+    managed = {path.relative_to(src).as_posix(): path.read_bytes()
+               for path in src.rglob("*") if path.is_file() and path.name != "LOCAL_COMMAND.md"}
     paths = []
     repo_launcher = Path(__file__).parent.parent / "labweft.py"
     command_parts = [sys.executable, str(repo_launcher)] if repo_launcher.exists() else [sys.executable, "-m", "research_harness"]
@@ -59,15 +66,41 @@ def install_skill(agent: str, project: Path | None, user: bool) -> dict:
     for item in agents:
         prefix = ".claude" if item == "claude" else ".agents"
         dest = base / prefix / "skills" / "research-harness"
+        if dest.is_symlink():
+            raise HarnessError(f"Skill location is a symlink: {dest}")
         if str(dest) in paths:
             continue
         if dest.exists():
-            expected = (src / "SKILL.md").read_bytes()
-            existing = dest / "SKILL.md"
-            if not existing.exists() or existing.read_bytes() != expected:
-                raise HarnessError(f"Existing skill differs: {dest}. Refusing to overwrite user edits; back up/reconcile explicitly.")
+            marker_path = dest / "INSTALL_MANIFEST.json"
+            marker = read_json(marker_path) if marker_path.exists() else None
+            if marker is not None and (marker.get("schema_version") != 1 or not isinstance(marker.get("managed"), dict)):
+                raise HarnessError(f"Invalid managed Skill record: {marker_path}")
+            for rel, expected in managed.items():
+                existing = dest / rel
+                if existing.is_symlink():
+                    raise HarnessError(f"Managed Skill file is a symlink: {existing}")
+                if not existing.exists():
+                    if marker is not None and rel in marker["managed"]:
+                        raise HarnessError(f"Managed Skill file is missing: {existing}")
+                    continue
+                current_hash = hashlib.sha256(existing.read_bytes()).hexdigest()
+                expected_hash = hashlib.sha256(expected).hexdigest()
+                recorded_hash = marker["managed"].get(rel) if marker else None
+                trusted = {expected_hash}
+                if recorded_hash:
+                    trusted.add(recorded_hash)
+                elif marker is None and rel == "SKILL.md":
+                    trusted.update(LEGACY_SKILL_HASHES)
+                if current_hash not in trusted:
+                    raise HarnessError(f"Existing skill differs: {dest}. Refusing to overwrite user edits; back up/reconcile explicitly.")
+            for rel, expected in managed.items():
+                target = dest / rel
+                if not target.exists() or target.read_bytes() != expected:
+                    atomic_write(target, expected)
         else:
             shutil.copytree(src, dest)
+        json_write(dest / "INSTALL_MANIFEST.json", {"schema_version": 1,
+                   "managed": {rel: hashlib.sha256(raw).hexdigest() for rel, raw in managed.items()}})
         # Only our generated location file is updated; never touch AGENTS.md/CLAUDE.md.
         (dest / "references" / "LOCAL_COMMAND.md").write_text(
             "# Executable for this installation\n\nUse `labweft` (or legacy `rh`) if installed. Otherwise use this command prefix:\n\n"
@@ -117,7 +150,7 @@ def parser() -> argparse.ArgumentParser:
     s = sub.add_parser("compare", help="Compare cells using recorded configs and eligible seeds")
     s.add_argument("workspace", nargs="?", default=".")
     s.add_argument("--cell", action="append")
-    s.add_argument("--metric", default="success_rate")
+    s.add_argument("--metric", help="Metric key; auto-select success_rate or a sole recorded key")
     s = sub.add_parser("assess", help="Check a proposed condition against scoped historical decisions")
     s.add_argument("workspace")
     s.add_argument("proposal")

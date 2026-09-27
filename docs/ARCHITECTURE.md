@@ -61,8 +61,11 @@ host permissions and human authorization remain essential.
 Core ingestion recognizes `metrics.json`, `results.json`, `metrics.csv`,
 `config.json`, `config.toml`, and optional `run.json`. The first metric filename
 by that priority is used per run directory; additional sources are inventoried
-and flagged, not silently pooled. CSV uses the last row and does not invent
-completion. JSON requires explicit completion to enter summary statistics.
+and flagged, not silently pooled. If the primary file disappears and another
+becomes primary, the run enters `needs_review` and retains old evidence until
+an agent reconciles the transition. Conflicting protocol fields across metric,
+run and configuration sources also block pooling. CSV uses the last row and does
+not invent completion. JSON requires explicit completion to enter summaries.
 
 Large binary files are metadata only; no pickle/torch load. Known secret names,
 symlinks and dependency/internal directories are excluded. Source code is

@@ -2,7 +2,7 @@
 
 **让你已有的 coding agent 整理研究，而不是每次重新解释整个项目。**
 
-LabWeft 是已确认的项目名；当前是 `0.1.0` 本地原型，尚未达到 ClearML 的成熟度。目标仓库是 [Roboparty/LabWeft](https://github.com/Roboparty/LabWeft)，本地源码尚未与远端历史核对，也未发布到 PyPI。
+LabWeft 是已确认的项目名；当前是 `0.1.0` 本地原型，尚未达到 ClearML 的成熟度。源码仓库是 [Roboparty/LabWeft](https://github.com/Roboparty/LabWeft)；尚未发布到 PyPI。
 
 ## 它既有 Skill，也是一套 harness
 
@@ -59,7 +59,7 @@ Claude Code 使用 `--agent claude`。`--agent auto` 只检查本机已有目录
 
 ## 已知边界
 
-**“为什么做”和“是否值得补实验”仍由宿主模型根据证据分析，不是扫描器独立完成的能力。** 当前 Codex 客户端对一个私有项目的有限范围已按 Skill 流程完成内测；新聊天中的自动 Skill 发现与其他宿主仍需分别验证。
+**“为什么做”和“是否值得补实验”仍由宿主模型根据证据分析，不是扫描器独立完成的能力。** 当前 Codex 客户端对两个私有项目的有限范围已按 Skill 流程完成内测，包括分批加入实验文件夹；新聊天中的自动 Skill 发现与其他宿主仍需分别验证。
 
 缺少历史 commit 的运行不会被指派为“使用了今天的代码”。自定义日志没有全格式解析器。没有 GPU 调度、远程自动采集、多用户权限、自动 GitHub 同步或无需审查的科学判断。首版仅管理一个工作空间；该空间可连接多个来源目录，多项目总览需后续添加。
 
@@ -73,7 +73,7 @@ Claude Code 使用 `--agent claude`。`--agent auto` 只检查本机已有目录
 python -m unittest discover -s tests -v
 ```
 
-完整架构、协议、已知边界、验证结果和后续验收见 `docs/`。
+完整架构、协议、已知边界、验证结果和后续验收见 `docs/`，尤其是 [发布验收门槛](docs/RELEASE_GATES.md)。
 后续核心目标是“在真实混乱项目上持续可靠”，不是增加多个必须由用户操作的 agent。
 
 英文技术入口：[README.md](README.md)。思想来源与署名：[ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md)。

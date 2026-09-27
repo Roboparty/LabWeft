@@ -14,5 +14,6 @@ document the client version, discovery path, permission setup and what was
 actually tested. Do not label an untested model as supported in production.
 
 Run `python -m unittest discover -s tests -v` before proposing changes. Record any
-third-party copied or adapted code and its license at a pinned version. This
-bundle is not yet a published repository; issue/PR links will be set on release.
+third-party copied or adapted code and its license at a pinned version. The
+source repository is `Roboparty/LabWeft`; check access and visibility before
+opening public issues or publishing private research examples.

@@ -122,6 +122,12 @@ def collect(store: Store, *, max_files: int = MAX_FILES, max_bytes: int = MAX_TO
                         record["snapshot"] = "text_budget_exceeded"
                         warnings.append(f"Text not copied due to size/budget: {alias}/{relative}")
                     files.append(record)
+                    if len(files) >= max_files:
+                        # We stop walking here, so even an exact-boundary scan
+                        # cannot prove that no later directory contains files.
+                        complete = False
+                        warnings.append(f"File limit reached ({max_files}). Inventory is partial; unseen sources are NOT marked missing.")
+                        break
                 except (OSError, UnicodeError) as exc:
                     complete = False
                     warnings.append(f"Unreadable file {alias}/{relative}: {type(exc).__name__}")
@@ -202,6 +208,10 @@ def parse_runs(state: dict, files: list[dict], texts: dict) -> tuple[list[dict],
                     except (ValueError, TypeError) as exc:
                         warnings.append(f"Config parse failed: {item['source']}/{relative}: {exc}")
             flat = flatten(config)
+            protocol_sources = [p for p in (meta.get("eval_protocol"), flat.get("eval_protocol"),
+                                           payload.get("eval_protocol"), payload.get("protocol")) if p is not None]
+            protocol_conflict = len({canonical(p) for p in protocol_sources}) > 1
+            eval_protocol = protocol_sources[0] if protocol_sources else None
             seed = meta.get("seed", flat.get("seed", flat.get("training.seed")))
             explicit = meta.get("run_id", payload.get("run_id"))
             logical_key = str(explicit) if explicit is not None else f"{item['source']}:{path.parent.as_posix()}"
@@ -210,8 +220,12 @@ def parse_runs(state: dict, files: list[dict], texts: dict) -> tuple[list[dict],
             cell_config = {k: v for k, v in flat.items() if k not in {"seed", "training.seed", "run_id"}}
             cid = stable_id("cell", project_id, canonical(cell_config) if cell_config else "unresolved:" + logical_key)
             previous = state["nodes"].get(rid)
+            old_metric_file_id = None
             if previous:
                 cid = previous.get("parent_id", cid)
+                old_metric_file_id = previous.get("attrs", {}).get("metric_source_file_id")
+                if old_metric_file_id is None and previous.get("attrs", {}).get("input_provenance") and previous.get("evidence"):
+                    old_metric_file_id = previous["evidence"][0]["file_id"]
             old_cell = state["nodes"].get(cid)
             if cid not in output and not old_cell:
                 output[cid] = node(cid, "cell", f"候选条件 {cid[-6:]}", unclassified,
@@ -226,8 +240,31 @@ def parse_runs(state: dict, files: list[dict], texts: dict) -> tuple[list[dict],
                 run_node.setdefault("attrs", {}).update({"config": flat, "seed": seed, "run_id": explicit,
                     "identity_basis": "recorded run_id" if explicit is not None else "source alias + relative run directory; rename needs reconciliation",
                     "code_revision": meta.get("code_revision"), "dataset_version": meta.get("dataset_version", flat.get("dataset_version")),
-                    "metrics": metrics, "metric_selection": selection, "eval_protocol": meta.get("eval_protocol", flat.get("eval_protocol")),
+                    "metrics": metrics, "metric_selection": selection, "metric_source_file_id": item["id"],
+                    "eval_protocol": eval_protocol,
                     "input_provenance": "recorded fields only; current code is NOT assigned as historical training code"})
+                if old_metric_file_id and old_metric_file_id != item["id"]:
+                    run_node["attrs"]["metric_source_transition"] = {"from": old_metric_file_id, "to": item["id"]}
+                    old_refs = [r for r in previous.get("evidence", []) if r["file_id"] == old_metric_file_id]
+                    run_node["evidence"] = old_refs + refs
+                    old_eid = stable_id("evaluation", rid, old_metric_file_id)
+                    old_eval = state["nodes"].get(old_eid)
+                    if old_eval and not old_eval.get("protected"):
+                        archived = copy.deepcopy(old_eval)
+                        archived["status"] = "archived"
+                        output[old_eid] = archived
+                if run_node["attrs"].get("metric_source_transition"):
+                    warnings.append(f"Primary metric source changed: {rid}; run excluded until reviewed")
+                    prior_id = run_node["attrs"]["metric_source_transition"]["from"]
+                    prior_refs = [r for r in previous.get("evidence", []) if r["file_id"] == prior_id] if previous else []
+                    run_node["evidence"] = list({(r["file_id"], r["sha256"]): r
+                                                 for r in prior_refs + refs}.values())
+                    run_node["status"] = "needs_review"
+                    run_node["attrs"]["ingestion_warning"] = "Primary metric source changed; inspect old and new evidence before pooling."
+                if protocol_conflict:
+                    run_node["status"] = "needs_review"
+                    run_node["attrs"]["ingestion_warning"] = "Evaluation protocol fields disagree across metric, run, or config sources."
+                    warnings.append(f"Evaluation protocol conflict: {rid}; run excluded until reviewed")
                 if old_cell and canonical(old_cell.get("attrs", {}).get("config", {})) != canonical(cell_config):
                     run_node["status"] = "needs_review"
                     run_node["attrs"]["ingestion_warning"] = "Recorded config differs from its existing cell. Preserve identity; reconcile before pooling."
@@ -243,7 +280,7 @@ def parse_runs(state: dict, files: list[dict], texts: dict) -> tuple[list[dict],
             ev = copy.deepcopy(old_eval) if old_eval else node(eid, "evaluation", "评估 / " + path.name, rid)
             if not ev.get("protected"):
                 ev.update({"evidence": [refs[0]], "status": output[rid]["status"],
-                           "attrs": {"metrics": metrics, "protocol": meta.get("eval_protocol", flat.get("eval_protocol")),
+                           "attrs": {"metrics": metrics, "protocol": eval_protocol,
                                      "selection": selection}})
             output[eid] = ev
         except (ValueError, TypeError, AttributeError) as exc:
