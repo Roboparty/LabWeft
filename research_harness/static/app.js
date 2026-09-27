@@ -31,6 +31,7 @@ async function load() {
   const kinds=Object.values(data.nodes).filter(n=>n.status!=='archived');
   $('stats').innerHTML=[['研究问题',kinds.filter(n=>n.kind==='question').length,'◇'],['实验条件',kinds.filter(n=>n.kind==='cell').length,'▤'],['已记录运行',kinds.filter(n=>n.kind==='run').length,'◉'],['受保护的判断',kinds.filter(n=>n.protected&&['claim','decision'].includes(n.kind)).length,'✓']].map(([t,n,icon])=>`<div class="stat"><div><div class="stat-number">${n}</div><div class="stat-label">${t}</div></div><div class="stat-icon">${icon}</div></div>`).join('');
   const notices=[];
+  if(data.scan?.source_aliases?.length)notices.push(`已配置来源：${data.scan.source_aliases.join('、')}。扫描完成仅表示这些来源已读取，不代表整个科研项目证据齐全。`);
   if(data.scan && data.scan.complete===false)notices.push('来源扫描未完成，当前视图是部分记录；未见文件不会被当作已删除。');
   if(data.drift?.length)notices.push(`${new Set(data.drift.map(d=>d.node_id)).size} 个对象引用的来源发生变化或缺失。旧证据保留；请检查新工作的适用范围。`);
   $('notice').hidden=!notices.length;$('notice').textContent=notices.join(' ');

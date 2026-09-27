@@ -134,7 +134,7 @@ def collect(store: Store, *, max_files: int = MAX_FILES, max_bytes: int = MAX_TO
                 files.append({**old, "missing": True})
     report = {"complete": complete, "file_count": sum(not x["missing"] for x in files),
               "warnings": sorted(set(warnings)), "source_aliases": roots,
-              "note": "Current filesystem inventory; not proof of historical training inputs. Known secret filenames skipped; this is not a comprehensive secret scanner."}
+              "note": "Inventory of configured source directories only, not a complete project audit or proof of historical training inputs. Known secret filenames skipped; this is not a comprehensive secret scanner."}
     return files, texts, report
 
 

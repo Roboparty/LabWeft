@@ -4,10 +4,9 @@
 
 [简体中文](README.zh-CN.md) · [Architecture](docs/ARCHITECTURE.md) · [Boundaries](docs/LIMITATIONS.md) · [Development handoff](docs/HANDOFF.md)
 
-**v0.1.0 local prototype.** LabWeft is the confirmed project name. The intended
-repository is [Roboparty/LabWeft](https://github.com/Roboparty/LabWeft); this
-source checkout has not been verified against its remote history or published
-to PyPI.
+**v0.1.0 local prototype.** LabWeft is the confirmed project name. The source
+repository is [Roboparty/LabWeft](https://github.com/Roboparty/LabWeft).
+The package has not been published to PyPI.
 
 One conversation. One workspace. No manual multi-agent setup.
 
