@@ -59,3 +59,34 @@ wheel build with no runtime dependencies completed. Edge headless loaded the
 exported `file://` HTML and produced a screenshot showing the LabWeft brand,
 map and detail pane. Browser interactions and a VS Code Codex session were not
 automated in this recheck.
+
+## 2026-09-28 Codex desktop internal iteration
+
+A bounded private project subset was processed in the current Codex desktop
+conversation by following the Skill's single-controller procedure. The scanner
+created a factual index; the agent checked source reports and statistics before
+submitting a versioned semantic patch. An independent internal agent tested the
+CLI and actual Edge interactions with the offline map. Private research files,
+the test report and browser artifacts remain outside this source repository.
+
+The internal test found that a cell could display one configuration while all
+its child runs shared a different configuration, yet both CLI and browser views
+still pooled their metrics. Both now withhold the aggregate and show a conflict.
+It also found that changing only scanner explanatory text could create a new
+revision; wording-only changes no longer do so. Redirected Windows CLI output
+now uses UTF-8. `bootstrap.py --workspace` was added and exercised on a separate
+writable workspace while reading a source directory; it writes the Skill, state
+and map to the workspace, not the source.
+
+The updated Windows suite runs **48 tests: 47 passed, one symlink capability
+test skipped**. JavaScript syntax checking passes. A wheel build without runtime
+dependencies succeeded; its `labweft`/`rh` entry points, bundled Skill and updated
+UI asset were inspected. The private pilot validated
+repeat sync, source drift with preserved old blobs, numeric aggregation and
+browser matrix/evidence navigation. It did not re-run historical experiments,
+audit checkpoints or certify whole-project scientific conclusions. Automatic
+Skill discovery in a new client chat and other hosts remain untested.
+
+The available WSL interpreter is Python 3.10, below LabWeft's Python 3.11
+minimum; it cannot run this version's tests because `tomllib` is absent. This
+iteration has not independently re-run the suite on a supported Linux runtime.

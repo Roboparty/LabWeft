@@ -4,6 +4,7 @@
 const $ = id => document.getElementById(id);
 const esc = x => String(x ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pretty = x => x === null || x === undefined ? '待核实' : typeof x === 'object' ? JSON.stringify(x) : String(x);
+const canonical = x => Array.isArray(x) ? `[${x.map(canonical).join(',')}]` : x && typeof x==='object' ? `{${Object.keys(x).sort().map(k=>`${JSON.stringify(k)}:${canonical(x[k])}`).join(',')}}` : JSON.stringify(x);
 const label = {module:'研究模块',question:'研究问题',cell:'实验条件 / Cell',run:'运行 / Run',evaluation:'评估',claim:'研究结论',decision:'历史决策',artifact:'产物'};
 const statusText = {recorded:'已记录',completed:'已完成',needs_review:'待核实',provisional:'暂时判断',accepted:'已确认',archived:'已归档',planned:'计划中'};
 let data, view='map', selected=null, layout='tree', filter='', cellSelection=new Set(), metric='success_rate', differentOnly=false;
@@ -104,16 +105,20 @@ function renderDetail(){
 function calculateRows(){
  const cells=Object.values(data.nodes).filter(n=>n.kind==='cell'&&cellSelection.has(n.id)).sort(sortNodes);
  return cells.map(c=>{
-  const runs=Object.values(data.nodes).filter(n=>n.kind==='run'&&n.parent_id===c.id),complete=runs.filter(n=>n.status==='completed');
+ const runs=Object.values(data.nodes).filter(n=>n.kind==='run'&&n.parent_id===c.id),complete=runs.filter(n=>n.status==='completed');
+  const cellConfig=c.attrs?.config,invalidCellConfig=cellConfig!==undefined&&(cellConfig===null||typeof cellConfig!=='object'||Array.isArray(cellConfig));
+  const expected=invalidCellConfig?{}:cellConfig||{};
+  const invalidRunConfig=complete.some(r=>r.attrs.config!==undefined&&(r.attrs.config===null||typeof r.attrs.config!=='object'||Array.isArray(r.attrs.config)));
+  const cellConfigConflict=complete.some(r=>{const cfg=r.attrs.config??{};return typeof cfg==='object'&&!Array.isArray(cfg)&&Object.entries(expected).some(([k,v])=>!Object.hasOwn(cfg,k)||canonical(cfg[k])!==canonical(v));});
   const counts={};complete.forEach(r=>{if(r.attrs.seed!==null&&r.attrs.seed!==undefined){const k=JSON.stringify(r.attrs.seed);counts[k]=(counts[k]||0)+1;}});
   const protocols=new Set(complete.map(r=>JSON.stringify(r.attrs.eval_protocol??null)));
   const protocolOK=protocols.size===1&&!protocols.has('null');
-  const conditions=new Set(complete.map(r=>JSON.stringify(Object.fromEntries(Object.entries(r.attrs.config||{}).filter(([k])=>!['seed','training.seed','run_id'].includes(k)).sort()))));
+  const conditions=new Set(complete.map(r=>canonical(Object.fromEntries(Object.entries(r.attrs.config||{}).filter(([k])=>!['seed','training.seed','run_id'].includes(k))))));
   const versions=new Set(complete.filter(r=>r.attrs.code_revision).map(r=>r.attrs.code_revision));
-  const eligible=protocolOK&&conditions.size<=1&&versions.size<=1?complete.filter(r=>r.attrs.seed!==null&&r.attrs.seed!==undefined&&counts[JSON.stringify(r.attrs.seed)]===1):[];
+  const eligible=protocolOK&&conditions.size<=1&&versions.size<=1&&!invalidCellConfig&&!invalidRunConfig&&!cellConfigConflict?complete.filter(r=>r.attrs.seed!==null&&r.attrs.seed!==undefined&&counts[JSON.stringify(r.attrs.seed)]===1):[];
   const used=eligible.filter(r=>typeof r.attrs.metrics?.[metric]==='number'&&Number.isFinite(r.attrs.metrics[metric]));
   const vals=used.map(r=>r.attrs.metrics[metric]),mean=vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null,sd=vals.length>1?Math.sqrt(vals.reduce((a,b)=>a+(b-mean)**2,0)/(vals.length-1)):null;
-  let warnings=[];if(conditions.size>1||versions.size>1)warnings.push('条件或代码版本不同，未汇总');if(!protocolOK&&complete.length)warnings.push('协议未知或不一致，未汇总');if(Object.values(counts).some(n=>n>1))warnings.push('重复 seed 未纳入');if(complete.length!==runs.length)warnings.push('未完成/未确认运行未纳入');if(complete.some(r=>!r.attrs.code_revision))warnings.push('历史代码身份不完整');
+  let warnings=[];if(invalidCellConfig||invalidRunConfig)warnings.push('Cell 或 run 配置不是对象，未汇总');if(cellConfigConflict)warnings.push('Run 与所属 Cell 的记录配置冲突，未汇总');if(conditions.size>1||versions.size>1)warnings.push('条件或代码版本不同，未汇总');if(!protocolOK&&complete.length)warnings.push('协议未知或不一致，未汇总');if(Object.values(counts).some(n=>n>1))warnings.push('重复 seed 未纳入');if(complete.length!==runs.length)warnings.push('未完成/未确认运行未纳入');if(complete.some(r=>!r.attrs.code_revision))warnings.push('历史代码身份不完整');
   return {cell:c,runs,used,mean,sd,n:vals.length,warnings};
  });
 }

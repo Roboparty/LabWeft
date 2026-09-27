@@ -303,7 +303,10 @@ class Store:
             if scanner and "scan" in patch:
                 next_state["scan"] = patch["scan"]
             validate_state(next_state)
-            scan_changed = next_state["scan"] != state["scan"]
+            # A wording-only change to the scanner's explanatory note is not a
+            # new observation about the research project.
+            scan_changed = ({k: v for k, v in next_state["scan"].items() if k != "note"} !=
+                            {k: v for k, v in state["scan"].items() if k != "note"})
             if not any(changes.values()) and not scan_changed:
                 return {"revision": state["revision"], "changed": False, "counts": {k: 0 for k in changes}}
             event = {"revision": state["revision"] + 1, "previous_hash": state["last_hash"],

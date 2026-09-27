@@ -4,6 +4,8 @@ import http.client
 import json
 from pathlib import Path
 import shutil
+import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -40,6 +42,33 @@ class WorkspaceTests(unittest.TestCase):
         self.store.init("Different display label")
         self.assertEqual(identity, self.store.load()["project"]["id"])
 
+    def test_cli_json_is_utf8_when_redirected(self):
+        state = self.store.load()
+        n = node("question-unicode", "question", "中文问题", state["project"]["id"])
+        self.store.commit({"base_revision": state["revision"], "reason": "Unicode output", "nodes": [n]})
+        cli = Path(__file__).resolve().parents[1] / "labweft.py"
+        result = subprocess.run([sys.executable, str(cli), "context", str(self.root), "--full"],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        payload = json.loads(result.stdout.decode("utf-8"))
+        self.assertEqual("中文问题", payload["nodes"]["question-unicode"]["label"])
+
+    def test_bootstrap_can_keep_state_outside_source(self):
+        source = Path(self.temp.name) / "readonly-source"
+        source.mkdir()
+        (source / "README.md").write_text("Synthetic research note", encoding="utf-8")
+        workspace = Path(self.temp.name) / "separate-workspace"
+        bootstrap = Path(__file__).resolve().parents[1] / "bootstrap.py"
+        result = subprocess.run([sys.executable, str(bootstrap), "--project", str(source),
+                                 "--workspace", str(workspace), "--agent", "codex"],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        payload = json.loads(result.stdout.decode("utf-8"))
+        self.assertEqual(str(workspace), payload["workspace"])
+        self.assertFalse((source / ".research").exists())
+        self.assertFalse((source / ".agents").exists())
+        self.assertTrue((workspace / ".agents" / "skills" / "research-harness" / "SKILL.md").is_file())
+        state = Store(workspace).load()
+        self.assertEqual(["README.md"], [f["path"] for f in state["files"].values()])
+
     def test_id_survives_workspace_copy(self):
         copy_path = Path(self.temp.name) / "copy"
         shutil.copytree(self.root, copy_path)
@@ -52,6 +81,17 @@ class WorkspaceTests(unittest.TestCase):
         self.assertTrue(first["changed"])
         self.assertFalse(second["changed"])
         self.assertEqual(first["revision"], second["revision"])
+
+    def test_scan_note_wording_does_not_create_scientific_revision(self):
+        self.run_file()
+        sync(self.store)
+        state = self.store.load()
+        report = copy.deepcopy(state["scan"])
+        report["note"] = "Updated explanatory wording only"
+        result = self.store.commit({"base_revision": state["revision"], "reason": "Scanner text update",
+                                    "scan": report}, actor="scanner", scanner=True)
+        self.assertFalse(result["changed"])
+        self.assertEqual(state["revision"], self.store.load()["revision"])
 
     def test_no_invented_historical_commit(self):
         self.run_file()
@@ -196,6 +236,18 @@ class WorkspaceTests(unittest.TestCase):
         row = compare(self.store.load())["rows"][0]
         self.assertAlmostEqual(.5, row["mean"])
         self.assertAlmostEqual(.1414213562, row["sd"])
+
+    def test_cell_config_disagrees_with_runs_not_pooled(self):
+        self.run_file("a", 0, .4)
+        self.run_file("b", 1, .6)
+        sync(self.store)
+        state = self.store.load()
+        cell = copy.deepcopy(next(n for n in state["nodes"].values() if n["kind"] == "cell"))
+        cell["attrs"]["config"]["history_length"] = 99
+        self.store.commit({"base_revision": state["revision"], "reason": "Incorrect cell annotation", "nodes": [cell]})
+        row = compare(self.store.load())["rows"][0]
+        self.assertIsNone(row["mean"])
+        self.assertTrue(any("conflicts with the cell" in warning for warning in row["warnings"]))
 
     def test_agent_semantics_survive_rescan(self):
         self.run_file()

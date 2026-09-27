@@ -41,6 +41,10 @@ projects, source-text inclusion requires an explicit export option.
 python bootstrap.py --project /path/to/your/project --results /path/to/results --agent codex
 ```
 
+For a read-only source or a separate local workspace, add
+`--workspace /path/to/writable/workspace`. The Skill and `.research` stay there;
+the selected project and results are read as sources.
+
 Use `--agent claude` for Claude Code, `--agent auto` for local discovery, or
 `--agent generic` for the standard `.agents/skills` entry. Discovery does not log
 in to anything. It checks local agent-directory conventions only.
@@ -64,8 +68,10 @@ For an agent without Skill discovery, ask it to read
 `research-harness` Skill ID remains for compatibility with existing installs.
 
 **Compatibility target is tool-capable agents, not arbitrary bare models.**
-Installation paths and the command protocol are implemented; real Codex/Claude/
-other-provider sessions have not yet been end-to-end tested.
+Installation paths and the command protocol are implemented. A bounded private
+project pilot was run in Codex desktop by following the Skill procedure in the
+current conversation. Fresh-chat Skill discovery and other providers have not
+been independently certified.
 
 ## Optional package installation
 

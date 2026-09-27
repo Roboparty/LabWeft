@@ -26,6 +26,17 @@ def compare(state: dict, cell_ids: list[str] | None = None, metric: str = "succe
     for cell in cells:
         runs = [n for n in state["nodes"].values() if n["kind"] == "run" and n.get("parent_id") == cell["id"]]
         complete = [r for r in runs if r.get("status") == "completed"]
+        cell_config = cell.get("attrs", {}).get("config", {})
+        invalid_cell_config = not isinstance(cell_config, dict)
+        if invalid_cell_config:
+            cell_config = {}
+        invalid_run_config = any(not isinstance(r.get("attrs", {}).get("config", {}), dict) for r in complete)
+        cell_config_conflict = any(
+            any(key not in r.get("attrs", {}).get("config", {}) or
+                canonical(r["attrs"]["config"][key]) != canonical(value)
+                for key, value in cell_config.items())
+            for r in complete if isinstance(r.get("attrs", {}).get("config", {}), dict)
+        )
         seed_counts = Counter(canonical(r["attrs"].get("seed")) for r in complete if r["attrs"].get("seed") is not None)
         duplicated = [s for s, count in seed_counts.items() if count > 1]
         protocol_set = {canonical(r["attrs"].get("eval_protocol")) for r in complete}
@@ -33,8 +44,15 @@ def compare(state: dict, cell_ids: list[str] | None = None, metric: str = "succe
         eligible = [r for r in complete if r["attrs"].get("seed") is not None
                     and seed_counts[canonical(r["attrs"]["seed"])] == 1]
         local_warnings = []
-        recorded_conditions = {canonical({k: v for k, v in r["attrs"].get("config", {}).items() if k not in {"seed", "training.seed", "run_id"}}) for r in complete}
+        recorded_conditions = {canonical({k: v for k, v in r["attrs"].get("config", {}).items() if k not in {"seed", "training.seed", "run_id"}})
+                               for r in complete if isinstance(r["attrs"].get("config", {}), dict)}
         code_versions = {canonical(r["attrs"].get("code_revision")) for r in complete if r["attrs"].get("code_revision")}
+        if invalid_cell_config or invalid_run_config:
+            local_warnings.append("Cell or run configuration is not an object; no pooled aggregate.")
+            eligible = []
+        if cell_config_conflict:
+            local_warnings.append("A run conflicts with the cell's recorded configuration; no pooled aggregate.")
+            eligible = []
         if len(recorded_conditions) > 1 or len(code_versions) > 1:
             local_warnings.append("Recorded conditions or code versions differ within this cell; no pooled aggregate.")
             eligible = []
@@ -55,7 +73,7 @@ def compare(state: dict, cell_ids: list[str] | None = None, metric: str = "succe
             if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
                 values.append(value)
                 used.append(r["id"])
-        rows.append({"id": cell["id"], "label": cell["label"], "config": cell.get("attrs", {}).get("config", {}),
+        rows.append({"id": cell["id"], "label": cell["label"], "config": cell_config,
                      "run_count": len(runs), "n": len(values), "mean": statistics.mean(values) if values else None,
                      "sd": statistics.stdev(values) if len(values) > 1 else None, "run_ids": used,
                      "protocols": sorted(protocol_set), "warnings": local_warnings})

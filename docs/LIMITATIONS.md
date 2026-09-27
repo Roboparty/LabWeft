@@ -43,9 +43,10 @@ checkpoint deletion or experiment scheduling is included.
 
 ## Agent integration
 
-The installer and protocol are tested locally; hosted Codex, Claude Code, Gemini,
-DeepSeek or other model sessions have not been run end-to-end. Skill discovery
-can vary with client version, policy, sandbox, managed settings and permissions.
+The installer and protocol are tested locally, and one bounded private project
+was exercised by following the Skill in a Codex desktop conversation. Automatic
+Skill discovery in a fresh chat and other model clients have not been certified.
+Discovery can vary with client version, policy, sandbox, managed settings and permissions.
 A bare model without filesystem/tool access cannot use this software by itself.
 No hidden additional model account is required by this code.
 

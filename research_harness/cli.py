@@ -13,6 +13,13 @@ from .reasoning import compare, assess, drift
 from .server import export_html, serve
 
 
+def configure_stdio() -> None:
+    """Keep JSON output UTF-8 when Windows redirects stdout to an agent tool."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
+
 def emit(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False))
 
@@ -68,7 +75,7 @@ def install_skill(agent: str, project: Path | None, user: bool) -> dict:
             "This is local to this machine. Reinstall the skill after moving the tool or interpreter.\n", encoding="utf-8")
         paths.append(str(dest))
     return {"installed": paths, "agent": agents,
-            "compatibility": "Skill-format and command integration only. No external model/client end-to-end compatibility tests have been run.",
+            "compatibility": "This command checks Skill-format and local-command installation; verify discovery and the research workflow in the target client.",
             "next": "In your existing agent conversation, ask it to use LabWeft to organize this project; do not open additional agents."}
 
 
@@ -135,6 +142,7 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    configure_stdio()
     args = parser().parse_args(argv)
     try:
         if args.command == "install-skill":
