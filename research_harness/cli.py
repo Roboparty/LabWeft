@@ -11,7 +11,7 @@ from . import __version__
 from .store import Store, HarnessError, atomic_write, read_json, json_write, validate_state
 from .scan import sync
 from .reasoning import compare, assess, drift
-from .server import export_html, serve
+from .server import export_html, export_site, serve
 
 
 def configure_stdio() -> None:
@@ -160,6 +160,10 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("workspace", nargs="?", default=".")
     s.add_argument("--output", required=True)
     s.add_argument("--include-evidence", action="store_true", help="Explicitly copy indexed small-text snapshots into the HTML (up to 5 MiB); may expose private material")
+    s = sub.add_parser("export-site", help="Create one private offline site with a project switcher")
+    s.add_argument("workspaces", nargs="+", help="Workspaces in project-switch order; first opens at index.html")
+    s.add_argument("--output-dir", required=True)
+    s.add_argument("--include-evidence", action="store_true", help="Embed each project's indexed small-text snapshots; private material")
     s = sub.add_parser("serve", help="Open a loopback-only read-only dashboard; no cloud account")
     s.add_argument("workspace", nargs="?", default=".")
     s.add_argument("--port", type=int, default=8787)
@@ -180,6 +184,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "install-skill":
             emit(install_skill(args.agent, args.project, args.user))
+            return 0
+        if args.command == "export-site":
+            emit(export_site([Path(path) for path in args.workspaces], Path(args.output_dir),
+                             include_evidence=args.include_evidence))
             return 0
         store = Store(args.workspace)
         if args.command == "init":

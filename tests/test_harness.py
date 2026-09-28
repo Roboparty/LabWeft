@@ -14,7 +14,7 @@ import unittest
 from research_harness.store import Store, HarnessError, Conflict, json_write, read_json
 from research_harness.scan import sync, node, evidence_ref
 from research_harness.reasoning import compare, assess, drift
-from research_harness.server import make_server, export_html
+from research_harness.server import make_server, export_html, export_site
 from research_harness.cli import install_skill
 from research_harness.demo import create_demo
 
@@ -622,6 +622,36 @@ class WorkspaceTests(unittest.TestCase):
         payload = output.read_text(encoding="utf-8").partition(
             '<script id="snapshot-data" type="application/json">')[2].partition("</script>")[0]
         self.assertEqual("Unmapped source content", json.loads(payload)["evidence_texts"][item["sha256"]])
+
+    def test_export_site_keeps_project_snapshots_separate_and_switchable(self):
+        other_root = Path(self.temp.name) / "other-project"
+        other = Store(other_root)
+        other.init("Other study")
+        (self.root / "alpha.md").write_text("Alpha-only evidence", encoding="utf-8")
+        (other_root / "beta.md").write_text("Beta-only evidence", encoding="utf-8")
+        sync(self.store)
+        sync(other)
+        output = Path(self.temp.name) / "site"
+        result = export_site([self.root, other_root], output, include_evidence=True)
+        self.assertEqual(str(output / "index.html"), result["index"])
+        pages = [output / "index.html", *[Path(item["page"]) for item in result["projects"]]]
+        payloads = []
+        for page in pages:
+            html = page.read_text(encoding="utf-8")
+            self.assertIn('id="project-switcher"', html)
+            packed = html.partition('<script id="snapshot-data" type="application/json">')[2].partition("</script>")[0]
+            payloads.append(json.loads(packed))
+        self.assertEqual(self.store.load()["project"]["id"], payloads[0]["project"]["id"])
+        self.assertEqual({"alpha.md"}, {f["path"] for f in payloads[1]["files"].values()})
+        self.assertEqual({"beta.md"}, {f["path"] for f in payloads[2]["files"].values()})
+        self.assertEqual(["projects/test.html", "projects/other-study.html"],
+                         [link["href"] for link in payloads[0]["site_links"]])
+        self.assertEqual(["test.html", "other-study.html"],
+                         [link["href"] for link in payloads[2]["site_links"]])
+        self.assertNotIn("Beta-only evidence", pages[1].read_text(encoding="utf-8"))
+        with self.assertRaisesRegex(HarnessError, "Unsafe"):
+            export_html(self.store, output / "unsafe.html", site_links=[
+                {"id": self.store.load()["project"]["id"], "name": "Test", "href": "javascript:alert(1).html"}])
 
     def test_skill_install_refuses_user_overwrite(self):
         result = install_skill("codex", self.root, False)

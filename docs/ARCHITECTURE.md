@@ -95,6 +95,12 @@ escapes `<`, `>`, `&` and Unicode separators; the frontend escapes dynamic label
 and uses textContent for evidence. Exports are still private artifacts and must
 be reviewed before public sharing.
 
+`export-site` writes one standalone snapshot per workspace plus an `index.html`
+entry point. The top project switcher links between pages; it does not combine
+their states, evidence, Cell comparisons or histories. The first workspace is
+the site's default page. Evidence inclusion remains an explicit choice for the
+entire private site.
+
 The static `中文 / English` switch defaults to Chinese and persists a local
 preference. Nodes may optionally provide translated labels and descriptions in
 `attrs.i18n.zh` / `attrs.i18n.en`; absent translations use the recorded original.

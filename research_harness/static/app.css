@@ -216,3 +216,57 @@ button.history-change:hover{background:var(--soft)}
 .finding-source-list button:disabled{color:#7d8780;cursor:default}
 .finding-id{display:block;margin-top:13px;color:#77847b;font-size:9px;overflow-wrap:anywhere}
 @media(max-width:700px){.node-card{scroll-margin-top:150px}.finding-section-head h3{font-size:17px}.finding-card{padding:16px}.finding-card h3{font-size:15px}.finding-hero{padding:12px}.finding-hero strong{font-size:26px}.finding-hero span{font-size:11px}.finding-card p.finding-context{font-size:12px}.finding-extra .kv{grid-template-columns:minmax(82px,.4fr) minmax(0,1fr)}}
+
+/* Center chevrons by their SVG geometry, independent of font baseline. */
+.node-toggle{width:27px;height:27px;min-width:27px;padding:0;line-height:0;align-self:center}
+.node-toggle svg{display:block;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+
+/* Study details should be readable without browser zoom. */
+.study-panel{font-size:14px;line-height:1.7}
+.study-panel-heading{font-size:13px;letter-spacing:.35px}
+.study-panel p{font-size:14px;line-height:1.7}
+.study-panel h4{font-size:14px}
+.study-metric strong{font-size:18px}
+.study-metric span{font-size:11px}
+.study-table{font-size:13px;line-height:1.6}
+.study-table th,.study-table td{padding:9px 11px}
+.study-note,.study-panel p.study-note{font-size:13px}
+.study-related b,.study-sources b{font-size:13px}
+.study-related button,.study-sources button{font-size:13px;padding:7px 9px}
+.study-facts .kv,.study-technical .kv{font-size:13px;line-height:1.7}
+.study-technical summary{font-size:13px}
+.study-relation{font-size:13px}
+.study-run-section p{font-size:13px}
+.study-run-table td button{font-size:11px}
+.study-claim-result span,.study-panel p.study-claim-limit{font-size:13px}
+.detail .description{font-size:14px}
+.detail .kv{font-size:13px}
+.evidence-btn,.relation-btn{font-size:13px}
+.finding-card p.finding-full-text{font-size:13px}
+.finding-source-list button,.finding-extra .kv{font-size:12px}
+@media(max-width:700px){.node-toggle{width:25px;height:25px;min-width:25px}.node-toggle svg{width:15px;height:15px}.study-panel{font-size:12.5px}.study-panel p{font-size:12.5px}.study-table{font-size:11.5px}.study-facts .kv,.study-technical .kv{font-size:11.5px}}
+
+/* One local site can offer several separately sourced research workspaces. */
+.project-switcher{display:flex;align-items:center;gap:16px;padding:10px 32px;background:#143c32;color:#e6f4e9;min-width:0}
+.project-switcher[hidden]{display:none}
+.project-switcher>strong{font-size:11px;white-space:nowrap;letter-spacing:.4px}
+.project-switcher #project-links{display:flex;gap:8px;overflow-x:auto;min-width:0;scrollbar-width:thin}
+.project-switcher a{display:inline-flex;align-items:center;min-height:32px;padding:6px 12px;border-radius:6px;border:1px solid #759487;color:#e6f4e9;text-decoration:none;white-space:nowrap;font-size:12px;font-weight:650}
+.project-switcher a:hover{background:#255746}
+.project-switcher a[aria-current="page"]{color:#143c32;background:#f1faf1;border-color:#f1faf1;font-weight:800}
+.project-switcher a:focus-visible{outline:3px solid #f7cb75;outline-offset:2px}
+@media(max-width:700px){.project-switcher{padding:8px 15px;gap:9px}.project-switcher>strong{font-size:10px}.project-switcher a{font-size:11px;padding:5px 9px;min-height:30px}}
+
+/* Keep secondary text inside every study detail readable on narrow screens. */
+.study-panel small,.study-panel .study-metric span{font-size:12.5px}
+.study-panel .study-table{font-size:13px}
+.study-panel .study-run-table td button{font-size:12px}
+@media(max-width:700px){.study-panel,.study-panel p{font-size:13.5px}.study-panel .study-table{font-size:12.5px}}
+@media(max-width:700px){.study-panel .study-facts .kv,.study-panel .study-technical .kv{font-size:12.5px}}
+@media(max-width:700px){.study-panel .study-facts .kv,.study-panel .study-technical .kv{grid-template-columns:minmax(0,1fr);row-gap:2px}.study-panel .study-facts .kv dt,.study-panel .study-technical .kv dt{font-weight:650}.study-panel .study-facts .kv dd,.study-panel .study-technical .kv dd{margin-bottom:8px}}
+
+.source-modes{display:flex;flex-wrap:wrap;gap:7px;padding:16px 21px 0}
+.source-modes button{border:1px solid #cdded1;border-radius:6px;background:#fff;color:#315747;padding:7px 10px;font-size:12px;font-weight:650}
+.source-modes button[aria-pressed="true"]{background:#174a3d;border-color:#174a3d;color:#fff}
+.source-scope-hint{margin:9px 21px 0;font-size:12px;color:#53675a;line-height:1.6}
+@media(max-width:700px){.source-modes{padding:13px 15px 0}.source-modes button{font-size:11px;padding:6px 8px}.source-scope-hint{margin:8px 15px 0}}

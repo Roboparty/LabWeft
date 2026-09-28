@@ -55,14 +55,32 @@ claim may also provide `attrs.finding_card.zh` and `.en`, each with sourced
 `value`, `label`, `context` and `limit` strings. The visible limit belongs beside
 the headline result; the full explanation, scope and evidence remain in the
 same card. These display fields do not create a new scientific result.
-The comparison picker groups cells by their recorded
-`config.model`, so a model family can be selected in one click and individual
-conditions remain available. Internal condition codes and source paths belong
+The comparison picker groups cells by recorded `config.model` when available,
+or by their closest study module when no model field is recorded. A family or
+study can be selected in one click while individual conditions remain available.
+Internal condition codes and source paths belong
 in details rather than the scientific heading.
 
 An offline interactive page is also generated at
 `research-demo/.research/map.html`. It contains synthetic evidence. For real
 projects, source-text inclusion requires an explicit export option.
+
+Several **separate** workspaces can be presented in one private offline site:
+
+```sh
+labweft export-site --output-dir /private/research-site --include-evidence \
+  /workspaces/project-a /workspaces/project-b
+```
+
+Open `index.html`; the switcher at the top opens each project's map, comparison,
+findings, sources and timeline. Each page keeps its own project ID, evidence and
+local view state. Navigation does not pool runs or claims across projects. The
+site embeds private source text when `--include-evidence` is used; review it
+before sharing.
+
+The source view opens on files linked directly to the research map. Its
+`Unmapped` and `All indexed` tabs retain the rest of the indexed scope, so a
+large source collection is not mistaken for a small one.
 
 The research timeline displays explicitly source-dated project events in
 chronological order when the agent has recorded them. A separate record-revisions

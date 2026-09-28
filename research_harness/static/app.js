@@ -21,9 +21,14 @@ Object.assign(words.zh,{projectEventModule:'研究主题',projectEventDateType:'
 Object.assign(words.en,{projectEventModule:'Research theme',projectEventDateType:'Date meaning',allProjectEvents:'All events',eventDay:'Dated event',eventRangeStart:'Period start',eventAsOf:'As-of record'});
 words.zh.noMatchingProjectEvents='没有符合筛选条件的研究事件。';words.en.noMatchingProjectEvents='No research events match these filters.';
 words.zh.currentBranch='当前研究路径';words.en.currentBranch='Current research path';
+words.zh.switchProject='切换项目';words.en.switchProject='Switch project';
+words.zh.studyModules='研究模块';words.en.studyModules='Research modules';
+words.zh.multiWorkspace='多个项目，分别建档。';words.en.multiWorkspace='Several projects, separate records.';
 words.zh.keyResult='关键结果';words.en.keyResult='Key result';
 words.zh.fullFindingDetails='完整说明、范围与来源';words.en.fullFindingDetails='Full account, scope and sources';
 words.zh.evidenceCount='条直接来源';words.en.evidenceCount='direct sources';
+Object.assign(words.zh,{mappedSources:'地图已关联',unmappedSources:'尚未映射',allIndexedSources:'全部索引',sourceScopeHint:'未映射只表示当前地图没有引用；不等于文件无用或已经核验。'});
+Object.assign(words.en,{mappedSources:'Linked to map',unmappedSources:'Not yet mapped',allIndexedSources:'All indexed',sourceScopeHint:'Unmapped means the current map has no reference; it does not mean the file is useless or verified.'});
 Object.assign(words.zh,{sourceAuditDetails:'来源核对详情',auditTable:'核对记录',auditOnlyNote:'这里记录来源核对与缺口，不代表新增实验结果。',auditNoEvidence:'尚无直接实验结果可核验；请按下方线索继续采集。',perRunMetrics:'逐次运行的记录指标',runRowsNoPooling:'每行是一条 Run 记录；这里不跨协议汇总，也不把评估 episode 当作独立训练 seed。',runDetails:'打开 Run 详情'});
 Object.assign(words.en,{sourceAuditDetails:'Source audit details',auditTable:'Audit records',auditOnlyNote:'This records source checks and gaps; it does not establish a new experimental result.',auditNoEvidence:'No direct experimental result is available to verify; follow the collection leads below.',perRunMetrics:'Recorded metrics by run',runRowsNoPooling:'Each row is one Run record. This table does not pool protocols or treat evaluation episodes as independent training seeds.',runDetails:'Open Run details'});
 words.zh.returnToTimeline='← 返回研究历程';words.en.returnToTimeline='← Back to research history';
@@ -58,7 +63,7 @@ function findingSummary(n) { const f=n.attrs?.finding||{},e=f.endpoint||{},v=f.e
 function enumLabel(prefix,value){const key=prefix+value;return t(key)===key?value:t(key);}
 function roleLabel(n){const role=n.attrs?.role;return role?t('role_'+role)==='role_'+role?role:t('role_'+role):'';}
 function initialExpanded(){const ids=new Set();for(const n of Object.values(data.nodes).filter(n=>n.kind==='module'&&n.status!=='archived'&&n.attrs?.role!=='evidence_audit')){const parent=data.nodes[n.parent_id];if(n.parent_id===data.project.id||parent?.parent_id===data.project.id)ids.add(n.id);}return ids;}
-let data, view='map', selected=null, layout='tree', filter='', compareFilter='', cellSelection=new Set(), metric='success_rate', differentOnly=false;
+let data, view='map', selected=null, layout='tree', filter='', compareFilter='', sourceMode='mapped', cellSelection=new Set(), metric='success_rate', differentOnly=false;
 let expanded = new Set(), collapsedDuringSearch=new Set(), token='', savedKey='', sourcePage=0, historyType='all', historyModule='all', timelineView='project', projectTimelineModule='all', projectTimelineType='all', timelineReturnEvent=null, compareOpenGroups=new Set();
 const snap = $('snapshot-data');
 try { token = new URLSearchParams(location.search).get('token') || sessionStorage.getItem('rh-token') || ''; if(token)sessionStorage.setItem('rh-token',token); if(location.search.includes('token='))history.replaceState({},'',location.pathname); } catch (_) {}
@@ -85,23 +90,30 @@ async function load() {
 }
 function loadLabels(){
  $('project-name').textContent=data.project.name;$('synthetic').hidden=!data.project.synthetic;
+ renderProjectSwitcher();
  $('mode').textContent=t(snap?'offline':'localReadOnly');$('revision').textContent=t('revision')+' '+data.revision;
  $('footer-state').textContent=t(snap?'offlineFooter':'liveFooter');
  $('source-count').textContent=Object.values(data.files).filter(f=>!f.missing).length+' '+t('sourceFiles');
  const kinds=Object.values(data.nodes).filter(n=>n.status!=='archived');
- $('stats').innerHTML=[['questions',kinds.filter(n=>n.kind==='question').length,'◇'],['cells',kinds.filter(n=>n.kind==='cell').length,'▤'],['runs',kinds.filter(n=>n.kind==='run').length,'◉'],['protectedDecisions',kinds.filter(n=>n.protected&&['claim','decision'].includes(n.kind)).length,'✓']].map(([key,n,icon])=>`<div class="stat"><div><div class="stat-number">${n}</div><div class="stat-label">${esc(t(key))}</div></div><div class="stat-icon">${icon}</div></div>`).join('');
+ $('stats').innerHTML=[['studyModules',kinds.filter(n=>n.kind==='module').length,'◇'],['cells',kinds.filter(n=>n.kind==='cell').length,'▤'],['runs',kinds.filter(n=>n.kind==='run').length,'◉'],['protectedDecisions',kinds.filter(n=>n.protected&&['claim','decision'].includes(n.kind)).length,'✓']].map(([key,n,icon])=>`<div class="stat"><div><div class="stat-number">${n}</div><div class="stat-label">${esc(t(key))}</div></div><div class="stat-icon">${icon}</div></div>`).join('');
  const notices=[];
  if(data.scan?.source_aliases?.length)notices.push(t('sourceConfigured')+data.scan.source_aliases.join(lang==='zh'?'、':', ')+t('scanScope'));
  if(data.scan && data.scan.complete===false)notices.push(t('partialScan'));
  if(data.drift?.length)notices.push(`${new Set(data.drift.map(d=>d.node_id)).size} ${t('driftNotice')}`);
  $('notice').hidden=!notices.length;$('notice').textContent=notices.join(' ');
 }
+function renderProjectSwitcher(){
+ const bar=$('project-switcher'),root=$('project-links'),links=Array.isArray(data.site_links)?data.site_links:[];
+ bar.hidden=links.length<2;root.replaceChildren();
+ const note=document.querySelector('[data-i18n="oneWorkspace"]');if(note)note.textContent=t(links.length>1?'multiWorkspace':'oneWorkspace');
+ for(const item of links){const anchor=document.createElement('a');anchor.href=item.href;anchor.textContent=item.name;anchor.setAttribute('aria-current',item.id===data.project.id?'page':'false');root.append(anchor);}
+}
 function sortNodes(a,b){const stableName=n=>n.attrs?.i18n?.zh?.label||n.label;return (a.attrs?.order??100)-(b.attrs?.order??100)||stableName(a).localeCompare(stableName(b),'zh-CN',{numeric:true})||a.id.localeCompare(b.id);}
 function compareTreePath(a,b){const path=n=>{const out=[],seen=new Set();while(n&&n.id!==data.project.id&&!seen.has(n.id)){seen.add(n.id);out.unshift(n);n=data.nodes[n.parent_id];}return out;},left=path(a),right=path(b);for(let i=0;i<Math.min(left.length,right.length);i++){const order=sortNodes(left[i],right[i]);if(order)return order;}return left.length-right.length;}
 function children(id) {return Object.values(data.nodes).filter(n=>n.parent_id===id && n.status!=='archived').sort(sortNodes);}
 function isMapNode(n){return n.kind!=='decision'&&n.kind!=='artifact'&&(n.kind!=='claim'||isFeaturedClaim(n));}
 function select(id) { selected=id;expanded.add(id);collapsedDuringSearch.delete(id);let parent=data.nodes[id]?.parent_id,seen=new Set();while(data.nodes[parent]&&!seen.has(parent)){seen.add(parent);expanded.add(parent);collapsedDuringSearch.delete(parent);parent=data.nodes[parent].parent_id;}if(view==='map'&&filter&&data.nodes[id]&&!hasMatch(data.nodes[id]))filter='';storageWrite();renderDetail(); if(view==='map'){renderMap();requestAnimationFrame(()=>{const target=layout==='tree'?[...document.querySelectorAll('.node-card')].find(card=>card.dataset.select===id):document.querySelector('.lineage-focus');target?.scrollIntoView({block:'start',behavior:'auto'});});} }
-function setView(v) {view=v;filter='';collapsedDuringSearch.clear();sourcePage=0;render();}
+function setView(v) {view=v;filter='';collapsedDuringSearch.clear();sourcePage=0;render();window.scrollTo(0,0);}
 function render() {
  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
  document.querySelector('.workspace-body').dataset.view=view;
@@ -134,7 +146,7 @@ function selectedLineage(){const path=[],seen=new Set();let n=data.nodes[selecte
 function treeNode(n,depth=0,pathIds=new Set()) {
  const kids=children(n.id).filter(isMapNode).filter(hasMatch),isSelected=selected===n.id,open=(expanded.has(n.id)||!!filter&&!collapsedDuringSearch.has(n.id))&&(kids.length>0||isSelected),panelOpen=isSelected&&expanded.has(n.id),onPath=pathIds.has(n.id);
  const sub = n.kind==='cell'?Object.entries(n.attrs?.config||{}).filter(([k])=>['history_length','prediction_weight','hardware'].includes(k)).map(([k,v])=>`${k}=${pretty(v)}`).join(' · '):n.kind==='claim'?findingSummary(n):n.kind==='module'?roleLabel(n):'';
- return `<li class="node-wrap ${onPath?'branch-path':''} ${isSelected?'branch-current':''}" data-depth="${Math.min(depth,4)}"><div class="node-card ${isSelected?'selected':''} ${open?'is-open':'is-closed'}" data-select="${esc(n.id)}" role="button" tabindex="0" aria-current="${isSelected?'true':'false'}"><button class="node-toggle" data-toggle="${esc(n.id)}" aria-label="${esc(t('expandToggle'))} ${esc(displayLabel(n))}" aria-expanded="${open}">${open?'⌄':'›'}</button><span class="node-dot ${esc(n.kind)}"></span><span class="node-label">${esc(displayLabel(n))}${sub?`<small class="node-sub">${esc(sub)}</small>`:''}</span>${kids.length?`<span class="node-count">${kids.length} ${esc(t('childItems'))}</span>`:''}${mapBadge(n)}</div>${panelOpen?studyPanel(n):''}${kids.length&&open?`<ul class="tree-list">${kids.map(child=>treeNode(child,depth+1,pathIds)).join('')}</ul>`:''}</li>`;
+ return `<li class="node-wrap ${onPath?'branch-path':''} ${isSelected?'branch-current':''}" data-depth="${Math.min(depth,4)}"><div class="node-card ${isSelected?'selected':''} ${open?'is-open':'is-closed'}" data-select="${esc(n.id)}" role="button" tabindex="0" aria-current="${isSelected?'true':'false'}"><button class="node-toggle" data-toggle="${esc(n.id)}" aria-label="${esc(t('expandToggle'))} ${esc(displayLabel(n))}" aria-expanded="${open}"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="${open?'M4 7l6 6 6-6':'M7 4l6 6-6 6'}"/></svg></button><span class="node-dot ${esc(n.kind)}"></span><span class="node-label">${esc(displayLabel(n))}${sub?`<small class="node-sub">${esc(sub)}</small>`:''}</span>${kids.length?`<span class="node-count">${kids.length} ${esc(t('childItems'))}</span>`:''}${mapBadge(n)}</div>${panelOpen?studyPanel(n):''}${kids.length&&open?`<ul class="tree-list">${kids.map(child=>treeNode(child,depth+1,pathIds)).join('')}</ul>`:''}</li>`;
 }
 function renderMap() {
  $('content').innerHTML=`<div class="panel-head"><div><h2>${esc(t('mapPanel'))}</h2><small>${esc(t('researchLogic'))}</small></div><div class="panel-tools"><div class="view-switch"><button data-layout="tree" class="${layout==='tree'?'active':''}">${esc(t('tree'))}</button><button data-layout="lineage" class="${layout==='lineage'?'active':''}">${esc(t('relationsView'))}</button></div><button id="expand-all">${esc(t('expand'))}</button><button id="collapse-all">${esc(t('collapse'))}</button></div></div><div class="search-wrap"><input class="search" id="map-search" placeholder="${esc(t('mapSearch'))}" value="${esc(filter)}" aria-label="${esc(t('mapSearch'))}"></div><div id="map-body"></div><div class="tree-hint">${esc(t('mapHint'))}</div><details class="status-help"><summary>${esc(t('statusInfoTitle'))}</summary><p>${esc(t('statusInfo'))}</p></details>`;
@@ -217,11 +229,18 @@ function calculateRows(){
   return {cell:c,runs,used,mean,sd,n:vals.length,warnings};
  });
 }
+function compareGroupOf(cell){
+ const model=cell.attrs?.config?.model;
+ if(model!==null&&model!==undefined&&String(model).trim())return {key:'model:'+String(model).toLocaleLowerCase(),name:String(model),node:null};
+ let current=data.nodes[cell.parent_id],fallback=null,seen=new Set();
+ while(current&&!seen.has(current.id)){seen.add(current.id);if(current.kind==='module'){fallback??=current;if(['study','ablation_group','baseline_family','method_family','generalization'].includes(current.attrs?.role))return {key:'module:'+current.id,name:displayLabel(current),node:current};}current=data.nodes[current.parent_id];}
+ return fallback?{key:'module:'+fallback.id,name:displayLabel(fallback),node:fallback}:{key:'unassigned',name:t('unknown'),node:null};
+}
 function renderCompare(){
  const cells=Object.values(data.nodes).filter(n=>n.kind==='cell'&&n.status!=='archived').sort(sortNodes),metricKeys=[...new Set(Object.values(data.nodes).filter(n=>n.kind==='run'&&n.status!=='archived'&&data.nodes[n.parent_id]?.status!=='archived').flatMap(n=>Object.keys(n.attrs.metrics||{})))].sort();
  const shownCells=cells.filter(c=>(displayLabel(c)+' '+JSON.stringify(c.attrs?.config||{})).toLowerCase().includes(compareFilter.toLowerCase()));
- const modelGroups=new Map();for(const c of shownCells){const raw=String(c.attrs?.config?.model??t('unknown')),key=raw.toLocaleLowerCase();if(!modelGroups.has(key))modelGroups.set(key,{names:new Set(),cells:[]});modelGroups.get(key).names.add(raw);modelGroups.get(key).cells.push(c);}
- const groupEntries=[...modelGroups].map(([key,group])=>({key,name:[...group.names].sort((a,b)=>Number(/[A-Z]/.test(b))-Number(/[A-Z]/.test(a)))[0],cells:group.cells})).sort((a,b)=>a.name.localeCompare(b.name,lang==='zh'?'zh-CN':'en'));
+ const modelGroups=new Map();for(const c of shownCells){const group=compareGroupOf(c);if(!modelGroups.has(group.key))modelGroups.set(group.key,{...group,cells:[]});modelGroups.get(group.key).cells.push(c);}
+ const groupEntries=[...modelGroups.values()].sort((a,b)=>a.node&&b.node?compareTreePath(a.node,b.node):a.name.localeCompare(b.name,lang==='zh'?'zh-CN':'en'));
  const groupPicker=groupEntries.map(g=>{const count=g.cells.filter(c=>cellSelection.has(c.id)).length,all=count===g.cells.length;return `<section class="compare-group"><div class="compare-group-head"><strong>${esc(g.name)} <small>${g.cells.length} ${esc(t('groupCells'))} · ${esc(t('groupSelected').replace('{count}',count))}</small></strong><button data-group="${esc(g.key)}" type="button">${esc(t(all?'groupClearAll':'groupSelectAll'))}</button></div><details data-group-details="${esc(g.key)}" ${compareOpenGroups.has(g.key)?'open':''}><summary>${esc(t('groupShowCells'))} · ${g.cells.length}</summary><div class="cell-picker">${g.cells.map(c=>`<label><input type="checkbox" data-cell="${esc(c.id)}" ${cellSelection.has(c.id)?'checked':''}>${esc(displayLabel(c))}</label>`).join('')}</div></details></section>`;}).join('');
  if(!metricKeys.includes(metric)&&metricKeys.length)metric=metricKeys[0];
  const rows=calculateRows(),keys=[...new Set(rows.flatMap(r=>Object.keys(r.cell.attrs.config||{})))].sort();
@@ -263,11 +282,15 @@ function renderDecisions(){
  $('content').querySelectorAll('[data-finding-sha]').forEach(b=>b.onclick=()=>showEvidence(b.dataset.findingSha,b.dataset.title));
 }
 function renderSources(){
- $('content').innerHTML=`<div class="panel-head"><div><h2>${esc(t('sourcesPanel'))}</h2><small>${esc(t('sourcesHint'))}</small></div></div><div class="search-wrap"><input class="search" id="source-search" placeholder="${esc(t('sourcesSearch'))}" value="${esc(filter)}"></div><div class="source-list" id="source-list"></div>`;
+ const mappedIds=new Set(Object.values(data.nodes).flatMap(n=>(n.evidence||[]).map(r=>r.file_id))),allCount=Object.keys(data.files).length;
+ if(!mappedIds.size)sourceMode='all';
+ $('content').innerHTML=`<div class="panel-head"><div><h2>${esc(t('sourcesPanel'))}</h2><small>${esc(t('sourcesHint'))}</small></div></div><div class="source-modes">${[['mapped',mappedIds.size],['unmapped',allCount-mappedIds.size],['all',allCount]].map(([mode,count])=>`<button type="button" data-source-mode="${mode}" aria-pressed="${sourceMode===mode}">${esc(t(mode==='mapped'?'mappedSources':mode==='unmapped'?'unmappedSources':'allIndexedSources'))} · ${count}</button>`).join('')}</div><p class="source-scope-hint">${esc(t('sourceScopeHint'))}</p><div class="search-wrap"><input class="search" id="source-search" placeholder="${esc(t('sourcesSearch'))}" value="${esc(filter)}"></div><div class="source-list" id="source-list"></div>`;
  $('source-search').oninput=e=>{filter=e.target.value;sourcePage=0;drawSources();};drawSources();
+ $('content').querySelectorAll('[data-source-mode]').forEach(b=>b.onclick=()=>{sourceMode=b.dataset.sourceMode;sourcePage=0;renderSources();});
 }
 function drawSources(){
- const files=Object.values(data.files).filter(f=>(f.source+'/'+f.path).toLowerCase().includes(filter.toLowerCase())).sort((a,b)=>a.path.localeCompare(b.path)),page=files.slice(sourcePage*40,(sourcePage+1)*40);
+ const mappedIds=new Set(Object.values(data.nodes).flatMap(n=>(n.evidence||[]).map(r=>r.file_id)));
+ const files=Object.values(data.files).filter(f=>(sourceMode==='all'||(sourceMode==='mapped')===mappedIds.has(f.id))&&(f.source+'/'+f.path).toLowerCase().includes(filter.toLowerCase())).sort((a,b)=>a.path.localeCompare(b.path)),page=files.slice(sourcePage*40,(sourcePage+1)*40);
  $('source-list').innerHTML=(page.map(f=>{const available=canOpenEvidence(f.sha256),omitted=!!snap&&!!f.sha256&&!available;return `<div class="source"><div class="source-name">${esc(f.path)}<small>${esc(f.source)} · ${((f.size||0)/1024).toFixed(1)} KB · ${esc(t(f.missing?'missingSource':omitted?'offlineTextOmitted':f.sha256?'savedSnapshot':'locationOnly'))}</small></div><button data-source-sha="${esc(f.sha256||'')}" data-title="${esc(f.path)}" ${available?'':'disabled'}>${esc(t(available?'view':'index'))}</button></div>`;}).join('')||`<div class="empty">${esc(t('noSources'))}</div>`)+`<div class="panel-tools" style="margin-top:17px"><button id="prev-source" ${sourcePage?'':'disabled'}>${esc(t('previous'))}</button><span class="muted" style="font-size:11px">${files.length?sourcePage*40+1:0}–${Math.min((sourcePage+1)*40,files.length)} / ${files.length}</span><button id="next-source" ${(sourcePage+1)*40<files.length?'':'disabled'}>${esc(t('next'))}</button></div>`;
  $('prev-source').onclick=()=>{sourcePage--;drawSources();};$('next-source').onclick=()=>{sourcePage++;drawSources();};
  document.querySelectorAll('[data-source-sha]').forEach(b=>b.onclick=()=>showEvidence(b.dataset.sourceSha,b.dataset.title));

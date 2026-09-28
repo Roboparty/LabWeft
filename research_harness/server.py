@@ -5,6 +5,7 @@ import hmac
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
+import re
 import secrets
 from urllib.parse import urlparse, parse_qs
 import webbrowser
@@ -19,9 +20,25 @@ def presentation(store: Store) -> dict:
     return {**state, "comparison": compare(state), "drift": drift(state), "mode": "live"}
 
 
-def export_html(store: Store, output: Path, *, include_evidence: bool = False) -> Path:
+def export_html(store: Store, output: Path, *, include_evidence: bool = False,
+                site_links: list[dict] | None = None) -> Path:
     data = presentation(store)
     data["mode"] = "snapshot"
+    if site_links is not None:
+        if not isinstance(site_links, list) or len(site_links) > 50:
+            raise HarnessError("Invalid project links")
+        ids = set()
+        for entry in site_links:
+            if not isinstance(entry, dict) or set(entry) != {"id", "name", "href"}:
+                raise HarnessError("Invalid project link")
+            if any(not isinstance(entry[key], str) or not entry[key].strip() for key in entry):
+                raise HarnessError("Empty project link field")
+            if entry["id"] in ids or not re.fullmatch(r"[A-Za-z0-9._/-]+\.html", entry["href"]) or entry["href"].startswith("/") or "//" in entry["href"]:
+                raise HarnessError("Unsafe or duplicate project link")
+            ids.add(entry["id"])
+        if data["project"]["id"] not in ids:
+            raise HarnessError("Project links must include the current project")
+        data["site_links"] = site_links
     data["evidence_texts"] = {}
     if include_evidence:
         # Explicit opt-in: this copy may include private research text.
@@ -48,6 +65,38 @@ def export_html(store: Store, output: Path, *, include_evidence: bool = False) -
     html = html.replace('<script src="/app.js" defer></script>', '<script id="snapshot-data" type="application/json">' + packed + '</script><script defer>' + js + '</script>')
     atomic_write(output, html)
     return output
+
+
+def export_site(workspaces: list[Path], output_dir: Path, *, include_evidence: bool = False) -> dict:
+    """Write separate private snapshots with a shared top project switcher."""
+    if not 1 <= len(workspaces) <= 50:
+        raise HarnessError("Export site needs 1–50 workspaces")
+    projects = []
+    used_ids, used_slugs = set(), set()
+    for workspace in workspaces:
+        store = Store(workspace)
+        project = store.load()["project"]
+        if project["id"] in used_ids:
+            raise HarnessError("Duplicate workspace in export site")
+        used_ids.add(project["id"])
+        slug = re.sub(r"[^a-z0-9]+", "-", project["name"].lower()).strip("-") or "project"
+        if slug in used_slugs:
+            slug += "-" + project["id"][-8:]
+        used_slugs.add(slug)
+        projects.append({"store": store, "id": project["id"], "name": project["name"], "slug": slug})
+    output_dir = output_dir.expanduser().resolve()
+    links = [{"id": item["id"], "name": item["name"], "href": item["slug"] + ".html"} for item in projects]
+    for item in projects:
+        export_html(item["store"], output_dir / "projects" / (item["slug"] + ".html"),
+                    include_evidence=include_evidence, site_links=links)
+    index_links = [{**link, "href": "projects/" + link["href"]} for link in links]
+    export_html(projects[0]["store"], output_dir / "index.html",
+                include_evidence=include_evidence, site_links=index_links)
+    return {"index": str(output_dir / "index.html"),
+            "projects": [{"id": item["id"], "name": item["name"],
+                          "page": str(output_dir / "projects" / (item["slug"] + ".html"))}
+                         for item in projects],
+            "privacy": "Private snapshots, not uploaded. Review embedded sources before sharing."}
 
 
 def make_server(store: Store, port: int = 8787, token: str | None = None) -> ThreadingHTTPServer:

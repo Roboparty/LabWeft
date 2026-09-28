@@ -149,6 +149,10 @@ below use legacy `rh` as shorthand for that same CLI. Quote all paths.
    do not block the conversation with an indefinite foreground process. Use the
    host's supported process management only when requested, or give the one start
    command. No manual graph drawing or extra user-operated agent is needed.
+   For several unrelated projects, keep one workspace and source inventory per
+   project. Validate each separately, then use `rh export-site --output-dir DIR
+   WORKSPACE_A WORKSPACE_B ...` to create a private site with a top switcher.
+   The switcher is navigation, not a license to pool their Runs or conclusions.
 10. **Report outcome.** State the scientific outline, what was linked, which
    testable conclusions have support and their scope, what negative or conflicting
    evidence qualifies them, what
