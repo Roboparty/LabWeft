@@ -542,6 +542,41 @@ class WorkspaceTests(unittest.TestCase):
             self.store.commit({"base_revision": 1, "reason": "no source", "nodes": [featured]})
         self.assertIn("claim-legacy", self.store.load()["nodes"])
 
+    def test_project_timeline_requires_a_real_date_and_direct_source(self):
+        (self.root / "milestone.md").write_text("Study completed on 2026-01-20.", encoding="utf-8")
+        sync(self.store)
+        state = self.store.load()
+        source = next(f for f in state["files"].values() if f["path"] == "milestone.md")
+        event = node("artifact-milestone", "artifact", "Study completed", state["project"]["id"],
+                     attrs={"project_event": {"date": "2026-01-20", "date_precision": "day",
+                                              "date_basis": {"zh": "报告明示完成日", "en": "Explicit completion date"},
+                                              "related_ids": []}})
+        with self.assertRaisesRegex(HarnessError, "direct evidence"):
+            self.store.commit({"base_revision": state["revision"], "reason": "unsourced event", "nodes": [event]})
+        event["evidence"] = [evidence_ref(source, "completion sentence")]
+        event["attrs"]["project_event"]["date"] = "2026-02-30"
+        with self.assertRaisesRegex(HarnessError, "Invalid project event date"):
+            self.store.commit({"base_revision": state["revision"], "reason": "bad date", "nodes": [event]})
+        event["attrs"]["project_event"]["date"] = "2026-01-20"
+        self.store.commit({"base_revision": state["revision"], "reason": "sourced milestone", "nodes": [event]})
+        self.assertEqual("2026-01-20", self.store.load()["nodes"][event["id"]]["attrs"]["project_event"]["date"])
+
+    def test_study_summary_table_rejects_missing_values(self):
+        state = self.store.load()
+        study = node("module-study", "module", "Synthetic study", state["project"]["id"],
+                     attrs={"study_summary": {"zh": {"columns": ["条件", "成功率"], "rows": [["对照"]]}}})
+        with self.assertRaisesRegex(HarnessError, "study_summary rows"):
+            self.store.commit({"base_revision": state["revision"], "reason": "partial table", "nodes": [study]})
+        study["attrs"]["study_summary"]["zh"]["rows"] = [["对照", "50%"]]
+        with self.assertRaisesRegex(HarnessError, "direct evidence"):
+            self.store.commit({"base_revision": state["revision"], "reason": "unsourced table", "nodes": [study]})
+        (self.root / "table.md").write_text("Synthetic control success: 50%", encoding="utf-8")
+        sync(self.store)
+        current = self.store.load()
+        source = next(f for f in current["files"].values() if f["path"] == "table.md")
+        study["evidence"] = [evidence_ref(source, "synthetic control result")]
+        self.store.commit({"base_revision": current["revision"], "reason": "sourced table", "nodes": [study]})
+
     def test_source_text_not_executed(self):
         marker = self.root / "EXECUTED"
         (self.root / "evil.py").write_text(f'from pathlib import Path\nPath({str(marker)!r}).write_text("bad")')

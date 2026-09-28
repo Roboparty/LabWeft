@@ -90,6 +90,18 @@ below use legacy `rh` as shorthand for that same CLI. Quote all paths.
    [PROTOCOL.md](references/PROTOCOL.md). Do not create a `decision` merely to
    make a scientific claim look final; a decision records a scoped action or
    reuse choice.
+   Give each visible study heading a declarative scientific title and place its
+   design, checked result table, sample unit, protocol and main limits directly
+   on that study node using `attrs.study_summary`; the reader should not need to
+   open a restated question or scroll through every run to find the result.
+   Archive redundant wrapper questions after moving their children and evidence
+   to the study. Translate internal condition codes into their actual
+   manipulations in headings and claims; keep codes, phase names and table
+   numbers in details or source locators.
+   Audit every visible subheading before export: keep it only when it adds a
+   distinct design or result with direct evidence and an inline summary. Move
+   an unsupported open question to an explicit evidence-gap branch; archive a
+   wrapper that only repeats its parent and reparent its useful children.
 6. **Verify claims from evidence backwards.** Trace each main finding to the
    report/table, exact result rows, effective configuration, implementation and
    run/evaluation identity. Check numerator, denominator, percentage versus
@@ -104,6 +116,11 @@ below use legacy `rh` as shorthand for that same CLI. Quote all paths.
    from per-run values where possible, and record whether SD is sample or
    population SD before comparing variability across reports. Use the minimal
    custom-result Cell/Run example in [PROTOCOL.md](references/PROTOCOL.md).
+   For a requested project timeline, distinguish actual event dates, reported
+   as-of dates and study-start dates. Add source-dated `project_event` artifacts
+   with bilingual descriptions and direct evidence; never infer a research date
+   from file mtime, directory names or LabWeft revision timestamps. The product
+   shows these events separately from workspace record history.
 7. **Check history before recommending work.** Read every relevant protected
    decision, including scope, source, and reopening conditions. Use `rh assess
    WORKSPACE PROPOSAL.json` for a bounded mechanical scope check. Treat its result

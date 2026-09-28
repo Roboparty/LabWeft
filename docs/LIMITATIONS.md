@@ -42,8 +42,12 @@ If a run's source evidence changes or disappears, the current aggregate excludes
 that run and warns; its historical snapshot remains inspectable. This does not
 determine whether the old scientific result is valid under a new protocol.
 
-An event timeline records when LabWeft observed a file change or saved a graph
-change, not when an experiment happened. Node changes retain their module at the
+The research timeline contains only explicitly source-dated events that an agent
+has mapped; it cannot reconstruct a complete project history from file names or
+timestamps. Its report as-of and period-start dates are marked separately from
+experiment completions. The record-revisions tab records when LabWeft observed a
+file change or saved a graph change, not when an experiment happened. Node
+changes retain their module at the
 event revision. File filtering by module uses currently linked evidence, so an
 unlinked historical file will appear under all changes without a module match.
 An archived Cell is excluded from the current hierarchy and numeric comparison.

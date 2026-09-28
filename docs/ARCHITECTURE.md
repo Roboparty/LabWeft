@@ -98,8 +98,11 @@ be reviewed before public sharing.
 The static `中文 / English` switch defaults to Chinese and persists a local
 preference. Nodes may optionally provide translated labels and descriptions in
 `attrs.i18n.zh` / `attrs.i18n.en`; absent translations use the recorded original.
-The switch never translates source evidence or mutates events. The update
-timeline derives file, node and edge changes from each event. Node changes keep
+The switch never translates source evidence or mutates events. The research
+timeline shows agent-recorded project events only when they have an explicit
+source date and direct evidence; it distinguishes occurrence, period start and
+report as-of dates. The separate record-revisions tab derives file, node and
+edge changes from each LabWeft event. Node changes keep
 their module assignment at the event revision; file-module filtering uses current
 evidence references. Event timestamps record LabWeft observations or writes,
 not historical experiment times. A node's `archived` status is a LabWeft record

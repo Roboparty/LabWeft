@@ -25,8 +25,9 @@ be negative; a full factorial experiment table is not a mandatory goal.
 - `reasoning.py`: descriptive seed comparisons, source drift, bounded scope check.
 - `server.py`: read-only loopback service with token and safe offline export.
 - `cli.py`, `rh.py`, `bootstrap.py`: simple entry points and Skill installation.
-- `static/`: expandable map, relationship view, matrix, decisions, evidence/history,
-  bilingual interface and update timeline.
+- `static/`: expandable map with inline study tables, relationship view, grouped
+  model-family comparison, decisions, evidence, bilingual interface, sourced
+  research timeline and separate record revisions.
 - `skill/`: one-controller procedure and semantic patch contract.
 - `tests/`: deterministic regression tests; `demo.py`: synthetic showcase.
 

@@ -176,6 +176,40 @@ def validate_state(state: dict) -> None:
             raise HarnessError(f"evidence_ids must be an array: {key}")
         if not isinstance(node.get("attrs", {}), dict):
             raise HarnessError(f"attrs must be an object: {key}")
+        summary = node.get("attrs", {}).get("study_summary")
+        if summary is not None:
+            if not isinstance(summary, dict):
+                raise HarnessError(f"study_summary must be a bilingual object: {key}")
+            for language, content in summary.items():
+                if language not in {"zh", "en"} or not isinstance(content, dict):
+                    raise HarnessError(f"Invalid study_summary language or content: {key}")
+                columns, rows = content.get("columns", []), content.get("rows", [])
+                if not isinstance(columns, list) or not all(isinstance(x, str) for x in columns):
+                    raise HarnessError(f"Invalid study_summary columns: {key}")
+                if not isinstance(rows, list) or any(not isinstance(row, list) or len(row) != len(columns) for row in rows):
+                    raise HarnessError(f"Invalid study_summary rows: {key}")
+                if not isinstance(content.get("metrics", []), list) or any(not isinstance(m, dict) or not isinstance(m.get("label"), str) or not isinstance(m.get("value"), str) for m in content.get("metrics", [])):
+                    raise HarnessError(f"Invalid study_summary metrics: {key}")
+            if any(content.get("rows") or content.get("metrics") for content in summary.values()) and not node.get("evidence"):
+                raise HarnessError(f"Numeric study_summary needs direct evidence: {key}")
+        project_event = node.get("attrs", {}).get("project_event")
+        if project_event is not None:
+            if node["kind"] != "artifact" or not isinstance(project_event, dict) or not node.get("evidence"):
+                raise HarnessError(f"Project event needs an artifact with direct evidence: {key}")
+            date = project_event.get("date")
+            if not isinstance(date, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+                raise HarnessError(f"Project event needs an ISO calendar date: {key}")
+            try:
+                if datetime.fromisoformat(date).date().isoformat() != date:
+                    raise ValueError(date)
+            except ValueError as exc:
+                raise HarnessError(f"Invalid project event date: {key}") from exc
+            if project_event.get("date_precision") not in {"day", "range_start", "as_of"}:
+                raise HarnessError(f"Project event needs a date precision: {key}")
+            if not isinstance(project_event.get("date_basis"), dict) or not all(isinstance(project_event["date_basis"].get(language), str) and project_event["date_basis"][language].strip() for language in ("zh", "en")):
+                raise HarnessError(f"Project event needs a bilingual date basis: {key}")
+            if not isinstance(project_event.get("related_ids", []), list) or any(related_id not in nodes for related_id in project_event.get("related_ids", [])):
+                raise HarnessError(f"Invalid project event related_ids: {key}")
         finding = node.get("attrs", {}).get("finding")
         if finding is not None:
             if node["kind"] != "claim" or not isinstance(finding, dict):

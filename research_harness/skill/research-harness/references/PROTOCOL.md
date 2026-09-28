@@ -51,6 +51,78 @@ supports them; unknown roles remain unassigned. `held_constant` is a verified
 claim about effective conditions, not a guess from similar names. A project may
 use other roles and need not contain any particular experiment family.
 
+Visible `module` and study-section headings state what is being compared or
+what the section does. Use short declarative titles. Keep source directories,
+phase numbers, manuscript table numbers, and internal condition codes in
+evidence locators or details. If a `question` node merely restates its sole
+parent module, archive it, move its children and direct evidence to the module,
+and retain its ID in history. A genuine subtopic may remain a `question` node
+with `attrs.presentation_kind: "section"` and a declarative heading. A genuinely
+unresolved question may keep its interrogative form outside the study outline.
+
+For a study with checked numerical results, attach a bilingual
+`attrs.study_summary` to the module or section the reader clicks. The UI shows
+it immediately below that heading and at the top of the inspector:
+
+```json
+{
+  "study_summary": {
+    "zh": {
+      "intro": "比较条件与评测方式的简短说明",
+      "metrics": [{"label": "独立训练 seed", "value": "3"}],
+      "columns": ["条件", "成功率", "协议"],
+      "rows": [["合成基线", "50.0%", "合成评测"]],
+      "note": "合成示例；指出统计单位、共变因素与不能合并的 cohort。"
+    },
+    "en": {
+      "intro": "Short account of the comparison and evaluation",
+      "metrics": [{"label": "Independent training seeds", "value": "3"}],
+      "columns": ["Condition", "Success rate", "Protocol"],
+      "rows": [["Synthetic control", "50.0%", "Synthetic evaluation"]],
+      "note": "Synthetic example; state the sample unit and cohort boundaries."
+    }
+  }
+}
+```
+
+Every factual row needs direct evidence on the same node or an explicitly
+linked child with an immutable source reference. Calculate displayed means
+from verified run identities where possible; identify a paper-only or
+source-reported aggregate as such. Do not combine epochs, readouts, protocols,
+models or cohorts to fill a convenient table. A study with no checked result
+should explain the design and missing evidence instead of inventing rows.
+Do not leave a visible section that only repeats the parent, names a source
+batch, or makes the reader open every Cell to see a result. Give a meaningful
+section its own inline table and cohort note, or move the question to a clearly
+marked evidence-gap branch when the underlying result is unavailable.
+
+Project research history is different from LabWeft's revision history. A
+source-dated milestone may be stored as an `artifact` with
+`attrs.project_event` and direct evidence; it appears only on the research
+timeline. Use a calendar date quoted in the source body, never filesystem mtime
+or a number in a path:
+
+```json
+{
+  "project_event": {
+    "date": "2026-01-20",
+    "date_precision": "as_of",
+    "date_label": {"zh": "2026 年 1 月 20 日", "en": "20 Jan 2026"},
+    "date_basis": {
+      "zh": "这一天是报告截至日期，不是全部训练的结束日期。",
+      "en": "This is the report's as-of date, not the end date of every run."
+    },
+    "related_ids": ["module-synthetic-study"]
+  }
+}
+```
+
+`date_precision` is `day` for an explicit occurrence or completion,
+`range_start` for a sourced start of a range, or `as_of` for a dated status,
+report or archive. State the action and date meaning in both languages. A
+dated summary does not prove that all its underlying runs finished that day.
+The UI keeps a separate "Record revisions" tab for tool writes.
+
 The `claim` kind is for empirical findings, mechanistic interpretations, negative
 results and scope boundaries. An optional `attrs.finding` object marks findings
 that should be prominent in the research map and groups source-audit notes away

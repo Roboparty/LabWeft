@@ -48,11 +48,19 @@ and at the top of the findings page by research theme; audit/status notes remain
 available in a collapsed section. A prominent finding requires direct evidence
 and scope. A scientific finding is distinct from a scoped research decision.
 
+Study headings can show a sourced bilingual result table immediately below the
+selected branch. The comparison picker groups cells by their recorded
+`config.model`, so a model family can be selected in one click and individual
+conditions remain available. Internal condition codes and source paths belong
+in details rather than the scientific heading.
+
 An offline interactive page is also generated at
 `research-demo/.research/map.html`. It contains synthetic evidence. For real
 projects, source-text inclusion requires an explicit export option.
 
-The update timeline lists file, node and relation changes under each recorded
+The research timeline displays explicitly source-dated project events in
+chronological order when the agent has recorded them. A separate record-revisions
+tab lists file, node and relation changes under each recorded
 revision. It can filter by change type and research module; node changes keep
 their module identity from the historical event. File-to-module filtering uses
 currently recorded evidence links. The event time is when LabWeft observed or
