@@ -1,6 +1,69 @@
 # Validation record — v0.1.0 prototype
 
-## Current local regression status (2026-09-28)
+[简体中文](VALIDATION.zh-CN.md)
+
+## Latest local check (2026-09-28, still a bounded pilot)
+
+The current Windows Python 3.14 suite has **64 tests: 63 passed and one
+symlink-capability test skipped**. JavaScript syntax (`node --check`) and Git
+whitespace checks pass. CLI and browser comparison now warn when the same
+recorded training `run_id` appears in more than one selected Cell, as can happen
+when checkpoints from one training run are evaluated separately. Per-Cell seed
+counts must not be added as independent training replicates across those Cells.
+An archived Cell leaves the current hierarchy and numeric comparison; archived
+claims and decisions remain available in the historical decisions view with
+their sources.
+
+A fourth independent Edge round on an anonymous, bounded private offline
+snapshot passed **48/48 browser checks with no console or page errors**. It
+covered default empty comparison selection for a larger map, bilingual search
+and selection controls, shared training-run warnings, language switching,
+history, evidence-dialog keyboard focus and a narrow viewport. It checks those
+UI paths, not the underlying scientific results or every accessibility path.
+
+The final source tree was rebuilt as a wheel and source distribution. The
+source archive contains no generated workspace state. A clean Windows Python
+3.14 environment installed the wheel and ran the synthetic demo (four Cells,
+12 Runs), `validate` (revision 3, no evidence errors or drift), and `compare`
+successfully. This does not certify other operating systems or package indexes.
+
+Independent review of a private map found a P1 Chinese wording error: some Run
+descriptions named the wrong aggregate for a recorded percentage metric. The
+affected descriptions were corrected and rechecked. This was a presentation
+correction, not a recomputation of the
+underlying scientific results. This local suite and review do not establish
+whole-project scientific validation or public release readiness.
+
+## Earlier bilingual and coverage iteration (2026-09-28)
+
+An independent Edge agent tested a private offline snapshot in two
+browser rounds, with no console
+errors or uncaught JavaScript exceptions. The rounds covered first-load Chinese,
+English switching and retained language preference, five views, the source list,
+unlinked indexed text opened from an explicit evidence export, an isolated copy
+with omitted-text labels and disabled buttons, update-history filters, navigation,
+and 390px layout. A third independent Edge round on a fixed offline snapshot
+after the historical-module change passed 27/27 checks with no console errors.
+Its file and node timeline filters passed; this checks the tested history paths,
+not every possible historical reassignment.
+
+A read-only metadata inventory of a private project informed a deliberately
+selected source-text sample. Selected content was collected and checked file by
+file. Inventory, selected text, indexed files, mapped graph nodes and
+independently replayed experiments are different denominators. The sample does
+not establish whole-project scientific correctness. Old and corrected results,
+and completed work versus later additions, retain distinct scopes.
+
+Before the latest historical-module timeline test was added, the Windows Python
+3.14 suite contained 61 tests: 60 passed and one symlink-capability test skipped.
+That result is an interim checkpoint, not a final result for the latest tree.
+Offline export now defaults to omitting source text; `--include-evidence` may
+embed indexed text snapshots, including files unlinked to semantic nodes, up to
+5 MiB total and marks omitted snapshots. The browser round tested the omitted
+state with an isolated copy; it did not prove every selected private source fits
+in one offline export.
+
+## Earlier local regression status (2026-09-28)
 
 After a second bounded private-project pilot, Windows Python 3.14 runs 58 tests:
 57 pass and one symlink capability test skips. `node --check` passes. A synthetic
@@ -18,24 +81,23 @@ An existing official Skill installation from the previous commit was copied into
 an isolated directory and upgraded in place. Managed-file hashes now allow an
 unchanged installation to upgrade while still refusing edited files.
 
-An independent blind agent used only a newly staged 13→22→28-file private source
-subset. It kept the corrected canonical results, separate experiment identities,
-incomplete follow-ups and an older negative result in their proper scopes. Its
-recomputation found that two reports used population and sample SD respectively
-for three training seeds. The full pilot's private evidence map now records this
-as a provisional caveat. The blind agent did not map custom summary JSON/CSV into
+An independent blind agent used only a newly staged private source subset. It
+kept distinct experiment identities and source-reported completion boundaries
+separate while retaining older evidence. Its recomputation found an inconsistent
+statistical convention across source summaries; the private map recorded a
+source-bound caveat.
+The blind agent did not map custom summary JSON/CSV into
 Cell/Run nodes, so its empty comparison was a workflow gap; the Skill now says
 to perform evidence-bound normalization for such sources and to verify SD
 conventions. This is not a scored public benchmark or a claim of general agent
 reliability.
 
 A second staged blind run followed the revised Skill in a fresh private
-workspace with 5→12→18 selected source files. It normalized a custom mechanism
-JSON into four cells and twelve independent runs, plus one cell and three runs
-from a custom CSV. Every cell compared with three training seeds and matched
-independently recomputed mean/sample SD. `validate` passed with 30 nodes,
-no evidence errors or drift; repeated scans did not overwrite the semantic
-mapping. The run also preserved separate incomplete and negative-result scopes.
+workspace. It normalized custom JSON and CSV into evidence-bound Cells and
+independent Runs. Their descriptive comparisons matched independent
+recomputation. `validate` passed with no evidence errors or drift; repeated
+scans did not overwrite the semantic
+mapping. The run also preserved separate completion scopes.
 Its feedback identified a missing minimal Cell/Run patch example, now added to
 the bundled protocol. This still lacks a public scored agent benchmark and
 does not establish broad host-model reliability.
@@ -47,7 +109,7 @@ and three completed Runs compared at mean 0.6666667 and sample SD 0.0416333;
 now spells out metric units and duplicate-seed handling. This checks clarity of
 that example, not the performance of arbitrary agents or custom formats.
 
-The final Windows Python 3.14 suite still runs 58 tests: 57 pass and one symlink
+At that earlier checkpoint, Windows Python 3.14 ran 58 tests: 57 passed and one symlink
 capability test skips. JavaScript syntax and Git whitespace checks pass. Both a
 wheel and an sdist were built; the sdist manifest was corrected to include docs
 and source examples while excluding generated example workspace state and its
@@ -59,7 +121,7 @@ installation was tested only on this Windows Python 3.14 host.
 
 These checks cover a selected small-text subset and synthetic failure cases, not
 whole-project scientific correctness, historical training replay, every agent
-client or NAS service reliability. The earlier entries below record the original
+client or network-storage service reliability. The earlier entries below record the original
 prototype and first pilot at their respective times.
 
 Prepared 2026-09-28. Tested locally in Linux with Python 3.13.5, Node 22.16.0 for

@@ -25,7 +25,12 @@ def export_html(store: Store, output: Path, *, include_evidence: bool = False) -
     data["evidence_texts"] = {}
     if include_evidence:
         # Explicit opt-in: this copy may include private research text.
-        referenced = {r["sha256"] for n in data["nodes"].values() for r in n.get("evidence", [])}
+        # The source browser lists every indexed file, not only files attached to
+        # semantic nodes. Include their text blobs as well so View is truthful.
+        referenced = {f["sha256"] for f in data["files"].values()
+                      if f.get("snapshot") == "text_snapshot" and f.get("sha256")}
+        referenced |= {r["sha256"] for n in data["nodes"].values()
+                       for r in n.get("evidence", [])}
         total = 0
         for sha in sorted(referenced):
             try:

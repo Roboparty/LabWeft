@@ -52,6 +52,58 @@ def read_json(path: Path) -> Any:
         raise HarnessError(f"Cannot read valid JSON from {path}: {exc}") from exc
 
 
+def event_changes(state: dict, event: dict) -> dict:
+    """Derive a readable timeline from immutable event upserts, including old events."""
+    changes = {"files": [], "nodes": [], "edges": []}
+    nodes_at_event = {**state["nodes"], **{item["id"]: item for item in event.get("nodes", [])}}
+
+    def module_at_event(node_id: str) -> str | None:
+        seen = set()
+        while node_id in nodes_at_event and node_id not in seen:
+            seen.add(node_id)
+            item = nodes_at_event[node_id]
+            if item["kind"] == "module":
+                return node_id
+            node_id = item.get("parent_id")
+        return None
+    for item in event.get("files", []):
+        old = state["files"].get(item["id"])
+        if old is None:
+            action = "added"
+        elif item.get("missing") and not old.get("missing"):
+            action = "missing"
+        elif old.get("missing") and not item.get("missing"):
+            action = "restored"
+        elif item.get("sha256") != old.get("sha256"):
+            action = "updated"
+        else:
+            action = "metadata"
+        changes["files"].append({"id": item["id"], "source": item["source"],
+                                 "path": item["path"], "change": action})
+    for item in event.get("nodes", []):
+        old = state["nodes"].get(item["id"])
+        if old is None:
+            action = "added"
+            fields = []
+        elif item.get("status") == "archived" and old.get("status") != "archived":
+            action = "archived"
+            fields = ["status"]
+        elif old.get("status") == "archived" and item.get("status") != "archived":
+            action = "restored"
+            fields = ["status"]
+        else:
+            action = "updated"
+            fields = sorted(k for k in set(old) | set(item) if old.get(k) != item.get(k))
+        changes["nodes"].append({"id": item["id"], "kind": item["kind"],
+                                 "label": item["label"], "parent_id": item.get("parent_id"),
+                                 "module_id": module_at_event(item["id"]),
+                                 "change": action, "fields": fields})
+    for item in event.get("edges", []):
+        changes["edges"].append({"id": item["id"],
+                                 "change": "added" if item["id"] not in state["edges"] else "updated"})
+    return changes
+
+
 def atomic_write(path: Path, data: str | bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     raw = data.encode("utf-8") if isinstance(data, str) else data
@@ -205,6 +257,7 @@ class Store:
                 raise HarnessError(f"Event integrity check failed: {path.name}. Restore/reconcile; do not silently reset.")
             if event.get("revision") != state["revision"] + 1:
                 raise HarnessError(f"Event revision gap/conflict: {path.name}")
+            changes = event_changes(state, event)
             for category in ("nodes", "edges", "files"):
                 for item in event.get(category, []):
                     state[category][item["id"]] = item
@@ -212,7 +265,8 @@ class Store:
                 state["scan"] = event["scan"]
             state["revision"] = event["revision"]
             state["last_hash"] = checksum
-            state["history"].append({k: event[k] for k in ("revision", "at", "actor", "reason")})
+            state["history"].append({**{k: event[k] for k in ("revision", "at", "actor", "reason")},
+                                     "changes": changes})
         validate_state(state)
         return state
 

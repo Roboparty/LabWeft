@@ -183,6 +183,9 @@ def parse_runs(state: dict, files: list[dict], texts: dict) -> tuple[list[dict],
             else:
                 payload = finite_json(texts[item["id"]])
                 selection = "reported JSON metrics"
+                if isinstance(payload, list):
+                    warnings.append(f"JSON metric array indexed as source evidence only; no run summary inferred: {item['source']}/{item['path']}")
+                    continue
             if not isinstance(payload, dict):
                 raise ValueError("metric root is not an object")
             metrics = numeric_metrics(payload.get("metrics", payload))

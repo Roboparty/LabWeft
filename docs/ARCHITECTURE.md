@@ -1,5 +1,7 @@
 # Architecture v0.1
 
+[简体中文](ARCHITECTURE.zh-CN.md)
+
 ## Product contract
 
 One existing, tool-capable agent controls a user-authorized workflow. The user
@@ -72,6 +74,12 @@ symlinks and dependency/internal directories are excluded. Source code is
 parsed with Python AST only. YAML and arbitrary files remain evidence for host
 inspection. There is no execution of instructions in input files.
 
+Coverage is layered: directory inventory, selected and verified source bytes,
+indexed files, agent-mapped graph objects, and independently replayed
+experiments are separate counts. Selected files do not equal independent
+experiments. When a project has corrected results or later branches, the agent
+records their identities and completion scopes separately with source evidence.
+
 ## UI
 
 Bundled HTML/CSS/JS use no CDN, frontend build or runtime dependency. The local
@@ -79,10 +87,26 @@ HTTP service exposes only state and known text evidence. It binds to loopback,
 checks Host, requires a random API token and rejects cross-site fetches. There
 is no shell, file-write, experiment-launch or synchronization HTTP endpoint.
 
-Offline export embeds one state snapshot and optional referenced text. JSON
+Offline export embeds one state snapshot. Source text is omitted by default;
+`--include-evidence` opts in to embedding indexed text snapshots, including
+indexed files not linked to semantic nodes, subject to a combined 5 MiB limit.
+The offline source list marks omitted text and disables opening it. JSON
 escapes `<`, `>`, `&` and Unicode separators; the frontend escapes dynamic labels
 and uses textContent for evidence. Exports are still private artifacts and must
 be reviewed before public sharing.
+
+The static `中文 / English` switch defaults to Chinese and persists a local
+preference. Nodes may optionally provide translated labels and descriptions in
+`attrs.i18n.zh` / `attrs.i18n.en`; absent translations use the recorded original.
+The switch never translates source evidence or mutates events. The update
+timeline derives file, node and edge changes from each event. Node changes keep
+their module assignment at the event revision; file-module filtering uses current
+evidence references. Event timestamps record LabWeft observations or writes,
+not historical experiment times. A node's `archived` status is a LabWeft record
+state, not a claim that source files or an external project archive were changed.
+An archived Cell is absent from the current map hierarchy and numeric comparison;
+archived claims and decisions remain in the historical decisions list with their
+evidence. Archiving does not delete their source snapshots.
 
 ## Provider boundary
 

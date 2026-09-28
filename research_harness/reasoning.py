@@ -20,7 +20,8 @@ def drift(state: dict) -> list[dict]:
 
 
 def compare(state: dict, cell_ids: list[str] | None = None, metric: str | None = None) -> dict:
-    cells = [n for n in state["nodes"].values() if n["kind"] == "cell" and (not cell_ids or n["id"] in cell_ids)]
+    cells = [n for n in state["nodes"].values() if n["kind"] == "cell" and n.get("status") != "archived"
+             and (not cell_ids or n["id"] in cell_ids)]
     dirty = {item["node_id"] for item in drift(state)}
     dirty_runs = {n["id"] for n in state["nodes"].values() if n["kind"] == "run" and n["id"] in dirty}
     dirty_runs.update(n.get("parent_id") for n in state["nodes"].values()
@@ -105,6 +106,15 @@ def compare(state: dict, cell_ids: list[str] | None = None, metric: str | None =
         values = [c.get(required) for c in configs]
         if any(v is None for v in values) or len({canonical(v) for v in values}) > 1:
             warnings.append(f"Comparable {required} not established for all selected cells.")
+    training_run_cells = {}
+    for row in rows:
+        for node_id in row["run_ids"]:
+            training_id = state["nodes"][node_id].get("attrs", {}).get("run_id")
+            if training_id is not None:
+                training_run_cells.setdefault(str(training_id), set()).add(row["id"])
+    shared = sorted(run_id for run_id, cell_set in training_run_cells.items() if len(cell_set) > 1)
+    if shared:
+        warnings.append(f"{len(shared)} recorded run_id values recur across selected cells. These may be checkpoint views or identity collisions; do not add per-cell seed counts as independent replicates until reconciled.")
     return {"metric": metric, "rows": rows, "config_keys": keys, "differing_keys": differing,
             "warnings": warnings, "aggregation": "Arithmetic mean and sample SD across unambiguous, completed training seeds; not across episodes. No automatic winner or causal claim."}
 

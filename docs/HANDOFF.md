@@ -1,5 +1,7 @@
 # LabWeft development handoff
 
+[简体中文](HANDOFF.zh-CN.md)
+
 ## Confirmed product choices
 
 Local-first. Existing coding agent is the controller. One user conversation,
@@ -23,7 +25,8 @@ be negative; a full factorial experiment table is not a mandatory goal.
 - `reasoning.py`: descriptive seed comparisons, source drift, bounded scope check.
 - `server.py`: read-only loopback service with token and safe offline export.
 - `cli.py`, `rh.py`, `bootstrap.py`: simple entry points and Skill installation.
-- `static/`: expandable map, relationship view, matrix, decisions, evidence/history.
+- `static/`: expandable map, relationship view, matrix, decisions, evidence/history,
+  bilingual interface and update timeline.
 - `skill/`: one-controller procedure and semantic patch contract.
 - `tests/`: deterministic regression tests; `demo.py`: synthetic showcase.
 
@@ -44,8 +47,9 @@ historical gaps, without requiring retroactive training reruns.
 
 Then improve import adapters (starting with common actual user layouts), durable
 job checkpoints for interrupted long scans, record migrations, source reconciliation,
-component-level UI editing and accessible multilingual UI. Add multi-project
-home and cross-agent compatibility tests before optional remote adapters.
+component-level UI editing and accessibility improvements for the multilingual
+UI. Add multi-project home and cross-agent compatibility tests before optional
+remote adapters.
 
 Do not start by implementing another chat product, GPU scheduler, model gateway,
 plugin marketplace, ten messaging platforms, vector database or public hosting.

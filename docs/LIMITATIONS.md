@@ -1,5 +1,7 @@
 # Known boundaries, not marketing claims
 
+[简体中文](LIMITATIONS.zh-CN.md)
+
 The included code is an alpha prototype created for the agreed local-first,
 one-conversation research-workspace design. It is not a full ClearML replacement.
 
@@ -15,6 +17,14 @@ Hydra's resolved configs, TensorBoard, W&B, ClearML, MLflow, custom robotics log
 and per-episode result formats need adapters or agent-assisted normalization.
 Current source inspection provides a Python symbol index, not a whole-program
 analysis of gradients, information leakage, deployment paths or dynamic imports.
+
+Directory inventory, collected files, parsed runs and checked scientific claims
+have different denominators. Many files can be generated per-run artifacts;
+one source file may support several claims and many files may support none.
+A deliberately sampled subset or a map's node count does not establish
+whole-project interpretation. Older and corrected result views must retain
+distinct identities; completion of one experiment does not complete later
+extensions.
 
 ## Historical identity and statistics
 
@@ -32,6 +42,14 @@ If a run's source evidence changes or disappears, the current aggregate excludes
 that run and warns; its historical snapshot remains inspectable. This does not
 determine whether the old scientific result is valid under a new protocol.
 
+An event timeline records when LabWeft observed a file change or saved a graph
+change, not when an experiment happened. Node changes retain their module at the
+event revision. File filtering by module uses currently linked evidence, so an
+unlinked historical file will appear under all changes without a module match.
+An archived Cell is excluded from the current hierarchy and numeric comparison.
+Historical claims and decisions remain readable with their evidence; the status
+does not mean a source file was deleted or a scientific conclusion was refuted.
+
 ## Persistence and operations
 
 One workspace can attach several source directories. Cross-project overview,
@@ -46,8 +64,8 @@ checkpoint deletion or experiment scheduling is included.
 
 ## Agent integration
 
-The installer and protocol are tested locally, and one bounded private project
-was exercised by following the Skill in a Codex desktop conversation. Automatic
+The installer and protocol are tested locally, and two bounded private projects
+were exercised by following the Skill in a Codex desktop conversation. Automatic
 Skill discovery in a fresh chat and other model clients have not been certified.
 Discovery can vary with client version, policy, sandbox, managed settings and permissions.
 A bare model without filesystem/tool access cannot use this software by itself.
@@ -59,6 +77,11 @@ The UI is read-only. Its refresh button fetches persisted state; it does not
 launch source scanning or semantic reasoning. The one-conversation flow comes
 from the installed Skill. Arbitrary schema editing still requires the host agent
 or CLI. Local/browser views are tested, but not all OS/browser combinations.
+The interface has a Chinese/English switch and optional node-label/description
+translations; absent translations fall back to the original, and raw evidence is
+never machine-translated. Offline HTML omits text by default. Explicit
+`--include-evidence` export copies at most 5 MiB of indexed text snapshots, so
+some indexed sources may remain unreadable in that file; the page marks them.
 
 This is not a hardened public service. Known filename exclusion is not a full
 secret scanner. Treat all source text as untrusted. File hashing alone does not

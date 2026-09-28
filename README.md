@@ -10,6 +10,8 @@ The package has not been published to PyPI.
 
 One conversation. One workspace. No manual multi-agent setup.
 
+## A Skill and a harness
+
 LabWeft is a **harness with a Skill entry point**: the host agent reasons
 about the research, while a small local program indexes evidence, validates
 updates, preserves decisions, compares cells and renders a research map.
@@ -28,12 +30,38 @@ python labweft.py serve ./research-demo --open
 ```
 
 The browser shows an expandable research tree, a relationship view, cell/config
-comparison, source snapshots and decision history. **All demonstration metrics
+comparison, source snapshots and an update timeline. Use the `中文 / English`
+control to change the interface language; a private pilot opens in Chinese by
+default. A node may optionally provide `attrs.i18n.zh` and `attrs.i18n.en`
+labels/descriptions. Missing translations fall back to the recorded original.
+The switch never translates original source evidence or changes scientific
+data. **All demonstration metrics
 and decisions are synthetic. No training was performed.**
 
 An offline interactive page is also generated at
 `research-demo/.research/map.html`. It contains synthetic evidence. For real
 projects, source-text inclusion requires an explicit export option.
+
+The update timeline lists file, node and relation changes under each recorded
+revision. It can filter by change type and research module; node changes keep
+their module identity from the historical event. File-to-module filtering uses
+currently recorded evidence links. The event time is when LabWeft observed or
+recorded a change, not the historical experiment date. The page shows the
+configured scan scope and file count; "scan complete" refers only to those
+configured sources and limits, never to an entire research project.
+
+Status labels have narrow meanings. `Recorded` means an object was indexed;
+`Reported complete` means a source reports a run or evaluation complete;
+`Needs review` names an unresolved evidence or identity issue. `Source-based`
+means organized from sources and is not a human-confirmed claim. `Human
+confirmed` requires an explicit confirmation and scope. `Archived` as a **node
+status** keeps earlier records and evidence without deleting files. An archived
+Cell leaves the current map hierarchy and numeric comparison; archived claims
+and decisions remain visible in the historical decisions list with their sources.
+The status describes a LabWeft node; it does not delete, freeze or verify an
+underlying research project or its files.
+To reduce repetitive warnings, provisional modules, questions and Cells do not
+repeat a badge on every tree card; their status remains available in details.
 
 ## Connect a real project, once
 
@@ -115,6 +143,7 @@ labweft apply /path/to/project /path/to/semantic-patch.json
 labweft validate /path/to/project
 labweft compare /path/to/project --metric success_rate
 labweft export /path/to/project --output /path/to/project/.research/map.html
+labweft export /path/to/project --include-evidence --output /path/to/project/.research/map-with-text.html
 labweft serve /path/to/project --open
 ```
 
@@ -125,6 +154,11 @@ The former `rh` command, `research_harness` Python package, and
 `sync` reads sources; it does not independently infer research motives. `apply`
 accepts the structured analysis written by the host agent after reading evidence.
 See the [patch protocol](research_harness/skill/research-harness/references/PROTOCOL.md).
+Offline export omits source text by default. `--include-evidence` explicitly
+embeds indexed small-text snapshots, including indexed files not linked to a
+semantic node, up to a combined **5 MiB**. Files omitted by that limit or
+without a text snapshot are labelled accordingly and cannot be opened from the
+offline page. The live local view can read known snapshots without this export.
 
 ## Historical judgment test
 
@@ -154,6 +188,25 @@ backed up. The index is not a backup. Moving a workspace preserves its identity;
 rebind the local source mappings on the new machine. Original evidence blobs
 must be transferred deliberately when needed. Git synchronization is manual in
 this prototype; do not publish private experiment records in a public fork.
+For large projects, first state which folders and formats were selected, which
+were excluded or unread, and how many files were actually scanned. Node counts
+in a map are not a measure of whole-project coverage.
+
+A bounded private pilot used staged, selected text files to expose this gap.
+For each source directory, report separately the observed inventory, readable
+text candidates, selected and verified files, indexed records, mapped runs and
+independently replayed experiments. Generated per-run files do not count as
+independent experiments. A map of a selected sample must not imply whole-project
+coverage. Preserve old and corrected result views as distinct evidence and keep
+the completion scope of an earlier experiment separate from later additions.
+
+## Known boundaries
+
+The scanner indexes only configured sources and cannot recover missing historical
+commits or infer why an experiment was run. Custom result formats need an adapter
+or evidence-bound normalization by the host agent. The local record store is not
+a distributed database or artifact backup. A first workspace can connect several
+source folders; a cross-project overview is not implemented. See [Boundaries](docs/LIMITATIONS.md).
 
 ## Safety and privacy
 
@@ -176,7 +229,7 @@ python -m unittest discover -s tests -v
 The included automated checks cover record identity, conservative ingestion,
 conflicts, correction protection, source integrity, scoped reuse, seed aggregation,
 HTML escaping and local HTTP access controls. Browser smoke checks are documented
-in `docs/VALIDATION.md`. These do not establish scientific accuracy, production
+in [Validation](docs/VALIDATION.md). These do not establish scientific accuracy, production
 security, or end-to-end model compatibility.
 
 Before a public beta: run real mixed-format projects through the same host-model

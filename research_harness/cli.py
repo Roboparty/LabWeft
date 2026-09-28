@@ -159,7 +159,7 @@ def parser() -> argparse.ArgumentParser:
     s = sub.add_parser("export", help="Create a private offline interactive HTML snapshot")
     s.add_argument("workspace", nargs="?", default=".")
     s.add_argument("--output", required=True)
-    s.add_argument("--include-evidence", action="store_true", help="Explicitly copy referenced source text into the HTML; may expose private material")
+    s.add_argument("--include-evidence", action="store_true", help="Explicitly copy indexed small-text snapshots into the HTML (up to 5 MiB); may expose private material")
     s = sub.add_parser("serve", help="Open a loopback-only read-only dashboard; no cloud account")
     s.add_argument("workspace", nargs="?", default=".")
     s.add_argument("--port", type=int, default=8787)

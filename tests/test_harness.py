@@ -198,6 +198,55 @@ class WorkspaceTests(unittest.TestCase):
         self.assertTrue(self.store.load()["files"][file["id"]]["missing"])
         self.assertEqual("initial evidence", self.store.read_blob(file["sha256"]))
 
+    def test_timeline_tracks_source_and_map_changes_without_new_event_format(self):
+        source = self.root / "notes.md"
+        source.write_text("first", encoding="utf-8")
+        sync(self.store)
+        state = self.store.load()
+        self.assertEqual("added", state["history"][-1]["changes"]["files"][0]["change"])
+        module = node("module-timeline", "module", "Initial module", state["project"]["id"])
+        self.store.commit({"base_revision": state["revision"], "reason": "Map the module", "nodes": [module]})
+        self.assertEqual("added", self.store.load()["history"][-1]["changes"]["nodes"][0]["change"])
+        source.write_text("second", encoding="utf-8")
+        sync(self.store)
+        self.assertEqual("updated", self.store.load()["history"][-1]["changes"]["files"][0]["change"])
+        state = self.store.load()
+        revised = copy.deepcopy(state["nodes"][module["id"]])
+        revised["label"] = "Revised module"
+        self.store.commit({"base_revision": state["revision"], "reason": "Rename module", "nodes": [revised]})
+        change = self.store.load()["history"][-1]["changes"]["nodes"][0]
+        self.assertEqual("updated", change["change"])
+        self.assertIn("label", change["fields"])
+        state = self.store.load()
+        archived = copy.deepcopy(state["nodes"][module["id"]])
+        archived["status"] = "archived"
+        self.store.commit({"base_revision": state["revision"], "reason": "Retire module", "nodes": [archived]})
+        self.assertEqual("archived", self.store.load()["history"][-1]["changes"]["nodes"][0]["change"])
+        source.unlink()
+        sync(self.store)
+        state = self.store.load()
+        self.assertEqual("missing", state["history"][-1]["changes"]["files"][0]["change"])
+        self.assertEqual(len(state["history"]), state["revision"])
+        self.assertFalse(sync(self.store)["changed"])
+        self.assertEqual(state["history"], self.store.load()["history"])
+
+    def test_timeline_keeps_module_at_time_of_node_update(self):
+        pid = self.store.load()["project"]["id"]
+        first = node("module-first", "module", "First", pid)
+        second = node("module-second", "module", "Second", pid)
+        question = node("question-moving", "question", "Question", first["id"])
+        self.store.commit({"base_revision": 0, "reason": "Initial mapping",
+                           "nodes": [first, second, question]})
+        initial = self.store.load()["history"][-1]["changes"]["nodes"]
+        self.assertEqual(first["id"], next(x for x in initial if x["id"] == question["id"])["module_id"])
+        moved = copy.deepcopy(question)
+        moved["parent_id"] = second["id"]
+        self.store.commit({"base_revision": 1, "reason": "Move question", "nodes": [moved]})
+        state = self.store.load()
+        self.assertEqual(first["id"], next(x for x in state["history"][0]["changes"]["nodes"]
+                                                  if x["id"] == question["id"])["module_id"])
+        self.assertEqual(second["id"], state["history"][-1]["changes"]["nodes"][0]["module_id"])
+
     def test_missing_metric_source_excludes_stale_run_from_current_aggregate(self):
         a = self.run_file("a", 0, .4)
         self.run_file("b", 1, .6)
@@ -345,6 +394,42 @@ class WorkspaceTests(unittest.TestCase):
         self.assertTrue(any("Additional metric source" in x for x in out["scan"]["warnings"]))
         self.assertEqual(.5, compare(self.store.load())["rows"][0]["mean"])
 
+    def test_metric_array_is_indexed_without_inventing_a_run(self):
+        path = self.run_file()
+        json_write(path / "metrics.json", [{"epoch": 1, "top1": 0.3}, {"epoch": 2, "top1": 0.4}])
+        out = sync(self.store)
+        self.assertTrue(any("JSON metric array indexed as source evidence only" in x
+                            for x in out["scan"]["warnings"]))
+        self.assertFalse(any(n["kind"] == "run" for n in self.store.load()["nodes"].values()))
+
+    def test_compare_warns_when_cells_reuse_a_training_run(self):
+        pid = self.store.load()["project"]["id"]
+        entries = []
+        for epoch in (1, 2):
+            config = {"epoch": epoch, "eval_protocol": "p"}
+            cell = node(f"cell-epoch-{epoch}", "cell", f"E{epoch}", pid,
+                        attrs={"config": config})
+            run = node(f"run-epoch-{epoch}", "run", f"E{epoch} eval", cell["id"],
+                       status="completed", attrs={"config": {**config, "seed": 0},
+                                                  "seed": 0, "run_id": "same-training-run",
+                                                  "eval_protocol": "p", "code_revision": "r1",
+                                                  "metrics": {"success_rate": epoch / 10}})
+            entries.extend((cell, run))
+        self.store.commit({"base_revision": 0, "reason": "Two checkpoint evaluations", "nodes": entries})
+        result = compare(self.store.load(), metric="success_rate")
+        self.assertTrue(any("recorded run_id values recur across selected cells" in w
+                            for w in result["warnings"]))
+
+    def test_archived_cell_is_not_in_current_comparison(self):
+        pid = self.store.load()["project"]["id"]
+        archived = node("cell-retired", "cell", "Old cell", pid, status="archived",
+                        attrs={"config": {"eval_protocol": "p"}})
+        run = node("run-retired", "run", "Old run", archived["id"], status="completed",
+                   attrs={"config": {"eval_protocol": "p", "seed": 0}, "seed": 0,
+                          "eval_protocol": "p", "metrics": {"success_rate": 0.9}})
+        self.store.commit({"base_revision": 0, "reason": "Archive old cell", "nodes": [archived, run]})
+        self.assertEqual([], compare(self.store.load(), metric="success_rate")["rows"])
+
     def test_old_results_file_cannot_replace_removed_primary_metric(self):
         path = self.run_file()
         json_write(path / "run.json", {"eval_protocol": "v1"})
@@ -463,6 +548,16 @@ class WorkspaceTests(unittest.TestCase):
         self.assertNotIn('</script><script>alert(1)</script>', text)
         self.assertIn('\\u003c/script\\u003e', text)
         self.assertNotIn('src="/app.js"', text)
+
+    def test_offline_export_includes_unreferenced_indexed_text(self):
+        (self.root / "unmapped.md").write_text("Unmapped source content", encoding="utf-8")
+        sync(self.store)
+        item = next(f for f in self.store.load()["files"].values() if f["path"] == "unmapped.md")
+        output = Path(self.temp.name) / "with-evidence.html"
+        export_html(self.store, output, include_evidence=True)
+        payload = output.read_text(encoding="utf-8").partition(
+            '<script id="snapshot-data" type="application/json">')[2].partition("</script>")[0]
+        self.assertEqual("Unmapped source content", json.loads(payload)["evidence_texts"][item["sha256"]])
 
     def test_skill_install_refuses_user_overwrite(self):
         result = install_skill("codex", self.root, False)
