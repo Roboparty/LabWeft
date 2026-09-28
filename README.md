@@ -38,6 +38,16 @@ The switch never translates original source evidence or changes scientific
 data. **All demonstration metrics
 and decisions are synthetic. No training was performed.**
 
+The agent should first draft a sourced scientific outline: research questions,
+method and baseline families, study and nested ablation design, endpoints and
+candidate main findings. It then verifies each finding against actual conditions
+and result evidence. Directory and phase names locate files; they do not define
+the scientific map. Optional `attrs.role`, `attrs.design` and `attrs.finding`
+metadata keep this structure project-specific. Main findings appear in the map
+and at the top of the findings page by research theme; audit/status notes remain
+available in a collapsed section. A prominent finding requires direct evidence
+and scope. A scientific finding is distinct from a scoped research decision.
+
 An offline interactive page is also generated at
 `research-demo/.research/map.html`. It contains synthetic evidence. For real
 projects, source-text inclusion requires an explicit export option.

@@ -34,6 +34,11 @@ below use legacy `rh` as shorthand for that same CLI. Quote all paths.
 - Never claim a historical run used today's code. Unknown stays unknown.
 - Never infer a loss, weight, module behavior, purpose, completion, or conclusion
   from a directory or experiment name alone. Check effective config and code.
+- A directory, phase number, table number, or report filename is a source locator,
+  not a scientific category. Organize the map by the project's actual hypotheses,
+  method families, baselines, experiment design, and evaluation questions. The
+  resulting hierarchy is project-specific; never impose one project's taxonomy
+  on another.
 - Existing user-confirmed decisions are constraints, not suggestions to forget.
   User testimony with missing source files is retained as user-confirmed history,
   not mislabeled as audited experiment data and not grounds to demand a rerun.
@@ -62,11 +67,35 @@ below use legacy `rh` as shorthand for that same CLI. Quote all paths.
    follow `next_start_line` when needed. Inspect the actual implementation path,
    input flow and objective use, not only the config diff. YAML and custom logs
    are indexed, but do not pretend they were automatically semantically parsed.
-4. **Map research objects.** Use `rh context WORKSPACE --full` or `--node ID`.
-   Reuse IDs. Map modules → questions → cells → runs → evaluations; connect shared
+4. **Build a scientific outline before mapping files.** Read the project's own
+   paper, final report, experiment plan, code path and prior researcher corrections
+   when available. Write a short, source-attributed outline of the objective,
+   method and baseline families, hypotheses, study groups, controlled factors,
+   evaluation endpoints, and main *candidate* findings. State which facts come
+   from sources, the researcher, or agent interpretation. Do not promote a
+   directory hierarchy into this outline. If accounts conflict, retain their
+   version and scope instead of choosing a convenient narrative.
+5. **Map the experiment design and testable claims.** Use `rh context WORKSPACE
+   --full` or `--node ID` and reuse IDs. Nest modules for project-specific
+   research tracks, studies and ablation groups; connect questions → cells → runs
+   → evaluations. Record which factor each comparison changes, which conditions
+   are held constant, and which are unknown or co-varying. Connect shared
    baselines with edges rather than duplicating their run identities. A cell is
-   one scientific condition, not one seed. Separate recorded purpose, agent
-   inference and user-confirmed purpose. Missing historic inputs are explicit gaps.
+   one scientific condition, not one seed. Distinguish a scientific finding from
+   an audit/status note. For an effect claim, record the compared arms, metric,
+   unit, dataset/task, protocol, independent sample unit, estimate and scope;
+   leave missing values unknown. A mechanistic interpretation must be labeled as
+   an interpretation with supporting ablations and counterevidence. Use the
+   optional, backward-compatible `role`, `design` and `finding` metadata in
+   [PROTOCOL.md](references/PROTOCOL.md). Do not create a `decision` merely to
+   make a scientific claim look final; a decision records a scoped action or
+   reuse choice.
+6. **Verify claims from evidence backwards.** Trace each main finding to the
+   report/table, exact result rows, effective configuration, implementation and
+   run/evaluation identity. Check numerator, denominator, percentage versus
+   percentage points, training seeds versus evaluation episodes, cohort/readout,
+   and negative or contradictory results. Separate source-reported summaries
+   from independently recalculated values. Missing historical inputs are gaps.
    If a custom JSON/CSV report contains usable per-run values but the scanner did
    not recognize its layout, map those values to evidence-bound Cell and Run
    nodes in the semantic patch. Verify run identity, seed, completion, protocol
@@ -75,20 +104,20 @@ below use legacy `rh` as shorthand for that same CLI. Quote all paths.
    from per-run values where possible, and record whether SD is sample or
    population SD before comparing variability across reports. Use the minimal
    custom-result Cell/Run example in [PROTOCOL.md](references/PROTOCOL.md).
-5. **Check history before recommending work.** Read every relevant protected
+7. **Check history before recommending work.** Read every relevant protected
    decision, including scope, source, and reopening conditions. Use `rh assess
    WORKSPACE PROPOSAL.json` for a bounded mechanical scope check. Treat its result
    as supporting evidence, not an oracle. Match the scientific question and all
    material conditions. A new seed is replication, not automatically a duplicate.
    Matched names are not proof of equivalence; changed hardware is not automatically
    a reason for another ablation. Unknown is not false.
-6. **Commit one coherent update.** Prepare a patch from the current `base_revision`
+8. **Commit one coherent update.** Prepare a patch from the current `base_revision`
    using [PROTOCOL.md](references/PROTOCOL.md). Include sources for factual claims
    and reasons for changes. `rh apply WORKSPACE PATCH.json` validates then writes
    atomically. On conflict, reload and reconcile; never force overwrite. Preserve
    human-protected corrections. Review source-drift flags without declaring every
    old conclusion invalid.
-7. **Check and visualize.** Run `rh validate WORKSPACE` and `rh compare WORKSPACE`.
+9. **Check and visualize.** Run `rh validate WORKSPACE` and `rh compare WORKSPACE`.
    Current comparisons exclude runs whose metric evidence changed or disappeared;
    their old snapshots remain historical evidence. Address mechanical errors,
    not by weakening provenance. Export with `rh export
@@ -98,13 +127,18 @@ below use legacy `rh` as shorthand for that same CLI. Quote all paths.
    do not block the conversation with an indefinite foreground process. Use the
    host's supported process management only when requested, or give the one start
    command. No manual graph drawing or extra user-operated agent is needed.
-8. **Report outcome.** State what was linked, what conclusions have support, what
+10. **Report outcome.** State the scientific outline, what was linked, which
+   testable conclusions have support and their scope, what negative or conflicting
+   evidence qualifies them, what
    remains unknown, what old decisions were reused, and where the map is. For
    each suggested experiment, say which unresolved question it answers, why old
    evidence is insufficient, how either outcome would change a decision, and
    whether reanalysis/evaluation can answer it first. "No new experiment needed"
    and "narrow the claim instead" are valid results. Never require a full factorial
-   ablation matrix merely because cells could be filled.
+   ablation matrix merely because cells could be filled. On each incremental sync,
+   decide whether a new source changes an existing study, factor comparison,
+   finding, or scope before adding a new branch; preserve old IDs and explain
+   changed interpretations in the transaction reason.
 
 Ask at most one consolidated clarification when a material ambiguity blocks
 progress. Otherwise record uncertainty and finish everything non-blocked. Do not

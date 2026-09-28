@@ -16,12 +16,29 @@ words.zh.compareSearch = '筛选实验条件…'; words.en.compareSearch = 'Filt
 words.zh.selectVisible = '选择筛选结果'; words.en.selectVisible = 'Select filtered';
 words.zh.clearSelection = '清空选择'; words.en.clearSelection = 'Clear selection';
 words.zh.selectedCells = '已选 {count} 个 Cell'; words.en.selectedCells = '{count} cells selected';
+Object.assign(words.zh,{researchLogic:'研究逻辑：按研究问题、方法与实验设计组织；目录和阶段只用于定位来源。',mainFindings:'核心研究结论',secondaryFindings:'补充研究结论',historicalDecisions:'研究决策',auditRecords:'来源核对与其他记录',noMainFindings:'尚未标注有证据的核心研究结论。请先核对研究问题、比较条件和结果来源。',noHistoricalDecisions:'尚无单独记录的研究决策。',sourceBasis:'证据级别',findingScope:'结论范围',findingType:'结论类型',researchTheme:'研究主题',otherTheme:'跨主题记录',primaryFinding:'核心结论',secondaryFinding:'补充结论'});
+Object.assign(words.en,{researchLogic:'Research logic follows questions, methods and study designs; directories and phases locate sources.',mainFindings:'Main research findings',secondaryFindings:'Supporting research findings',historicalDecisions:'Research decisions',auditRecords:'Source audits and other records',noMainFindings:'No sourced main finding has been marked yet. Check the research question, comparison and results first.',noHistoricalDecisions:'No separate research decision has been recorded.',sourceBasis:'Evidence basis',findingScope:'Finding scope',findingType:'Finding type',researchTheme:'Research theme',otherTheme:'Cross-theme records',primaryFinding:'Main finding',secondaryFinding:'Supporting finding'});
+Object.assign(words.zh,{researchRole:'研究角色',studyDesign:'实验设计',role_research_area:'研究主题',role_method_family:'方法族',role_baseline_family:'基线族',role_study:'实验系列',role_ablation_group:'消融组',role_generalization:'泛化实验',role_evidence_audit:'来源核对'});
+Object.assign(words.en,{researchRole:'Research role',studyDesign:'Study design',role_research_area:'Research area',role_method_family:'Method family',role_baseline_family:'Baseline family',role_study:'Study',role_ablation_group:'Ablation group',role_generalization:'Generalization',role_evidence_audit:'Evidence audit'});
+Object.assign(words.zh,{finding_effect:'效果',finding_mechanism_interpretation:'机制解释',finding_negative_result:'负结果',finding_boundary:'适用边界',finding_status:'进展状态',basis_source_report:'来源报告',basis_source_recalculation:'按来源复算',basis_independent_rerun:'独立重跑',basis_user_testimony:'研究者说明'});
+Object.assign(words.en,{finding_effect:'Effect',finding_mechanism_interpretation:'Mechanism interpretation',finding_negative_result:'Negative result',finding_boundary:'Scope boundary',finding_status:'Progress status',basis_source_report:'Source report',basis_source_recalculation:'Recalculated from source',basis_independent_rerun:'Independent rerun',basis_user_testimony:'Researcher account'});
+words.zh.decisionsTitle='先看研究发现，再追溯证据。'; words.en.decisionsTitle='Start with findings, then trace the evidence.';
+words.zh.decisionsSubtitle='核心结论按研究主题组织；来源核对和决策分别保留。'; words.en.decisionsSubtitle='Main findings follow research themes; source audits and decisions stay distinct.';
+words.zh.prompt='使用 LabWeft 整理当前科研项目{project}。先读已有状态、最终报告、实验设计与研究者纠正，写出有来源的科学纲要：目标、方法与基线、研究问题、实验系列、消融因素、评价终点及候选核心结论。按科学设计建分层地图，不把目录名或阶段号当作科学分类。逐条从结论反向核对报告、实际配置、逐运行结果与反证；只将有证据且有适用范围的结论设为核心。增量文件应更新已有研究关系与结论，不重复建立运行身份。不要启动实验、修改研究代码或上传数据。';
+words.en.prompt='Use LabWeft to organize this research project {project}. First read existing state, final reports, study plans and researcher corrections. Draft a sourced scientific outline: objective, methods and baselines, questions, study hierarchy, ablation factors, endpoints and candidate main findings. Organize the map by study design, not directory names or phase numbers. Verify each finding backwards through reports, effective configurations, run results and counterevidence; mark a main finding only with evidence and scope. New files should update existing research relationships and conclusions without duplicating run identity. Do not start experiments, change research code or upload data.';
 const pretty = x => x === null || x === undefined ? t('unknown') : typeof x === 'object' ? JSON.stringify(x) : String(x);
 const canonical = x => Array.isArray(x) ? `[${x.map(canonical).join(',')}]` : x && typeof x==='object' ? `{${Object.keys(x).sort().map(k=>`${JSON.stringify(k)}:${canonical(x[k])}`).join(',')}}` : JSON.stringify(x);
 const label = n => t(n.kind) === n.kind ? n.kind : t(n.kind);
 const statusText = status => t(status) === status ? status || t('recorded') : t(status);
 function displayLabel(node) { const value=node?.attrs?.i18n?.[lang]?.label; return typeof value==='string'&&value.trim()?value:node?.label||''; }
 function displayDescription(node) { const value=node?.attrs?.i18n?.[lang]?.description; return typeof value==='string'&&value.trim()?value:node?.description||''; }
+function findingPriority(n) { const p=n?.attrs?.finding?.priority; return p==='primary'||p==='secondary'||p==='audit'?p:'uncategorized'; }
+function isFeaturedClaim(n) { return n.kind==='claim'&&['primary','secondary'].includes(findingPriority(n)); }
+function themeOf(n) { let current=n, root=null, seen=new Set(); while(current&&!seen.has(current.id)){seen.add(current.id);if(current.kind==='module')root=current;current=data.nodes[current.parent_id];}return root; }
+function findingSummary(n) { const f=n.attrs?.finding||{},e=f.endpoint||{},v=f.estimate||{}; const result=v.delta!==undefined?v.delta:v.value; const resultText=result===undefined?'':`${typeof result==='number'&&result>0&&v.delta!==undefined?'+':''}${result} ${e.unit||''}`.trim(); return [e.dataset||e.task,e.metric,resultText,v.n===undefined?'':`n=${v.n} ${v.sample_unit||''}`.trim()].filter(Boolean).join(' · '); }
+function enumLabel(prefix,value){const key=prefix+value;return t(key)===key?value:t(key);}
+function roleLabel(n){const role=n.attrs?.role;return role?t('role_'+role)==='role_'+role?role:t('role_'+role):'';}
+function initialExpanded(){const ids=new Set(Object.values(data.nodes).filter(n=>n.kind==='module'&&n.attrs?.role!=='evidence_audit').map(n=>n.id));for(const n of Object.values(data.nodes).filter(n=>n.kind==='claim'&&findingPriority(n)==='primary')){let parent=n.parent_id,seen=new Set();while(data.nodes[parent]&&!seen.has(parent)){seen.add(parent);ids.add(parent);parent=data.nodes[parent].parent_id;}}return ids;}
 let data, view='map', selected=null, layout='tree', filter='', compareFilter='', cellSelection=new Set(), metric='success_rate', differentOnly=false;
 let expanded = new Set(), token='', savedKey='', sourcePage=0, historyType='all', historyModule='all';
 const snap = $('snapshot-data');
@@ -31,16 +48,16 @@ function mapBadge(n) { return n.status==='provisional'&&['module','question','ce
 function canOpenEvidence(sha) { return !!sha && (!snap || typeof data.evidence_texts?.[sha] === 'string'); }
 function staticLanguage(){document.documentElement.lang=lang==='zh'?'zh-CN':'en';document.querySelectorAll('[data-i18n]').forEach(el=>{if(el.id==='project-name'&&data)return;el.textContent=t(el.dataset.i18n);});document.querySelectorAll('[data-lang]').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.lang===lang)));document.title=`LabWeft · ${t('workspace')}`;}
 function setLanguage(next){if(next!==lang){lang=next;try{localStorage.setItem('labweft-language',lang);}catch(_){}}staticLanguage();if(data){loadLabels();render();}}
-function storageWrite() { try { localStorage.setItem(savedKey,JSON.stringify({expanded:[...expanded],selected,layout})); } catch (_) {} }
+function storageWrite() { try { localStorage.setItem(savedKey,JSON.stringify({version:2,expanded:[...expanded],selected,layout})); } catch (_) {} }
 function toast(msg) { $('toast').textContent=msg;$('toast').hidden=false;setTimeout(()=>$('toast').hidden=true,3300); }
 async function api(path) {const response=await fetch(path,{headers:{'X-Research-Token':token}});if(!response.ok)throw new Error(await response.text());return response;}
 async function load() {
  try {
   data = snap ? JSON.parse(snap.textContent) : await (await api('/api/state')).json();
   savedKey='rh-view-'+data.project.id;
-  expanded=new Set(Object.values(data.nodes).filter(n=>n.kind==='module'||n.id==='question-history').map(n=>n.id));
-  try { const old=JSON.parse(localStorage.getItem(savedKey)||'null');if(old){expanded=new Set(old.expanded||[]);selected=old.selected;layout=old.layout||'tree';} else { expanded=new Set(Object.values(data.nodes).filter(n=>n.kind==='module'||n.id==='question-history').map(n=>n.id)); } }catch(_){}
-  if(!selected || !data.nodes[selected])selected=Object.values(data.nodes).find(n=>n.kind==='decision')?.id || Object.values(data.nodes)[0]?.id;
+  expanded=initialExpanded();
+  try { const old=JSON.parse(localStorage.getItem(savedKey)||'null');if(old?.version===2){expanded=new Set(old.expanded||[]);selected=old.selected;layout=old.layout||'tree';} }catch(_){}
+  if(!selected || !data.nodes[selected])selected=Object.values(data.nodes).find(n=>n.kind==='claim'&&findingPriority(n)==='primary')?.id || Object.values(data.nodes).find(n=>n.kind==='module')?.id || Object.values(data.nodes)[0]?.id;
   for(const id of cellSelection)if(data.nodes[id]?.kind!=='cell'||data.nodes[id].status==='archived')cellSelection.delete(id);
   if(!cellSelection.size){const available=Object.values(data.nodes).filter(n=>n.kind==='cell'&&n.status!=='archived');if(available.length<=8)available.forEach(n=>cellSelection.add(n.id));}
    loadLabels();
@@ -72,12 +89,12 @@ function render() {
 }
 function hasMatch(n) {if(!filter)return true;return (displayLabel(n)+' '+displayDescription(n)+' '+n.label+' '+n.description+' '+n.id).toLowerCase().includes(filter.toLowerCase())||children(n.id).some(hasMatch);}
 function treeNode(n) {
- const kids=children(n.id).filter(k=>!['claim','decision'].includes(k.kind)).filter(hasMatch), open=expanded.has(n.id)||!!filter;
- const sub = n.kind==='cell'?Object.entries(n.attrs?.config||{}).filter(([k])=>['history_length','prediction_weight','hardware'].includes(k)).map(([k,v])=>`${k}=${pretty(v)}`).join(' · '):'';
+ const kids=children(n.id).filter(k=>k.kind!=='decision'&&(k.kind!=='claim'||isFeaturedClaim(k))).filter(hasMatch), open=expanded.has(n.id)||!!filter;
+ const sub = n.kind==='cell'?Object.entries(n.attrs?.config||{}).filter(([k])=>['history_length','prediction_weight','hardware'].includes(k)).map(([k,v])=>`${k}=${pretty(v)}`).join(' · '):n.kind==='claim'?findingSummary(n):n.kind==='module'?roleLabel(n):'';
  return `<li class="node-wrap"><div class="node-card ${selected===n.id?'selected':''}" data-select="${esc(n.id)}" role="button" tabindex="0"><button class="node-toggle" data-toggle="${esc(n.id)}" aria-label="${esc(t('expandToggle'))} ${esc(displayLabel(n))}" aria-expanded="${open}">${kids.length?(open?'⌄':'›'):'·'}</button><span class="node-dot ${esc(n.kind)}"></span><span class="node-label">${esc(displayLabel(n))}${sub?`<small class="node-sub">${esc(sub)}</small>`:''}</span>${kids.length?`<span class="node-count">${kids.length} ${esc(t('childItems'))}</span>`:''}${mapBadge(n)}</div>${kids.length&&open?`<ul class="tree-list">${kids.map(treeNode).join('')}</ul>`:''}</li>`;
 }
 function renderMap() {
- $('content').innerHTML=`<div class="panel-head"><div><h2>${esc(t('mapPanel'))}</h2><small>PROJECT → QUESTION → CELL → RUN → EVIDENCE</small></div><div class="panel-tools"><div class="view-switch"><button data-layout="tree" class="${layout==='tree'?'active':''}">${esc(t('tree'))}</button><button data-layout="lineage" class="${layout==='lineage'?'active':''}">${esc(t('relationsView'))}</button></div><button id="expand-all">${esc(t('expand'))}</button><button id="collapse-all">${esc(t('collapse'))}</button></div></div><div class="search-wrap"><input class="search" id="map-search" placeholder="${esc(t('mapSearch'))}" value="${esc(filter)}" aria-label="${esc(t('mapSearch'))}"></div><div id="map-body"></div><div class="tree-hint">${esc(t('mapHint'))}</div><details class="status-help"><summary>${esc(t('statusInfoTitle'))}</summary><p>${esc(t('statusInfo'))}</p></details>`;
+ $('content').innerHTML=`<div class="panel-head"><div><h2>${esc(t('mapPanel'))}</h2><small>${esc(t('researchLogic'))}</small></div><div class="panel-tools"><div class="view-switch"><button data-layout="tree" class="${layout==='tree'?'active':''}">${esc(t('tree'))}</button><button data-layout="lineage" class="${layout==='lineage'?'active':''}">${esc(t('relationsView'))}</button></div><button id="expand-all">${esc(t('expand'))}</button><button id="collapse-all">${esc(t('collapse'))}</button></div></div><div class="search-wrap"><input class="search" id="map-search" placeholder="${esc(t('mapSearch'))}" value="${esc(filter)}" aria-label="${esc(t('mapSearch'))}"></div><div id="map-body"></div><div class="tree-hint">${esc(t('mapHint'))}</div><details class="status-help"><summary>${esc(t('statusInfoTitle'))}</summary><p>${esc(t('statusInfo'))}</p></details>`;
  $('map-search').addEventListener('input',e=>{filter=e.target.value;drawMapBody();});
  $('expand-all').onclick=()=>{Object.keys(data.nodes).forEach(id=>expanded.add(id));storageWrite();drawMapBody();};
  $('collapse-all').onclick=()=>{expanded.clear();storageWrite();drawMapBody();};
@@ -85,11 +102,11 @@ function renderMap() {
  drawMapBody();
 }
 function drawMapBody() {
- const rootNodes=children(data.project.id).filter(n=>!['claim','decision'].includes(n.kind)).filter(hasMatch);
+ const rootNodes=children(data.project.id).filter(n=>n.kind!=='decision'&&(n.kind!=='claim'||isFeaturedClaim(n))).filter(hasMatch);
  if(layout==='tree')$('map-body').innerHTML=`<div class="tree"><ul class="tree-list">${rootNodes.map(treeNode).join('')||`<div class="empty">${esc(t('mapEmpty'))}</div>`}</ul></div>`;
  else {
-  const groups=['module','question','cell'];
-   $('map-body').innerHTML=`<div class="lineage-board" id="lineage-board"><svg id="lineage-svg" class="lineage-svg" aria-hidden="true"></svg><div class="lineage-grid">${groups.map(kind=>`<div><div class="lane-label">${esc(t(kind))}</div>${Object.values(data.nodes).filter(n=>n.kind===kind&&n.status!=='archived'&&hasMatch(n)).sort(sortNodes).map(n=>`<div class="lane-node ${n.id===selected?'selected':''}" id="lane-${esc(n.id)}" data-select="${esc(n.id)}" tabindex="0" role="button">${esc(displayLabel(n))}<small>${n.status==='provisional'?'':esc(statusText(n.status))+' · '}${children(n.id).length} ${esc(t('childItems'))}</small></div>`).join('')}</div>`).join('')}</div></div>`;
+  const groups=['module','question','cell','claim'];
+   $('map-body').innerHTML=`<div class="lineage-board" id="lineage-board"><svg id="lineage-svg" class="lineage-svg" aria-hidden="true"></svg><div class="lineage-grid">${groups.map(kind=>`<div><div class="lane-label">${esc(t(kind))}</div>${Object.values(data.nodes).filter(n=>n.kind===kind&&n.status!=='archived'&&(kind!=='claim'||isFeaturedClaim(n))&&hasMatch(n)).sort(sortNodes).map(n=>`<div class="lane-node ${n.id===selected?'selected':''}" id="lane-${esc(n.id)}" data-select="${esc(n.id)}" tabindex="0" role="button">${esc(displayLabel(n))}<small>${n.status==='provisional'?'':esc(statusText(n.status))+' · '}${children(n.id).length} ${esc(t('childItems'))}</small></div>`).join('')}</div>`).join('')}</div></div>`;
   requestAnimationFrame(drawLines);
  }
  bindNodeButtons($('map-body'));
@@ -107,6 +124,8 @@ function renderDetail(){
  if(!n){$('detail').innerHTML=`<div class="eyebrow">${esc(t('inspector'))}</div><h2>${esc(t('selectObject'))}</h2><p class="description">${esc(t('selectObjectHelp'))}</p>`;return;}
  const refs=n.evidence||[],related=Object.values(data.edges).filter(e=>e.source===n.id||e.target===n.id),attrs=n.attrs||{};
  let html=`<div class="eyebrow">${esc(label(n))} · ${esc(t('inspector'))}</div><h2>${esc(displayLabel(n))}</h2>${badge(n)} ${n.protected?`<span class="badge">${esc(t('protected'))}</span>`:''}<p class="description">${esc(displayDescription(n)||t('noDescription'))}</p><details class="status-help"><summary>${esc(t('statusInfoTitle'))}</summary><p>${esc(t('statusInfo'))}</p></details>`;
+ if(attrs.role)html+=`<div class="detail-section"><h3>${esc(t('researchRole'))}</h3><div class="note">${esc(roleLabel(n))}</div></div>`;
+ if(attrs.design)html+=`<div class="detail-section"><h3>${esc(t('studyDesign'))}</h3>${kv(attrs.design)}</div>`;
  if(attrs.config)html+=`<div class="detail-section"><h3>${esc(t('actualConditions'))}</h3>${kv(attrs.config)}</div>`;
  if(attrs.metrics)html+=`<div class="detail-section"><h3>${esc(t('results'))}</h3>${kv(attrs.metrics)}<p class="description">${esc(attrs.metric_selection||attrs.selection||'')}</p></div>`;
  if(n.kind==='run')html+=`<div class="detail-section"><h3>${esc(t('runIdentity'))}</h3>${kv({seed:attrs.seed,code_revision:attrs.code_revision,eval_protocol:attrs.eval_protocol,identity:attrs.identity_basis})}</div>`;
@@ -114,6 +133,7 @@ function renderDetail(){
  if(attrs.reopen_if)html+=`<div class="detail-section"><h3>${esc(t('reopenIf'))}</h3><div class="note">${esc(attrs.reopen_if)}</div></div>`;
  if(n.confirmation)html+=`<div class="detail-section"><h3>${esc(t('confirmation'))}</h3><div class="note">${esc(n.confirmation.note)}<br><small>${esc(n.confirmation.reviewer)} · ${esc(n.confirmation.at)}</small></div></div>`;
  if(attrs.next_action)html+=`<div class="detail-section"><h3>${esc(t('nextAction'))}</h3><div class="note">${esc(attrs.next_action)}</div></div>`;
+ if(attrs.finding){const f=attrs.finding;html+=`<div class="detail-section"><h3>${esc(t('findingScope'))}</h3>${f.type?`<div class="note">${esc(t('findingType'))}: ${esc(enumLabel('finding_',f.type))}</div>`:''}${f.endpoint?kv(f.endpoint):''}${f.estimate?kv(f.estimate):''}${f.basis?`<p class="description">${esc(t('sourceBasis'))}: ${esc(enumLabel('basis_',f.basis))}</p>`:''}</div>`;}
  html+=`<div class="detail-section"><h3>${esc(t('sources'))} · ${refs.length}</h3>${refs.map(r=>{const f=data.files[r.file_id]||{},available=canOpenEvidence(r.sha256);return `<button class="evidence-btn" data-sha="${esc(r.sha256)}" data-title="${esc((f.source||'')+'/'+(f.path||r.file_id))}" ${available?'':'disabled'}>${esc(f.path||r.file_id)}<small>${esc(r.locator)} · ${esc((r.sha256||'').slice(0,12))}${snap&&!available?' · '+esc(t('offlineTextOmitted')):''}</small></button>`;}).join('')||`<div class="muted" style="font-size:11px;line-height:1.8">${esc(t('noDirectEvidence'))}</div>`}</div>`;
  if(n.evidence_ids?.length)html+=`<div class="detail-section"><h3>${esc(t('linkedEvidence'))}</h3>${n.evidence_ids.map(id=>`<button class="relation-btn" data-jump="${esc(id)}">${esc(displayLabel(data.nodes[id])||id)} ↗</button>`).join('')}</div>`;
  if(related.length)html+=`<div class="detail-section"><h3>${esc(t('relations'))}</h3>${related.map(e=>{const id=e.source===n.id?e.target:e.source;return `<button class="relation-btn" data-jump="${esc(id)}">${esc(e.relation)} · ${esc(displayLabel(data.nodes[id])||id)}</button>`;}).join('')}</div>`;
@@ -170,7 +190,13 @@ function renderCompare(){
 }
 function renderDecisions(){
  const nodes=Object.values(data.nodes).filter(n=>['decision','claim'].includes(n.kind));
- $('content').innerHTML=`<div class="panel-head"><div><h2>${esc(t('decisionsPanel'))}</h2><small>${esc(t('decisionsHint'))}</small></div></div><div class="decision-list">${nodes.map(n=>`<article class="decision" data-select="${esc(n.id)}" tabindex="0" role="button">${badge(n)} ${n.protected?`<span class="badge">${esc(t('protected'))}</span>`:''}<h3>${esc(displayLabel(n))}</h3><p>${esc(displayDescription(n))}</p><div class="decision-meta">${esc(t(n.kind))} · ${n.evidence?.length||0} ${esc(t('directSources'))} · ${n.evidence_ids?.length||0} ${esc(t('linkedObjects'))} ↗</div></article>`).join('')||`<div class="empty">${esc(t('noDecisions'))}</div>`}</div><details class="status-help"><summary>${esc(t('statusInfoTitle'))}</summary><p>${esc(t('statusInfo'))}</p></details>`;bindNodeButtons($('content'));
+ const card=n=>`<article class="decision" data-select="${esc(n.id)}" tabindex="0" role="button">${badge(n)} ${n.protected?`<span class="badge">${esc(t('protected'))}</span>`:''}<h3>${esc(displayLabel(n))}</h3><p>${esc(displayDescription(n))}</p>${findingSummary(n)?`<div class="finding-summary">${esc(findingSummary(n))}</div>`:''}<div class="decision-meta">${esc(t(n.kind))} · ${n.evidence?.length||0} ${esc(t('directSources'))} · ${n.evidence_ids?.length||0} ${esc(t('linkedObjects'))} ↗</div></article>`;
+ const themed=list=>{const groups=new Map();for(const n of list){const theme=themeOf(n),key=theme?.id||'_other';if(!groups.has(key))groups.set(key,{theme,items:[]});groups.get(key).items.push(n);}return [...groups.values()].map(g=>`<section class="finding-theme"><h4>${esc(g.theme?displayLabel(g.theme):t('otherTheme'))}</h4>${g.items.map(card).join('')}</section>`).join('');};
+ const primary=nodes.filter(n=>n.kind==='claim'&&findingPriority(n)==='primary');
+ const secondary=nodes.filter(n=>n.kind==='claim'&&findingPriority(n)==='secondary');
+ const decisions=nodes.filter(n=>n.kind==='decision');
+ const audit=nodes.filter(n=>n.kind==='claim'&&!['primary','secondary'].includes(findingPriority(n)));
+ $('content').innerHTML=`<div class="panel-head"><div><h2>${esc(t('decisionsPanel'))}</h2><small>${esc(t('decisionsHint'))}</small></div></div><div class="decision-list"><section class="finding-section"><h3>${esc(t('mainFindings'))}</h3>${primary.length?themed(primary):`<div class="finding-empty">${esc(t('noMainFindings'))}</div>`}</section>${secondary.length?`<section class="finding-section"><h3>${esc(t('secondaryFindings'))}</h3>${themed(secondary)}</section>`:''}<section class="finding-section"><h3>${esc(t('historicalDecisions'))}</h3>${decisions.length?themed(decisions):`<div class="finding-empty">${esc(t('noHistoricalDecisions'))}</div>`}</section>${audit.length?`<details class="audit-records"><summary>${esc(t('auditRecords'))} · ${audit.length}</summary>${themed(audit)}</details>`:''}</div><details class="status-help"><summary>${esc(t('statusInfoTitle'))}</summary><p>${esc(t('statusInfo'))}</p></details>`;bindNodeButtons($('content'));
 }
 function renderSources(){
  $('content').innerHTML=`<div class="panel-head"><div><h2>${esc(t('sourcesPanel'))}</h2><small>${esc(t('sourcesHint'))}</small></div></div><div class="search-wrap"><input class="search" id="source-search" placeholder="${esc(t('sourcesSearch'))}" value="${esc(filter)}"></div><div class="source-list" id="source-list"></div>`;

@@ -532,6 +532,16 @@ class WorkspaceTests(unittest.TestCase):
         with self.assertRaises(HarnessError):
             self.store.commit({"base_revision": 0, "reason": "unsupported", "nodes": [n]})
 
+    def test_prominent_finding_requires_source_and_scope_without_breaking_old_claims(self):
+        pid = self.store.load()["project"]["id"]
+        legacy = node("claim-legacy", "claim", "Older note", pid)
+        self.store.commit({"base_revision": 0, "reason": "legacy claim", "nodes": [legacy]})
+        featured = node("claim-main", "claim", "Main finding", pid,
+                        attrs={"finding": {"priority": "primary", "type": "effect"}})
+        with self.assertRaisesRegex(HarnessError, "direct evidence and scope"):
+            self.store.commit({"base_revision": 1, "reason": "no source", "nodes": [featured]})
+        self.assertIn("claim-legacy", self.store.load()["nodes"])
+
     def test_source_text_not_executed(self):
         marker = self.root / "EXECUTED"
         (self.root / "evil.py").write_text(f'from pathlib import Path\nPath({str(marker)!r}).write_text("bad")')

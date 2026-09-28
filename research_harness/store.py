@@ -176,6 +176,17 @@ def validate_state(state: dict) -> None:
             raise HarnessError(f"evidence_ids must be an array: {key}")
         if not isinstance(node.get("attrs", {}), dict):
             raise HarnessError(f"attrs must be an object: {key}")
+        finding = node.get("attrs", {}).get("finding")
+        if finding is not None:
+            if node["kind"] != "claim" or not isinstance(finding, dict):
+                raise HarnessError(f"finding metadata belongs to a claim object: {key}")
+            if finding.get("priority") not in {None, "primary", "secondary", "audit"}:
+                raise HarnessError(f"Unknown finding priority: {key}")
+            if finding.get("type") not in {None, "effect", "mechanism_interpretation", "negative_result", "boundary", "status"}:
+                raise HarnessError(f"Unknown finding type: {key}")
+            if finding.get("priority") in {"primary", "secondary"}:
+                if not node.get("evidence") or not node.get("attrs", {}).get("scope"):
+                    raise HarnessError(f"Prominent finding needs direct evidence and scope: {key}")
         parent = node.get("parent_id", project_id)
         if parent not in nodes and parent != project_id:
             raise HarnessError(f"Unknown parent {parent} for {key}")

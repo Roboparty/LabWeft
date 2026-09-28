@@ -32,6 +32,21 @@ button.history-change:hover{background:var(--soft)}
 .history-legacy{color:var(--muted);font-size:10px;margin:10px 0 0}
 @media(max-width:700px){.language-switch button{padding:5px}.topright{gap:5px}.topright #refresh{font-size:11px;padding:5px}.history-filters{padding:14px 16px 0}.history-filters .view-switch{display:flex}.history-filters .view-switch button{font-size:10px}}
 .evidence-btn:disabled{cursor:default;color:var(--muted);background:#f5f6f4;border-color:var(--line)}
+/* Long source paths must stay inside the evidence dialog on narrow screens. */
+.modal>section,.modal header>div,.modal pre{min-width:0}
+.modal header>div{flex:1 1 auto}
+.modal header strong{display:block;overflow-wrap:anywhere}
+.modal header button{flex:0 0 auto}
 .compare-picker-tools{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:15px 20px 5px;color:var(--muted);font-size:11px}
 .compare-picker-tools .search{min-width:min(280px,100%);max-width:420px;flex:1}
 .compare-picker-tools button{border:1px solid var(--line);border-radius:5px;background:white;padding:8px 10px;font-size:11px}
+.lineage-grid{grid-template-columns:repeat(4,220px)}
+.finding-section{margin-bottom:24px}
+.finding-section>h3{font-size:13px;color:var(--dark);margin:3px 0 15px}
+.finding-theme{margin:0 0 16px}
+.finding-theme h4{font-size:10px;color:var(--accent);font-weight:650;letter-spacing:.4px;margin:0 0 9px}
+.finding-summary{font-size:11px;color:var(--accent);background:var(--soft);padding:7px 9px;border-radius:5px;margin:10px 0}
+.finding-empty{font-size:11px;color:var(--muted);line-height:1.8;background:#f8faf6;border-radius:6px;padding:13px 15px}
+.audit-records{border-top:1px solid var(--line);padding-top:15px}
+.audit-records summary{cursor:pointer;color:var(--muted);font-size:11px;font-weight:600;margin-bottom:15px}
+@media(max-width:700px){.lineage-grid{grid-template-columns:repeat(4,185px)}}
