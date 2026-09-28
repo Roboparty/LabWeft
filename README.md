@@ -48,8 +48,14 @@ and at the top of the findings page by research theme; audit/status notes remain
 available in a collapsed section. A prominent finding requires direct evidence
 and scope. A scientific finding is distinct from a scoped research decision.
 
-Study headings can show a sourced bilingual result table immediately below the
-selected branch. The comparison picker groups cells by their recorded
+Selecting a map node opens one inline detail below it; collapsing that branch
+closes the detail and the colored path and breadcrumb identify its ancestors.
+Study headings can show a sourced bilingual result table there. A featured
+claim may also provide `attrs.finding_card.zh` and `.en`, each with sourced
+`value`, `label`, `context` and `limit` strings. The visible limit belongs beside
+the headline result; the full explanation, scope and evidence remain in the
+same card. These display fields do not create a new scientific result.
+The comparison picker groups cells by their recorded
 `config.model`, so a model family can be selected in one click and individual
 conditions remain available. Internal condition codes and source paths belong
 in details rather than the scientific heading.

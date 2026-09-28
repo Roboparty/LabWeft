@@ -577,6 +577,25 @@ class WorkspaceTests(unittest.TestCase):
         study["evidence"] = [evidence_ref(source, "synthetic control result")]
         self.store.commit({"base_revision": current["revision"], "reason": "sourced table", "nodes": [study]})
 
+    def test_finding_card_requires_sourced_bilingual_claim(self):
+        state = self.store.load()
+        content = {"value": "+5 pp", "label": "Success change", "context": "Synthetic paired study", "limit": "One seed"}
+        finding = node("claim-card", "claim", "Synthetic finding", state["project"]["id"],
+                       attrs={"finding_card": {"zh": dict(content), "en": dict(content)}})
+        with self.assertRaisesRegex(HarnessError, "sourced claim"):
+            self.store.commit({"base_revision": state["revision"], "reason": "unsourced card", "nodes": [finding]})
+        (self.root / "card.md").write_text("Synthetic paired difference: +5 pp, one seed.", encoding="utf-8")
+        sync(self.store)
+        current = self.store.load()
+        source = next(f for f in current["files"].values() if f["path"] == "card.md")
+        finding["evidence"] = [evidence_ref(source, "paired difference")]
+        del finding["attrs"]["finding_card"]["en"]["limit"]
+        with self.assertRaisesRegex(HarnessError, "Invalid finding card content"):
+            self.store.commit({"base_revision": current["revision"], "reason": "partial card", "nodes": [finding]})
+        finding["attrs"]["finding_card"]["en"]["limit"] = "One seed"
+        self.store.commit({"base_revision": current["revision"], "reason": "sourced card", "nodes": [finding]})
+        self.assertEqual("+5 pp", self.store.load()["nodes"][finding["id"]]["attrs"]["finding_card"]["zh"]["value"])
+
     def test_source_text_not_executed(self):
         marker = self.root / "EXECUTED"
         (self.root / "evil.py").write_text(f'from pathlib import Path\nPath({str(marker)!r}).write_text("bad")')

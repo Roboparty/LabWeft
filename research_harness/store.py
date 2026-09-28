@@ -211,6 +211,14 @@ def validate_state(state: dict) -> None:
             if not isinstance(project_event.get("related_ids", []), list) or any(related_id not in nodes for related_id in project_event.get("related_ids", [])):
                 raise HarnessError(f"Invalid project event related_ids: {key}")
         finding = node.get("attrs", {}).get("finding")
+        finding_card = node.get("attrs", {}).get("finding_card")
+        if finding_card is not None:
+            if node["kind"] != "claim" or not node.get("evidence") or not isinstance(finding_card, dict) or set(finding_card) != {"zh", "en"}:
+                raise HarnessError(f"Finding card needs a sourced claim and both languages: {key}")
+            for language in ("zh", "en"):
+                content = finding_card[language]
+                if not isinstance(content, dict) or set(content) != {"value", "label", "context", "limit"} or any(not isinstance(value, str) or not value.strip() for value in content.values()):
+                    raise HarnessError(f"Invalid finding card content: {key}/{language}")
         if finding is not None:
             if node["kind"] != "claim" or not isinstance(finding, dict):
                 raise HarnessError(f"finding metadata belongs to a claim object: {key}")

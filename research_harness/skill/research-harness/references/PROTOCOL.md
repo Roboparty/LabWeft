@@ -61,8 +61,9 @@ with `attrs.presentation_kind: "section"` and a declarative heading. A genuinely
 unresolved question may keep its interrogative form outside the study outline.
 
 For a study with checked numerical results, attach a bilingual
-`attrs.study_summary` to the module or section the reader clicks. The UI shows
-it immediately below that heading and at the top of the inspector:
+`attrs.study_summary` to the module or section the reader clicks. The map shows
+one inline detail immediately below the selected heading; collapsing the branch
+also closes that detail:
 
 ```json
 {
@@ -164,6 +165,27 @@ copy into a real project. Do not assign numeric confidence scores without a
 defined calibration procedure. `basis` distinguishes a source report,
 independent recomputation, actual rerun, or attributed user testimony. A
 positive comparison under one endpoint does not automatically win under another.
+
+For a featured claim, optional `attrs.finding_card` makes the card readable
+without opening raw records. Supply **both** `zh` and `en`, each with exactly
+`value`, `label`, `context`, and `limit`. The value includes its unit; the label
+names the measurement; context names the cohort, protocol and comparison;
+limit states the most decision-changing boundary. The map reuses the value
+and limit in the selected claim detail. Every number and limit must be checked
+against the claim's direct immutable evidence, `attrs.finding`, and scope.
+This is display copy, not a second result ledger. The validator requires a
+sourced Claim and nonempty bilingual fields, but scientific agreement still
+needs human/agent review. Keep counterexamples visible; do not infer a headline
+from a folder or regex over prose.
+
+```json
+{
+  "finding_card": {
+    "zh": {"value": "+1.2 pp", "label": "成功率差值", "context": "合成例子：同协议、三个独立训练 seed 的对照", "limit": "只覆盖这里的合成条件。"},
+    "en": {"value": "+1.2 pp", "label": "Success-rate difference", "context": "Synthetic example: matched protocol and three independent training seeds", "limit": "Applies only to this synthetic condition."}
+  }
+}
+```
 
 `decision` means a scoped action, selection or reuse judgment; it is not a
 synonym for scientific conclusion. Keep unconfirmed recommendations as proposals.

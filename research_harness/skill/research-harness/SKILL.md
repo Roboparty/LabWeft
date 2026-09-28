@@ -98,6 +98,11 @@ below use legacy `rh` as shorthand for that same CLI. Quote all paths.
    to the study. Translate internal condition codes into their actual
    manipulations in headings and claims; keep codes, phase names and table
    numbers in details or source locators.
+   For a featured claim, put its most useful sourced result and its immediate
+   interpretation boundary into bilingual `attrs.finding_card` fields. Keep
+   value, unit, cohort and limit together; do not magnify a number while hiding
+   a negative readout, changed backend, single-seed basis or unpaired condition.
+   The map and findings page reuse these fields. See [PROTOCOL.md](references/PROTOCOL.md).
    Audit every visible subheading before export: keep it only when it adds a
    distinct design or result with direct evidence and an inline summary. Move
    an unsupported open question to an explicit evidence-gap branch; archive a
