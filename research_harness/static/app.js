@@ -63,8 +63,10 @@ function findingSummary(n) { const f=n.attrs?.finding||{},e=f.endpoint||{},v=f.e
 function enumLabel(prefix,value){const key=prefix+value;return t(key)===key?value:t(key);}
 function roleLabel(n){const role=n.attrs?.role;return role?t('role_'+role)==='role_'+role?role:t('role_'+role):'';}
 function initialExpanded(){const ids=new Set();for(const n of Object.values(data.nodes).filter(n=>n.kind==='module'&&n.status!=='archived'&&n.attrs?.role!=='evidence_audit')){const parent=data.nodes[n.parent_id];if(n.parent_id===data.project.id||parent?.parent_id===data.project.id)ids.add(n.id);}return ids;}
-let data, view='map', selected=null, layout='tree', filter='', compareFilter='', sourceMode='mapped', cellSelection=new Set(), metric='success_rate', differentOnly=false;
+words.zh.tree='大纲';words.en.tree='Outline';words.zh.relationsView='研究树';words.en.relationsView='Research tree';
+let data, view='map', selected=null, layout='lineage', filter='', compareFilter='', sourceMode='mapped', cellSelection=new Set(), metric='success_rate', differentOnly=false;
 let relationInspect=false;
+let treeCamera={x:0,y:0,scale:1},treeCollapsed=new Set(),treeSecondary=false,treeFullscreen=false,treeFitMode=false;
 let expanded = new Set(), collapsedDuringSearch=new Set(), token='', savedKey='', sourcePage=0, historyType='all', historyModule='all', timelineView='project', projectTimelineModule='all', projectTimelineType='all', timelineReturnEvent=null, compareOpenGroups=new Set();
 const snap = $('snapshot-data');
 try { token = new URLSearchParams(location.search).get('token') || sessionStorage.getItem('rh-token') || ''; if(token)sessionStorage.setItem('rh-token',token); if(location.search.includes('token='))history.replaceState({},'',location.pathname); } catch (_) {}
@@ -73,7 +75,7 @@ function mapBadge(n) { return n.status==='provisional'&&['module','question','ce
 function canOpenEvidence(sha) { return !!sha && (!snap || typeof data.evidence_texts?.[sha] === 'string'); }
 function staticLanguage(){document.documentElement.lang=lang==='zh'?'zh-CN':'en';document.querySelectorAll('[data-i18n]').forEach(el=>{if(el.id==='project-name'&&data)return;el.textContent=t(el.dataset.i18n);});document.querySelectorAll('[data-lang]').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.lang===lang)));document.title=`LabWeft · ${t('workspace')}`;}
 function setLanguage(next){if(next!==lang){lang=next;try{localStorage.setItem('labweft-language',lang);}catch(_){}}staticLanguage();if(data){loadLabels();render();}}
-function storageWrite() { try { localStorage.setItem(savedKey,JSON.stringify({version:3,expanded:[...expanded],selected,layout})); } catch (_) {} }
+function storageWrite() { try { localStorage.setItem(savedKey,JSON.stringify({version:4,expanded:[...expanded],selected,layout})); } catch (_) {} }
 function toast(msg) { $('toast').textContent=msg;$('toast').hidden=false;setTimeout(()=>$('toast').hidden=true,3300); }
 async function api(path) {const response=await fetch(path,{headers:{'X-Research-Token':token}});if(!response.ok)throw new Error(await response.text());return response;}
 async function load() {
@@ -81,7 +83,7 @@ async function load() {
   data = snap ? JSON.parse(snap.textContent) : await (await api('/api/state')).json();
   savedKey='rh-view-'+data.project.id;
   expanded=initialExpanded();
-  try { const old=JSON.parse(localStorage.getItem(savedKey)||'null');if(old?.version===3){expanded=new Set(old.expanded||[]);selected=old.selected;layout=old.layout||'tree';} }catch(_){}
+  try { const old=JSON.parse(localStorage.getItem(savedKey)||'null');if(old?.version===4){expanded=new Set(old.expanded||[]);selected=old.selected;layout=old.layout||'lineage';} }catch(_){}
   if(!selected || !data.nodes[selected]||data.nodes[selected].status==='archived')selected=Object.values(data.nodes).filter(n=>n.kind==='module'&&n.parent_id===data.project.id&&n.status!=='archived').sort(sortNodes)[0]?.id || Object.values(data.nodes).find(n=>n.kind==='claim'&&findingPriority(n)==='primary')?.id || Object.values(data.nodes)[0]?.id;
   for(const id of cellSelection)if(data.nodes[id]?.kind!=='cell'||data.nodes[id].status==='archived')cellSelection.delete(id);
   if(!cellSelection.size){const available=Object.values(data.nodes).filter(n=>n.kind==='cell'&&n.status!=='archived');if(available.length<=8)available.forEach(n=>cellSelection.add(n.id));}
@@ -114,9 +116,11 @@ function compareTreePath(a,b){const path=n=>{const out=[],seen=new Set();while(n
 function children(id) {return Object.values(data.nodes).filter(n=>n.parent_id===id && n.status!=='archived').sort(sortNodes);}
 function isMapNode(n){return n.kind!=='decision'&&n.kind!=='artifact'&&(n.kind!=='claim'||isFeaturedClaim(n));}
 function scrollMapTarget(target){if(!target)return;const trail=document.querySelector('.map-trail'),minimum=window.matchMedia('(max-width:700px)').matches?150:80;target.style.scrollMarginTop=`${Math.max(minimum,Math.ceil((trail?.getBoundingClientRect().height||0)+16))}px`;target.scrollIntoView({block:'start',behavior:'auto'});}
-function select(id) { selected=id;if(layout==='lineage')relationInspect=true;expanded.add(id);collapsedDuringSearch.delete(id);let parent=data.nodes[id]?.parent_id,seen=new Set();while(data.nodes[parent]&&!seen.has(parent)){seen.add(parent);expanded.add(parent);collapsedDuringSearch.delete(parent);parent=data.nodes[parent].parent_id;}if(view==='map'&&filter&&data.nodes[id]&&!hasMatch(data.nodes[id]))filter='';storageWrite();renderDetail(); if(view==='map'){renderMap();requestAnimationFrame(()=>{const target=layout==='tree'?[...document.querySelectorAll('.node-card')].find(card=>card.dataset.select===id):[...document.querySelectorAll('.relation-card')].find(card=>card.dataset.select===id);scrollMapTarget(target);});} }
+function select(id) { selected=id;if(layout==='lineage')relationInspect=true;expanded.add(id);collapsedDuringSearch.delete(id);let parent=data.nodes[id]?.parent_id,seen=new Set();while(data.nodes[parent]&&!seen.has(parent)){seen.add(parent);expanded.add(parent);collapsedDuringSearch.delete(parent);parent=data.nodes[parent].parent_id;}if(view==='map'&&filter&&data.nodes[id]&&!hasMatch(data.nodes[id]))filter='';storageWrite();renderDetail(); if(view==='map'){renderMap();if(layout==='tree')requestAnimationFrame(()=>scrollMapTarget([...document.querySelectorAll('.node-card')].find(card=>card.dataset.select===id)));} }
 function setView(v) {view=v;filter='';collapsedDuringSearch.clear();sourcePage=0;render();window.scrollTo(0,0);}
 function render() {
+ document.body.classList.toggle('research-tree-view',view==='map'&&layout==='lineage');
+ if(view!=='map'){treeFullscreen=false;document.body.classList.remove('tree-expanded');}
  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
  document.querySelector('.workspace-body').dataset.view=view;
  $('page-title').textContent=t(view+'Title');$('page-subtitle').textContent=t(view+'Subtitle');
@@ -151,10 +155,11 @@ function treeNode(n,depth=0,pathIds=new Set()) {
  return `<li class="node-wrap ${onPath?'branch-path':''} ${isSelected?'branch-current':''}" data-depth="${Math.min(depth,4)}"><div class="node-card ${isSelected?'selected':''} ${open?'is-open':'is-closed'}" data-select="${esc(n.id)}" role="button" tabindex="0" aria-current="${isSelected?'true':'false'}"><button class="node-toggle" data-toggle="${esc(n.id)}" aria-label="${esc(t('expandToggle'))} ${esc(displayLabel(n))}" aria-expanded="${open}"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="${open?'M4 7l6 6 6-6':'M7 4l6 6-6 6'}"/></svg></button><span class="node-dot ${esc(n.kind)}"></span><span class="node-label">${esc(displayLabel(n))}${sub?`<small class="node-sub">${esc(sub)}</small>`:''}</span>${kids.length?`<span class="node-count">${kids.length} ${esc(t('childItems'))}</span>`:''}${mapBadge(n)}</div>${panelOpen?studyPanel(n):''}${kids.length&&open?`<ul class="tree-list">${kids.map(child=>treeNode(child,depth+1,pathIds)).join('')}</ul>`:''}</li>`;
 }
 function renderMap() {
+ document.body.classList.toggle('research-tree-view',layout==='lineage');
  $('content').innerHTML=`<div class="panel-head"><div><h2>${esc(t('mapPanel'))}</h2><small>${esc(t('researchLogic'))}</small></div><div class="panel-tools"><div class="view-switch"><button data-layout="tree" class="${layout==='tree'?'active':''}">${esc(t('tree'))}</button><button data-layout="lineage" class="${layout==='lineage'?'active':''}">${esc(t('relationsView'))}</button></div><button id="expand-all">${esc(t('expand'))}</button><button id="collapse-all">${esc(t('collapse'))}</button></div></div><div class="search-wrap"><input class="search" id="map-search" placeholder="${esc(t('mapSearch'))}" value="${esc(filter)}" aria-label="${esc(t('mapSearch'))}"></div><div id="map-body"></div><div class="tree-hint">${esc(t('mapHint'))}</div><details class="status-help"><summary>${esc(t('statusInfoTitle'))}</summary><p>${esc(t('statusInfo'))}</p></details>`;
  $('map-search').addEventListener('input',e=>{filter=e.target.value;collapsedDuringSearch.clear();drawMapBody();});
- $('expand-all').onclick=()=>{Object.keys(data.nodes).forEach(id=>expanded.add(id));collapsedDuringSearch.clear();storageWrite();drawMapBody();};
- $('collapse-all').onclick=()=>{expanded.clear();Object.keys(data.nodes).forEach(id=>collapsedDuringSearch.add(id));storageWrite();drawMapBody();};
+ $('expand-all').onclick=()=>{treeCollapsed.clear();Object.keys(data.nodes).forEach(id=>expanded.add(id));collapsedDuringSearch.clear();treeCamera={x:0,y:0,scale:1};storageWrite();drawMapBody();};
+ $('collapse-all').onclick=()=>{treeCollapsed=new Set(Object.values(data.nodes).filter(n=>n.kind==='cell').map(n=>n.id));expanded.clear();Object.keys(data.nodes).forEach(id=>collapsedDuringSearch.add(id));treeCamera={x:0,y:0,scale:1};storageWrite();drawMapBody();};
  document.querySelectorAll('[data-layout]').forEach(b=>b.onclick=()=>{layout=b.dataset.layout;storageWrite();renderMap();});
  if(timelineReturnEvent){$('content').insertAdjacentHTML('afterbegin',`<button class="timeline-return" id="return-to-timeline" type="button">${esc(t('returnToTimeline'))}</button>`);$('return-to-timeline').onclick=()=>{view='history';timelineView='project';render();const target=document.querySelector(`[data-project-event="${timelineReturnEvent}"]`);if(target){target.open=true;target.scrollIntoView({block:'center'});}};}
  drawMapBody();
@@ -197,45 +202,98 @@ function groupedRelationModel(nodeMap, edgeList) {
  return {groups:sorted,cross};
 }
 // END grouped-relation-model
-function relationMetric(n){
- if(n.kind==='cell'&&children(n.id).some(r=>r.kind==='run'&&(r.status==='failed'||r.attrs?.backend_correct===false)))return `<span class="relation-failure">${esc(lang==='zh'?'失败记录':'Failure recorded')}</span>`;
- const metrics=n.attrs?.metrics||{},entry=Object.entries(metrics).find(([key,value])=>['development_mse','mse','search_score','success_rate'].includes(key)&&typeof value==='number'&&Number.isFinite(value));
- if(entry){const [key,value]=entry;const name=key.endsWith('mse')?'MSE':key==='search_score'?(lang==='zh'?'搜索分数':'Search score'):key;const shown=value!==0&&Math.abs(value)<.0001?value.toExponential(1):Number(value.toFixed(4)).toString();return `<span class="relation-metric" title="${esc(key+': '+value)}">${esc(name)} <b>${esc(shown)}</b></span>`;}
- const score=n.attrs?.search_score;if(typeof score==='number'&&Number.isFinite(score))return `<span class="relation-metric">${esc(lang==='zh'?'搜索分数':'Search score')} <b>${esc(compactMetric(score))}</b></span>`;
- return '';
-}
-function relationCard(n){return `<button type="button" class="relation-card ${n.id===selected?'selected':''}" data-select="${esc(n.id)}" aria-current="${n.id===selected?'true':'false'}" title="${esc(displayLabel(n))}"><span class="relation-node-label">${esc(displayLabel(n))}</span>${relationMetric(n)}</button>`;}
-function renderGroupedRelations(){
- const model=groupedRelationModel(data.nodes,Object.values(data.edges));
- const localText=(zh,en)=>lang==='zh'?zh:en;
- const branch=(n,group)=>{const kids=(group.children.get(n.id)||[]).map(c=>branch(c,group)).join('');if(!hasMatch(n)&&!kids)return '';return `<li>${relationCard(n)}${kids?`<ul>${kids}</ul>`:''}</li>`;};
- const sections=model.groups.map((group,index)=>{
-  const owner=group.owner,roots=group.roots.map(n=>branch(n,group)).join(''),claims=group.claims.filter(isFeaturedClaim).filter(hasMatch);
-  if(filter&&!roots&&!claims.length&&!(owner&&displayLabel(owner).toLowerCase().includes(filter.toLowerCase())))return '';
-  if(!group.cells.length&&!claims.length&&owner&&children(owner.id).some(n=>n.kind==='module'||n.kind==='question'))return '';
-  const open=(expanded.has(group.id)||(!owner&&!collapsedDuringSearch.has(group.id))||(filter&&!collapsedDuringSearch.has(group.id)));
-  const context=owner&&children(owner.id).some(n=>n.kind==='module'||n.kind==='question');
-  const cross=model.cross.filter(e=>group.cells.some(n=>n.id===e.source||n.id===e.target)).length;
-  return `<section class="relation-group ${context?'relation-context':''} ${!group.cells.length?'relation-summary':''}" style="--branch-color:var(--branch-${index%6})"><header><button class="relation-group-title" data-select="${esc(owner?.id||group.roots[0]?.id||'')}"><span class="relation-group-dot" aria-hidden="true"></span><span>${esc(owner?displayLabel(owner):localText('未分组的候选','Ungrouped candidates'))}</span></button><button class="relation-group-toggle" data-relation-toggle="${esc(group.id)}" aria-expanded="${open}" aria-label="${esc(localText('展开或收起','Expand or collapse')+' '+(owner?displayLabel(owner):group.id))}">${open?'−':'+'}</button></header><div class="relation-group-meta">${group.cells.length} ${esc(localText('个候选','candidates'))}${claims.length?' · '+claims.length+' '+esc(localText('条结论','findings')):''}${cross?' · '+cross+' '+esc(localText('条跨组关系，选中后查看','cross-group relations; select to inspect')):''}</div>${open?`<ul class="relation-tree">${roots}</ul>${claims.map(n=>`<div class="relation-claim">${relationCard(n)}</div>`).join('')}${group.warnings.length?`<p class="relation-warning">${esc(localText('含多来源或循环关系；详情保留完整关系。','Multiple parents or cycles: all relations are retained in details.'))}</p>`:''}`:''}</section>`;
- }).join('');
- const n=relationInspect?data.nodes[selected]:null;
- let detail='';
- if(n){
-  const related=Object.values(data.edges).filter(e=>e.source===n.id||e.target===n.id).filter(e=>data.nodes[e.source]&&data.nodes[e.target]);
-  const links=related.map(e=>{const outgoing=e.source===n.id,id=outgoing?e.target:e.source;let relation=e.relation;if(relation==='derived_from')relation=outgoing?localText('继承自','Derived from'):localText('派生版本','Derivative');else if(relation==='inspired_by')relation=outgoing?localText('参考自','Inspired by'):localText('被参考于','Inspiration for');return `<button class="relation-link" data-select="${esc(id)}"><small>${esc(relation)}</small>${esc(displayLabel(data.nodes[id]))}</button>`;}).join('');
-  detail=`<aside class="relation-detail" aria-label="${esc(t('inspector'))}"><header><h3>${esc(displayLabel(n))}</h3><button id="close-relation-detail" aria-label="${esc(t('close'))}">×</button></header>${links?`<div class="relation-links">${links}</div>`:''}${studyPanel(n)}</aside>`;
+// BEGIN research-tree-model
+function researchTreeModel(nodeMap, edgeList, collapsed=new Set()) {
+ const grouped=groupedRelationModel(nodeMap,edgeList),cells=grouped.groups.flatMap(g=>g.cells),byId=new Map(cells.map(n=>[n.id,n]));
+ const parent=new Map(),warnings=[],order=(a,b)=>(a.attrs?.order??100)-(b.attrs?.order??100)||a.id.localeCompare(b.id);
+ for(const n of cells){
+  const declared=edgeList.filter(e=>e.relation==='derived_from'&&e.source===n.id);
+  const known=declared.filter(e=>byId.has(e.target)).map(e=>e.target).sort();
+  const p=known.includes(n.parent_id)?n.parent_id:known[0];
+  if(p)parent.set(n.id,p);else if(!declared.length&&byId.has(n.parent_id))parent.set(n.id,n.parent_id);
+  if(declared.length>1)warnings.push({id:n.id,type:'multiple_parents'});
+  if(declared.some(e=>!byId.has(e.target)))warnings.push({id:n.id,type:'missing_parent'});
  }
- return `<div class="relation-intro">${esc(localText('按研究路线分组 · 组内线表示继承 · 点击候选查看指标、证据和跨组来源','Grouped by research track · Local lines show lineage · Select a candidate for evidence and cross-group relations'))}</div><div class="relation-layout ${n?'is-inspecting':''}"><div class="relation-grid">${sections||`<div class="empty">${esc(t('mapEmpty'))}</div>`}</div>${detail}</div>`;
+ for(const n of [...cells].sort(order)){let p=n.id,seen=new Set();while(parent.has(p)){if(seen.has(p)){parent.delete(p);warnings.push({id:p,type:'cycle'});break;}seen.add(p);p=parent.get(p);}}
+ const depth=new Map(),level=id=>{if(depth.has(id))return depth.get(id);const d=parent.has(id)?level(parent.get(id))+1:0;depth.set(id,d);return d;};
+ cells.forEach(n=>level(n.id));
+ const visible=cells.filter(n=>{let p=parent.get(n.id);while(p){if(collapsed.has(p))return false;p=parent.get(p);}return true;}),visibleIds=new Set(visible.map(n=>n.id));
+ const children=new Map();for(const n of cells){const p=parent.get(n.id);if(p){if(!children.has(p))children.set(p,[]);children.get(p).push(n.id);}}
+ const countDesc=id=>(children.get(id)||[]).reduce((sum,child)=>sum+1+countDesc(child),0);
+ const nodes=[],lanes=[];let top=62;
+ for(const group of grouped.groups){
+  const members=group.cells.filter(n=>visibleIds.has(n.id));if(!members.length)continue;
+  const memberIds=new Set(members.map(n=>n.id)),localChildren=new Map();
+  for(const n of members){const p=parent.get(n.id);if(memberIds.has(p)){if(!localChildren.has(p))localChildren.set(p,[]);localChildren.get(p).push(n);}}
+  for(const list of localChildren.values())list.sort(order);
+  let leaf=0;const ys=new Map();
+  const place=n=>{const kids=localChildren.get(n.id)||[];const y=kids.length?kids.map(place).reduce((a,b)=>a+b,0)/kids.length:top+26+leaf++*38;ys.set(n.id,y);return y;};
+  members.filter(n=>!memberIds.has(parent.get(n.id))).sort(order).forEach(place);
+  const height=Math.max(1,leaf)*38+28;
+  lanes.push({id:group.id,owner:group.owner,y:top,height,count:members.length,rootOnly:members.every(n=>!parent.has(n.id))});
+  for(const n of members)nodes.push({id:n.id,node:n,lane:group.id,level:level(n.id),x:190+level(n.id)*142,y:ys.get(n.id),hidden:collapsed.has(n.id)?countDesc(n.id):0});
+  top+=height;
+ }
+ const links=nodes.filter(n=>parent.has(n.id)&&visibleIds.has(parent.get(n.id))).map(n=>({source:parent.get(n.id),target:n.id,secondary:false}));
+ const secondary=edgeList.filter(e=>visibleIds.has(e.source)&&visibleIds.has(e.target)&&!(e.relation==='derived_from'&&parent.get(e.source)===e.target)).map(e=>({source:e.target,target:e.source,secondary:true,relation:e.relation}));
+ return {nodes,lanes,links,secondary,parent,warnings,width:Math.max(900,280+Math.max(0,...nodes.map(n=>n.level))*142),height:Math.max(340,top+20),total:cells.length};
+}
+// END research-tree-model
+function treeOutcome(n){
+ if(n.status==='failed'||children(n.id).some(r=>r.kind==='run'&&(r.status==='failed'||r.attrs?.backend_correct===false)))return 'failed';
+ const selection=n.attrs?.selection;if(typeof selection==='string'){if(/^(保留|keep)/i.test(selection))return 'retained';if(/^(退步|同分|discard|tie)/i.test(selection))return 'unselected';}
+ return 'recorded';
+}
+function shortTreeLabel(n){const text=displayLabel(n),match=text.match(/^[A-Za-z]+\d+\b/);if(match)return match[0];if(Number.isInteger(n.attrs?.generation))return 'G'+n.attrs.generation;const part=text.split('·')[0].trim();return part.length>11?part.slice(0,10)+'…':part;}
+function treeNodeInspector(n){
+ if(!n)return '';
+ const local=(zh,en)=>lang==='zh'?zh:en;
+ const related=Object.values(data.edges).filter(e=>e.source===n.id||e.target===n.id).filter(e=>data.nodes[e.source]&&data.nodes[e.target]);
+ const links=related.map(e=>{const outgoing=e.source===n.id,id=outgoing?e.target:e.source;let relation=e.relation;if(relation==='derived_from')relation=outgoing?local('继承自','Derived from'):local('派生版本','Derivative');else if(relation==='inspired_by')relation=outgoing?local('参考自','Inspired by'):local('被参考于','Inspiration for');return `<button class="tree-source-link" data-select="${esc(id)}"><small>${esc(relation)}</small><span>${esc(shortTreeLabel(data.nodes[id]))}</span></button>`;}).join('');
+ return `<aside class="tree-node-inspector" aria-label="${esc(t('inspector'))}"><header><span>${esc(local('节点详情','Node inspector'))}</span><button id="close-relation-detail" aria-label="${esc(t('close'))}">×</button></header><h3>${esc(displayLabel(n))}</h3><p>${esc(n.attrs?.selection||displayDescription(n)||'')}</p>${n.attrs?.metrics?metricKv(n.attrs.metrics):''}<div class="tree-source-links">${links}</div>${n.kind==='cell'?`<button id="tree-fold-selected" class="smallbtn">${esc(treeCollapsed.has(n.id)?local('展开后续','Expand descendants'):local('折叠后续','Fold descendants'))}</button>`:''}<details class="tree-evidence"><summary>${esc(local('实验记录与证据','Runs and evidence'))}</summary>${studyPanel(n)}</details></aside>`;
+}
+function renderResearchTree(){
+ const model=researchTreeModel(data.nodes,Object.values(data.edges),treeCollapsed),positions=new Map(model.nodes.map(n=>[n.id,n]));
+ const local=(zh,en)=>lang==='zh'?zh:en,n=relationInspect?data.nodes[selected]:null,path=new Set();
+ if(n){let id=n.id;while(id&&!path.has(id)){path.add(id);id=model.parent.get(id);}}
+ const axes=Array.from({length:Math.max(0,...model.nodes.map(n=>n.level))+1},(_,i)=>`<text x="${190+i*142}" y="29" text-anchor="middle" class="tree-level">L${i}</text>`).join('');
+ const lanes=model.lanes.map((lane,i)=>{const name=lane.rootOnly?local('起点','Root'):lane.owner?displayLabel(lane.owner):local('未分组','Ungrouped');return `<g class="tree-lane"><rect x="0" y="${lane.y}" width="${model.width}" height="${lane.height}" fill="${i%2?'#f6f8f633':'#edf2ef55'}"/><line x1="160" x2="${model.width-25}" y1="${lane.y+lane.height-1}" y2="${lane.y+lane.height-1}"/><text x="15" y="${lane.y+lane.height/2+4}" ${lane.owner?`data-select="${esc(lane.owner.id)}" role="button" tabindex="0"`:''}><title>${esc(name)}</title>${esc(name.length>15?name.slice(0,14)+'…':name)}</text></g>`;}).join('');
+ const edgePath=e=>{const a=positions.get(e.source),b=positions.get(e.target);const mid=(a.x+b.x)/2;return `M${a.x},${a.y} C${mid},${a.y} ${mid},${b.y} ${b.x},${b.y}`;};
+ const lines=[...model.links,...(treeSecondary?model.secondary:[])].map(e=>`<path class="tree-connection ${e.secondary?'secondary':''} ${n?(path.has(e.source)&&path.has(e.target)?'on-path':'muted'):''}" d="${edgePath(e)}"/>`).join('');
+ const dots=model.nodes.map(p=>{const match=!filter||(displayLabel(p.node)+' '+displayDescription(p.node)+' '+p.id).toLowerCase().includes(filter.toLowerCase()),outcome=treeOutcome(p.node);return `<g class="research-dot ${outcome} ${p.id===selected&&n?'selected':''} ${!match?'filtered':''}" transform="translate(${p.x} ${p.y})" data-select="${esc(p.id)}" data-tree-node="${esc(p.id)}" role="button" tabindex="0" aria-label="${esc(local('查看 ','Inspect ')+displayLabel(p.node))}"><title>${esc(displayLabel(p.node))}${p.node.attrs?.selection?' — '+esc(p.node.attrs.selection):''}</title><circle class="node-halo" r="15"/><circle class="node-hit" r="20"/><circle class="node-dot-shape" r="8"/>${outcome==='failed'?'<path class="node-failure-mark" d="M-3,-3 L3,3 M-3,3 L3,-3"/>':''}<text y="-20" text-anchor="middle" class="node-code">${esc(shortTreeLabel(p.node))}</text>${p.hidden?`<text y="30" text-anchor="middle" class="node-hidden">+${p.hidden}</text>`:''}</g>`;}).join('');
+ const maxLevel=Math.max(0,...model.nodes.map(n=>n.level));
+ const vertical=Array.from({length:maxLevel+1},(_,i)=>`<line class="tree-guide" x1="${190+i*142}" x2="${190+i*142}" y1="43" y2="${model.height-10}"/>`).join('');
+ return `<div class="research-tree-shell ${treeFullscreen?'is-expanded':''}"><div class="research-tree-toolbar"><div class="tree-legend"><span class="recorded">${esc(local('已记录','Recorded'))}</span><span class="retained">${esc(local('保留','Retained'))}</span><span class="unselected">${esc(local('未选用','Not selected'))}</span><span class="failed">${esc(local('失败','Failed'))}</span></div><div class="tree-actions"><button id="tree-secondary" aria-pressed="${treeSecondary}">${esc(local('次级关系','Secondary links'))}</button><button id="tree-zoom-out" aria-label="${esc(local('缩小研究树','Zoom out'))}">−</button><span id="tree-zoom-value">${Math.round(treeCamera.scale*100)}%</span><button id="tree-zoom-in" aria-label="${esc(local('放大研究树','Zoom in'))}">+</button><button id="tree-fit">${esc(local('适应','Fit'))}</button><button id="tree-full">${esc(treeFullscreen?local('退出画布','Close canvas'):local('展开画布','Expand canvas'))}</button></div></div><div class="research-canvas" id="research-canvas"><svg id="research-tree-svg" viewBox="0 0 ${model.width} ${model.height}" aria-label="${esc(local('研究谱系树','Research lineage tree'))}"><g id="research-tree-transform" transform="translate(${treeCamera.x} ${treeCamera.y}) scale(${treeCamera.scale})">${lanes}${vertical}${axes}${lines}${dots}</g></svg>${!model.nodes.length?`<div class="tree-empty">${esc(local('暂无候选节点，可切换大纲查看记录。','No candidate nodes; use Outline to inspect records.'))}</div>`:''}${treeNodeInspector(n)}</div><div class="research-tree-foot"><span>${model.nodes.length} / ${model.total} ${esc(local('节点','nodes'))}${model.warnings.length?' · '+esc(local('关系待核查','Relations need review')):''}</span><span>${esc(local('拖动平移 · Ctrl＋滚轮缩放 · Shift＋点击折叠 · L 表示派生层级','Drag to pan · Ctrl+wheel to zoom · Shift+click to fold · L = lineage depth'))}</span></div></div>`;
+}
+function bindResearchTree(){
+ const svg=$('research-tree-svg'),canvas=$('research-canvas');if(!svg)return;
+ svg.setAttribute('preserveAspectRatio',canvas.clientWidth<600&&!treeFitMode?'xMinYMin slice':'xMidYMid meet');
+ const model=researchTreeModel(data.nodes,Object.values(data.edges),treeCollapsed);
+ const paint=()=>{$('research-tree-transform')?.setAttribute('transform',`translate(${treeCamera.x} ${treeCamera.y}) scale(${treeCamera.scale})`);const label=$('tree-zoom-value');if(label)label.textContent=Math.round(treeCamera.scale*100)+'%';};
+ const zoom=factor=>{const next=Math.max(.35,Math.min(3,treeCamera.scale*factor)),ratio=next/treeCamera.scale;treeCamera.x=model.width/2-(model.width/2-treeCamera.x)*ratio;treeCamera.y=model.height/2-(model.height/2-treeCamera.y)*ratio;treeCamera.scale=next;paint();};
+ $('tree-zoom-in').onclick=()=>zoom(1.25);$('tree-zoom-out').onclick=()=>zoom(.8);
+ $('tree-fit').onclick=()=>{treeCamera={x:0,y:0,scale:1};treeFitMode=true;svg.setAttribute('preserveAspectRatio','xMidYMid meet');paint();};
+ $('tree-secondary').onclick=()=>{treeSecondary=!treeSecondary;drawMapBody();};
+ $('tree-full').onclick=()=>{treeFullscreen=!treeFullscreen;document.body.classList.toggle('tree-expanded',treeFullscreen);drawMapBody();};
+ canvas.addEventListener('wheel',e=>{if(!e.ctrlKey)return;e.preventDefault();zoom(e.deltaY<0?1.1:1/1.1);},{passive:false});
+ const point=e=>new DOMPoint(e.clientX,e.clientY).matrixTransform(svg.getScreenCTM().inverse());
+ let drag=null;
+ canvas.onpointerdown=e=>{if(e.button!==0||e.target.closest('[data-select],aside,button'))return;drag={p:point(e),x:treeCamera.x,y:treeCamera.y};canvas.setPointerCapture(e.pointerId);canvas.classList.add('dragging');};
+ canvas.onpointermove=e=>{if(!drag)return;const p=point(e);treeCamera.x=drag.x+p.x-drag.p.x;treeCamera.y=drag.y+p.y-drag.p.y;paint();};
+ canvas.onpointerup=canvas.onpointercancel=()=>{drag=null;canvas.classList.remove('dragging');};
+ const fold=id=>{if(treeCollapsed.has(id))treeCollapsed.delete(id);else treeCollapsed.add(id);drawMapBody();};
+ canvas.querySelectorAll('[data-tree-node]').forEach(el=>el.onclick=e=>{if(e.shiftKey){e.preventDefault();fold(el.dataset.treeNode);}else select(el.dataset.treeNode);});
+ const foldButton=$('tree-fold-selected');if(foldButton)foldButton.onclick=()=>fold(selected);
 }
 function drawMapBody() {
  const rootNodes=children(data.project.id).filter(isMapNode).filter(hasMatch);
  const lineage=selectedLineage(),pathIds=new Set(lineage.map(n=>n.id));
  const trail=lineage.length?`<div class="map-trail"><span>${esc(t('currentBranch'))}</span><div>${lineage.map((n,index)=>`${index?'<i aria-hidden="true">›</i>':''}<button type="button" data-select="${esc(n.id)}" aria-current="${index===lineage.length-1?'page':'false'}">${esc(displayLabel(n))}</button>`).join('')}</div></div>`:'';
  if(layout==='tree')$('map-body').innerHTML=`${trail}<div class="tree"><ul class="tree-list">${rootNodes.map(n=>treeNode(n,0,pathIds)).join('')||`<div class="empty">${esc(t('mapEmpty'))}</div>`}</ul></div>`;
- else $('map-body').innerHTML=`${trail}${renderGroupedRelations()}`;
+ else $('map-body').innerHTML=renderResearchTree();
  bindNodeButtons($('map-body'));
- $('map-body').querySelectorAll('[data-relation-toggle]').forEach(b=>b.onclick=()=>{const id=b.dataset.relationToggle;if(b.getAttribute('aria-expanded')==='true'){expanded.delete(id);collapsedDuringSearch.add(id);}else{expanded.add(id);collapsedDuringSearch.delete(id);}storageWrite();drawMapBody();});
  const close=$('close-relation-detail');if(close)close.onclick=()=>{relationInspect=false;drawMapBody();};
+ if(layout==='lineage')bindResearchTree();
  $('map-body').querySelectorAll('[data-inline-evidence]').forEach(b=>b.onclick=()=>showEvidence(b.dataset.inlineEvidence,b.dataset.title));
 }
 function bindNodeButtons(root){root.querySelectorAll('[data-select]').forEach(b=>{b.onclick=()=>select(b.dataset.select);b.onkeydown=e=>{if(e.target===b&&(e.key==='Enter'||e.key===' ')){e.preventDefault();select(b.dataset.select);}};});root.querySelectorAll('[data-toggle]').forEach(b=>b.onclick=e=>{e.stopPropagation();const id=b.dataset.toggle,wasOpen=b.getAttribute('aria-expanded')==='true';if(wasOpen){expanded.delete(id);collapsedDuringSearch.add(id);let parent=selected,seen=new Set();while(parent&&parent!==id&&!seen.has(parent)){seen.add(parent);parent=data.nodes[parent]?.parent_id;}if(parent===id)selected=id;}else{expanded.add(id);collapsedDuringSearch.delete(id);if(!children(id).some(isMapNode))selected=id;}storageWrite();renderDetail();drawMapBody();});}
@@ -423,6 +481,7 @@ function init(){
  document.addEventListener('keydown',e=>{if($('modal').hidden)return;if(e.key==='Escape'){e.preventDefault();closeModal();}else if(e.key==='Tab'){e.preventDefault();const focusable=[$('close-modal'),$('evidence-content')],index=focusable.indexOf(document.activeElement);focusable[(index+(e.shiftKey?-1:1)+focusable.length)%focusable.length].focus();}});
  $('copy-prompt').onclick=async()=>{const text=t('prompt').replace('{project}',data?`「${data.project.name}」`:'');try{await navigator.clipboard.writeText(text);toast(t('copied'));}catch(_){openModal();$('modal-title').textContent=t('copyToAgent');$('modal-subtitle').textContent=t('noNewAgent');$('evidence-content').textContent=text;}};
  $('export-json').onclick=()=>{if(data){download('research-records-r'+data.revision+'.json',JSON.stringify(data,null,2),'application/json');toast(t('exportWarning'));}};
+ window.addEventListener('keydown',e=>{if(e.key==='Escape'&&treeFullscreen){treeFullscreen=false;document.body.classList.remove('tree-expanded');drawMapBody();}});
  load();
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();

@@ -2,6 +2,12 @@
 
 ## Unreleased — LabWeft P0 local handoff
 
+The default map is now a compact research-tree canvas, informed by the public
+Simate RoboScientist evolution view: candidate dots, lineage-depth columns and
+research-direction lanes replace dense text cards. Includes pan/zoom/fit, expanded
+canvas, optional secondary edges, descendant folding and a compact inspector.
+The original Outline view remains available. No research records are rewritten.
+
 Replaced the relation view's crossing type-column graph with grouped research
 subtrees. Candidate lineage stays within its research track; cross-track origins,
 runs and evidence are available in a selected-node inspector. Added compact

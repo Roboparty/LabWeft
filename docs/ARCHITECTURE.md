@@ -82,15 +82,23 @@ records their identities and completion scopes separately with source evidence.
 
 ## UI
 
-The relation view groups candidates by their nearest research module/question
-instead of placing every node kind in a global column. Within each group it
-projects explicit `derived_from` edges from origin to derivative, falling back
-to candidate hierarchy only when no explicit parent was recorded. Multiple
-parents and cycles are flagged; all original relations remain in the selected
-node's details. Cross-group edges are shown as navigable source/derivative links
-on selection rather than intersecting lines across the entire map. Runs and
-evidence stay in the detail inspector. Group collapse and search change only
-the presentation, never experiment identities, results or stored relationships.
+The default Research tree is one SVG canvas with horizontal lineage depth and
+vertical research tracks. Candidates are compact colored points with short ids;
+full labels appear on hover and details appear only on selection. Metrics and
+source records stay in the inspector, with runs/evidence behind a disclosure.
+Outline remains available for the original full-text hierarchy.
+
+The layout groups by the nearest module/question and uses explicit `derived_from`
+edges from origin to derivative, including cross-track parentage. Candidate
+hierarchy is a fallback only when no explicit parent was recorded. A stable
+primary-parent projection drives depth and folding; secondary parents, inspirations
+and cycle-closing edges are retained and can be toggled on. Missing parents and
+cycles remain warnings. L0/L1/etc denote computed lineage depth, not experimental
+timestamps or claimed native generations. Colors use recorded selection/failure
+information, not an inferred scientific verdict. Pan, zoom, fit, expanded canvas,
+search and descendant folding modify presentation only; all identities, evidence
+and original relations are preserved. The public Simate RoboScientist evolution
+canvas informed the visual design; no external source or assets are bundled.
 
 Bundled HTML/CSS/JS use no CDN, frontend build or runtime dependency. The local
 HTTP service exposes only state and known text evidence. It binds to loopback,

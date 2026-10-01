@@ -1,0 +1,22 @@
+{
+  "date": "2026-10-01",
+  "visual_reference": "https://mate-robot.cn/research/RoboScientist/gallery/",
+  "reference_study": "Generalist Embodied Policy",
+  "implementation": "Independently authored SVG layout; no external code or assets copied",
+  "fixture": {"candidate_nodes": 37, "recorded_cpu_runs": 49, "primary_links": 36, "optional_secondary_links": 2},
+  "browser_checks": [
+    "Public Simate evolution canvas inspected",
+    "1600x1000 desktop canvas rendered",
+    "F1 inspector identifies C4 inheritance and A5 inspiration",
+    "F1 folding shows 34 nodes and a +3 badge; expansion restores 37",
+    "Zoom button changes scale to 1.25; fit restores scale 1",
+    "Actual pointer drag changes the canvas translation",
+    "Secondary-link toggle reveals exactly 2 secondary relationships",
+    "Expanded canvas opens and closes",
+    "Research source-event hash unchanged after re-export"
+  ],
+  "model_tests": "node --test tests/test_relations.cjs tests/test_research_tree.cjs",
+  "model_test_count": 11,
+  "new_experiments": 0,
+  "shinka_invoked": false
+}

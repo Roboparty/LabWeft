@@ -23,6 +23,13 @@ adapted source must be reviewed against its actual license at the chosen commit,
 with the required notices retained. Do not silently copy third-party SKILL.md
 content and rebrand it. This file is a design bibliography, not a license audit.
 
+The research-tree canvas also references the publicly visible
+[Simate RoboScientist Experiment Gallery](https://mate-robot.cn/research/RoboScientist/gallery/)
+(Generalist Embodied Policy, viewed 2026-10-01): sparse status points, horizontal
+lineage progression, research-direction lanes and an on-demand inspector. The
+LabWeft layout and interactions are independently implemented. No Simate code,
+research data, images, brand assets or other site resources are included.
+
 LabWeft is the confirmed project name; Research Harness was the prototype name.
 No claim of first invention, exclusive functionality, universal model support,
 or parity with the systems above is made.
