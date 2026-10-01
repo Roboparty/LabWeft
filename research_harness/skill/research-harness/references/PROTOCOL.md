@@ -16,6 +16,51 @@ Relations: `derived_from`, `compares`, `supports`, `contradicts`,
 `uses_checkpoint`, `supersedes`, `inspired_by`. Never confuse method derivation
 with inherited weights. Every edge endpoint must exist.
 
+## Per-version change annotations
+
+Every version, attempt or candidate shown in a research map needs a readable
+change explanation, including the initial baseline and failed or unexecuted
+versions. This is a host-agent authoring requirement, not a claim that the scanner,
+backend importer or schema validator infers or enforces scientific completeness.
+
+Record the following on each version:
+
+- **Compared with:** the recorded parent or explicitly chosen comparator and its
+  stable ID. For an initial baseline, describe the starting condition. A previous
+  prepared snapshot may differ from the previous executed version; say which is
+  being compared. Unknown ancestry stays unknown.
+- **What changed:** concrete code, method, configuration or data changes, with
+  before/after values and units where applicable. Include changes to evaluators,
+  acceptance thresholds, budgets or other controlled conditions. If only code
+  changed, do not report an unchanged configuration as an unchanged version.
+- **Why:** the failure, question or hypothesis motivating the change. Attribute
+  manual edits and automatic proposals separately. A proposal's rationale is an
+  intention, not evidence that the change worked.
+- **What happened:** whether the version was only prepared, executed, interrupted
+  or failed, and the observed endpoint and remaining limitations. Do not substitute
+  a search score or intermediate milestone for task success. If several factors
+  changed together, identify them without assigning a single-factor effect.
+- **Evidence:** immutable references to the effective configurations, code snapshots
+  or diffs, proposal/parent records and actual evaluation results. Missing historical
+  evidence is an explicit gap, not permission to invent a change or rerun work.
+
+Use the existing node `description` for the readable explanation and the study's
+bilingual `attrs.study_summary` for a compact version/change/motivation/outcome
+table. Optional `attrs.version_change` may retain structured before/after data,
+comparator IDs and proposal attribution, but metadata hidden in that object does
+not replace the visible explanation. Use direct node evidence references; a diff
+link or adjacent version number alone does not establish provenance.
+
+Retain supported relationships as typed edges: `derived_from` for recorded
+derivation and `compares` for a comparison. Neither implies inherited success.
+Keep duplicate backend records identifiable without counting them as new versions
+or physical executions when their evidence identifies a shared candidate/run.
+
+After `sync`, `research collect` or another import, check that existing explanations
+and references survived. A backend projection may replace node fields; reconcile
+and reapply the semantic annotations using stable IDs before the final export.
+Review the map's version details and study table, not just a separate changelog.
+
 ## Scientific structure before source indexing
 
 Write a source-attributed scientific outline before the semantic patch: project

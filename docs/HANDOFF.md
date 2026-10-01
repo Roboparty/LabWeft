@@ -16,6 +16,12 @@ seed is replication; equivalent-looking config is not proof of duplication.
 Preserve unknowns, human corrections and old snapshots. A scientific finding may
 be negative; a full factorial experiment table is not a mandatory goal.
 
+Every research version must visibly state what changed, why, relative to which
+parent/comparator, and what actually happened. Include before/after values,
+proposal attribution and source evidence; preserve failed and prepared-only
+versions. Keep these explanations in version details and study tables after
+imports and exports. See the [per-version annotation contract](../research_harness/skill/research-harness/references/PROTOCOL.md#per-version-change-annotations).
+
 ## Implemented modules
 
 - `research_tree_demo.py`, `fixtures/research_tree.json`: fast portable replay via

@@ -22,6 +22,13 @@ execution environment via `pip install ".[shinka]"` from the LabWeft checkout.
 4. Use `status` and `collect` to read progress and import evidence. The background
    worker advances bounded batches and collects after each batch. Scheduling a
    future chat wakeup is a separate host capability and requires a user request.
+   Before presenting or exporting results, apply the
+   [per-version annotation contract](PROTOCOL.md#per-version-change-annotations)
+   to every baseline and proposal: inspect its actual parent, code/config delta,
+   proposal rationale and evaluation outcome. Preserve the distinction between
+   proposed benefit and observed result. Check and restore these semantic
+   annotations after subsequent backend collections; native reports alone are
+   not the finished research explanation.
 5. `stop` drains the current batch; `resume --execute` continues a clean `paused`
    activity using the same database and original absolute generation allowance.
    Unknown launch/worker outcomes or `needs_review` require inspection of actual

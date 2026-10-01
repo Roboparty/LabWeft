@@ -17,6 +17,14 @@ historic inputs, run provenance, scientific findings, test coverage or model
 compatibility. Preserve human corrections and typed scope. Use immutable evidence
 snapshots and optimistic version checks; do not turn a scan into source execution.
 
+Every research version/attempt must visibly explain what changed, why, relative
+to which parent or comparator, and what actually happened. Include before/after
+values and immutable evidence; distinguish manual edits, automatic proposals,
+unexecuted versions and multi-factor changes. A version name, raw config or score
+alone is insufficient. Follow the per-version annotation contract in
+`research_harness/skill/research-harness/references/PROTOCOL.md` and retain these
+explanations when collecting or re-exporting results.
+
 No training, checkpoint deletion, GitHub writes or external model calls are
 required to develop this prototype. Consult ACKNOWLEDGEMENTS.md before importing
 third-party code; preserve licenses and attribution when code is actually reused.

@@ -95,6 +95,14 @@ below use legacy `rh` as shorthand for that same CLI. Quote all paths.
    [PROTOCOL.md](references/PROTOCOL.md). Do not create a `decision` merely to
    make a scientific claim look final; a decision records a scoped action or
    reuse choice.
+   **Annotate every research version or attempt.** State its parent/comparator,
+   concrete changes (including before/after values), motivation, author or proposal
+   source, execution status and observed outcome, with immutable evidence. Put a
+   readable explanation on the version node and a compact change/result table on
+   its study; raw config, version numbers and scores alone are not enough. Mark
+   unknowns, unexecuted proposals, co-varying changes and changed evaluation gates
+   explicitly. Follow the [per-version annotation contract](references/PROTOCOL.md#per-version-change-annotations)
+   and preserve or reapply the annotations after later imports and exports.
    Give each visible study heading a declarative scientific title and place its
    design, checked result table, sample unit, protocol and main limits directly
    on that study node using `attrs.study_summary`; the reader should not need to
