@@ -2,6 +2,13 @@
 
 ## Unreleased — LabWeft P0 local handoff
 
+Replaced the relation view's crossing type-column graph with grouped research
+subtrees. Candidate lineage stays within its research track; cross-track origins,
+runs and evidence are available in a selected-node inspector. Added compact
+metrics, failure-record labels, group collapse and responsive detail panels.
+Graph model tests cover direction, cross-track lineage, cycles, multiple parents
+and archived/missing nodes without changing source research records.
+
 Added an optional pinned Shinka automatic-research backend. The new `research`
 CLI freezes small task inputs, previews execution, starts a background native
 search, drains bounded batches on stop, resumes clean checkpoints without

@@ -1,0 +1,21 @@
+{
+  "date": "2026-10-01",
+  "scope": "Grouped relation view; research records unchanged",
+  "fixture": "Local synthetic forest: 6 method families, 37 candidates, 49 CPU evaluation records",
+  "javascript_tests": {"command": "node --test tests/test_relations.cjs", "passed": 6},
+  "python_tests": {"command": "python -m unittest discover -s tests -q", "total": 88, "passed": 87, "skipped": 1},
+  "browser": {
+    "surface": "Codex in-app Chromium browser",
+    "wide_viewport": {"width": 2076, "height": 1000},
+    "narrow_viewport_width": 319,
+    "overview_cards": 38,
+    "overview_groups": 8,
+    "cards_explanation": "37 candidates and one sourced claim; groups include the shared context and additional-input study",
+    "global_crossing_paths": 0,
+    "horizontal_overflow": false,
+    "verified_interactions": ["Open grouped relation view", "Select F1 and inspect inheritance from C4 plus inspiration from A5", "Open original F1 source evidence", "Open C4 details in narrow viewport", "Close inspector"],
+    "temporary_viewport_reset": true
+  },
+  "research_event_hash_unchanged_after_export": true,
+  "experiments_rerun": 0
+}

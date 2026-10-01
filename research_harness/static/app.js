@@ -64,6 +64,7 @@ function enumLabel(prefix,value){const key=prefix+value;return t(key)===key?valu
 function roleLabel(n){const role=n.attrs?.role;return role?t('role_'+role)==='role_'+role?role:t('role_'+role):'';}
 function initialExpanded(){const ids=new Set();for(const n of Object.values(data.nodes).filter(n=>n.kind==='module'&&n.status!=='archived'&&n.attrs?.role!=='evidence_audit')){const parent=data.nodes[n.parent_id];if(n.parent_id===data.project.id||parent?.parent_id===data.project.id)ids.add(n.id);}return ids;}
 let data, view='map', selected=null, layout='tree', filter='', compareFilter='', sourceMode='mapped', cellSelection=new Set(), metric='success_rate', differentOnly=false;
+let relationInspect=false;
 let expanded = new Set(), collapsedDuringSearch=new Set(), token='', savedKey='', sourcePage=0, historyType='all', historyModule='all', timelineView='project', projectTimelineModule='all', projectTimelineType='all', timelineReturnEvent=null, compareOpenGroups=new Set();
 const snap = $('snapshot-data');
 try { token = new URLSearchParams(location.search).get('token') || sessionStorage.getItem('rh-token') || ''; if(token)sessionStorage.setItem('rh-token',token); if(location.search.includes('token='))history.replaceState({},'',location.pathname); } catch (_) {}
@@ -113,7 +114,7 @@ function compareTreePath(a,b){const path=n=>{const out=[],seen=new Set();while(n
 function children(id) {return Object.values(data.nodes).filter(n=>n.parent_id===id && n.status!=='archived').sort(sortNodes);}
 function isMapNode(n){return n.kind!=='decision'&&n.kind!=='artifact'&&(n.kind!=='claim'||isFeaturedClaim(n));}
 function scrollMapTarget(target){if(!target)return;const trail=document.querySelector('.map-trail'),minimum=window.matchMedia('(max-width:700px)').matches?150:80;target.style.scrollMarginTop=`${Math.max(minimum,Math.ceil((trail?.getBoundingClientRect().height||0)+16))}px`;target.scrollIntoView({block:'start',behavior:'auto'});}
-function select(id) { selected=id;expanded.add(id);collapsedDuringSearch.delete(id);let parent=data.nodes[id]?.parent_id,seen=new Set();while(data.nodes[parent]&&!seen.has(parent)){seen.add(parent);expanded.add(parent);collapsedDuringSearch.delete(parent);parent=data.nodes[parent].parent_id;}if(view==='map'&&filter&&data.nodes[id]&&!hasMatch(data.nodes[id]))filter='';storageWrite();renderDetail(); if(view==='map'){renderMap();requestAnimationFrame(()=>{const target=layout==='tree'?[...document.querySelectorAll('.node-card')].find(card=>card.dataset.select===id):document.querySelector('.lineage-focus');scrollMapTarget(target);});} }
+function select(id) { selected=id;if(layout==='lineage')relationInspect=true;expanded.add(id);collapsedDuringSearch.delete(id);let parent=data.nodes[id]?.parent_id,seen=new Set();while(data.nodes[parent]&&!seen.has(parent)){seen.add(parent);expanded.add(parent);collapsedDuringSearch.delete(parent);parent=data.nodes[parent].parent_id;}if(view==='map'&&filter&&data.nodes[id]&&!hasMatch(data.nodes[id]))filter='';storageWrite();renderDetail(); if(view==='map'){renderMap();requestAnimationFrame(()=>{const target=layout==='tree'?[...document.querySelectorAll('.node-card')].find(card=>card.dataset.select===id):[...document.querySelectorAll('.relation-card')].find(card=>card.dataset.select===id);scrollMapTarget(target);});} }
 function setView(v) {view=v;filter='';collapsedDuringSearch.clear();sourcePage=0;render();window.scrollTo(0,0);}
 function render() {
  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
@@ -158,25 +159,84 @@ function renderMap() {
  if(timelineReturnEvent){$('content').insertAdjacentHTML('afterbegin',`<button class="timeline-return" id="return-to-timeline" type="button">${esc(t('returnToTimeline'))}</button>`);$('return-to-timeline').onclick=()=>{view='history';timelineView='project';render();const target=document.querySelector(`[data-project-event="${timelineReturnEvent}"]`);if(target){target.open=true;target.scrollIntoView({block:'center'});}};}
  drawMapBody();
 }
+// BEGIN grouped-relation-model
+// This is only a display projection: no experimental identities or edges change.
+function groupedRelationModel(nodeMap, edgeList) {
+ const active=Object.values(nodeMap).filter(n=>n.status!=='archived');
+ const byId=new Map(active.map(n=>[n.id,n]));
+ const owners=active.filter(n=>n.kind==='module'||n.kind==='question');
+ const order=(a,b)=>(a.attrs?.order??100)-(b.attrs?.order??100)||String(a.label).localeCompare(String(b.label),'zh-CN',{numeric:true})||a.id.localeCompare(b.id);
+ const ownerOf=n=>{let p=n.parent_id,seen=new Set();while(byId.has(p)&&!seen.has(p)){seen.add(p);const item=byId.get(p);if(item.kind==='module'||item.kind==='question')return p;p=item.parent_id;}return '__unassigned__';};
+ const groups=new Map(owners.map(n=>[n.id,{id:n.id,owner:n,cells:[],claims:[],parent:new Map(),children:new Map(),roots:[],warnings:[]} ]));
+ const cellGroup=new Map();
+ for(const n of active){
+  if(n.kind!=='cell'&&n.kind!=='claim')continue;
+  const owner=ownerOf(n);
+  if(!groups.has(owner))groups.set(owner,{id:owner,owner:null,cells:[],claims:[],parent:new Map(),children:new Map(),roots:[],warnings:[]});
+  const group=groups.get(owner);
+  if(n.kind==='cell'){group.cells.push(n);cellGroup.set(n.id,owner);}else group.claims.push(n);
+ }
+ const derived=edgeList.filter(e=>e.relation==='derived_from'&&byId.has(e.source)&&byId.has(e.target));
+ for(const group of groups.values()){
+  group.cells.sort(order);group.claims.sort(order);
+  for(const n of group.cells){
+   const explicit=derived.filter(e=>e.source===n.id);
+   const local=explicit.filter(e=>cellGroup.get(e.target)===group.id).map(e=>e.target).sort();
+   const parent=local.includes(n.parent_id)?n.parent_id:local[0];
+   if(parent)group.parent.set(n.id,parent);
+   else if(!explicit.length&&cellGroup.get(n.parent_id)===group.id)group.parent.set(n.id,n.parent_id);
+   if(explicit.length>1)group.warnings.push({id:n.id,type:'multiple_parents'});
+  }
+  // Break only the rendered tree's cycle, retaining the actual relation in details.
+  for(const n of group.cells){let p=n.id,seen=new Set();while(group.parent.has(p)){if(seen.has(p)){group.parent.delete(p);group.warnings.push({id:p,type:'cycle'});break;}seen.add(p);p=group.parent.get(p);}}
+  for(const n of group.cells){const p=group.parent.get(n.id);if(p){if(!group.children.has(p))group.children.set(p,[]);group.children.get(p).push(n);}else group.roots.push(n);}
+ }
+ const lineage=n=>{const path=[],seen=new Set();while(n&&!seen.has(n.id)){seen.add(n.id);path.unshift(n);n=byId.get(n.parent_id);}return path;};
+ const sorted=[...groups.values()].sort((a,b)=>{if(!a.owner)return 1;if(!b.owner)return -1;const ap=lineage(a.owner),bp=lineage(b.owner);for(let i=0;i<Math.min(ap.length,bp.length);i++){const d=order(ap[i],bp[i]);if(d)return d;}return ap.length-bp.length;});
+ const cross=edgeList.filter(e=>cellGroup.has(e.source)&&cellGroup.has(e.target)&&cellGroup.get(e.source)!==cellGroup.get(e.target));
+ return {groups:sorted,cross};
+}
+// END grouped-relation-model
+function relationMetric(n){
+ if(n.kind==='cell'&&children(n.id).some(r=>r.kind==='run'&&(r.status==='failed'||r.attrs?.backend_correct===false)))return `<span class="relation-failure">${esc(lang==='zh'?'失败记录':'Failure recorded')}</span>`;
+ const metrics=n.attrs?.metrics||{},entry=Object.entries(metrics).find(([key,value])=>['development_mse','mse','search_score','success_rate'].includes(key)&&typeof value==='number'&&Number.isFinite(value));
+ if(entry){const [key,value]=entry;const name=key.endsWith('mse')?'MSE':key==='search_score'?(lang==='zh'?'搜索分数':'Search score'):key;const shown=value!==0&&Math.abs(value)<.0001?value.toExponential(1):Number(value.toFixed(4)).toString();return `<span class="relation-metric" title="${esc(key+': '+value)}">${esc(name)} <b>${esc(shown)}</b></span>`;}
+ const score=n.attrs?.search_score;if(typeof score==='number'&&Number.isFinite(score))return `<span class="relation-metric">${esc(lang==='zh'?'搜索分数':'Search score')} <b>${esc(compactMetric(score))}</b></span>`;
+ return '';
+}
+function relationCard(n){return `<button type="button" class="relation-card ${n.id===selected?'selected':''}" data-select="${esc(n.id)}" aria-current="${n.id===selected?'true':'false'}" title="${esc(displayLabel(n))}"><span class="relation-node-label">${esc(displayLabel(n))}</span>${relationMetric(n)}</button>`;}
+function renderGroupedRelations(){
+ const model=groupedRelationModel(data.nodes,Object.values(data.edges));
+ const localText=(zh,en)=>lang==='zh'?zh:en;
+ const branch=(n,group)=>{const kids=(group.children.get(n.id)||[]).map(c=>branch(c,group)).join('');if(!hasMatch(n)&&!kids)return '';return `<li>${relationCard(n)}${kids?`<ul>${kids}</ul>`:''}</li>`;};
+ const sections=model.groups.map((group,index)=>{
+  const owner=group.owner,roots=group.roots.map(n=>branch(n,group)).join(''),claims=group.claims.filter(isFeaturedClaim).filter(hasMatch);
+  if(filter&&!roots&&!claims.length&&!(owner&&displayLabel(owner).toLowerCase().includes(filter.toLowerCase())))return '';
+  if(!group.cells.length&&!claims.length&&owner&&children(owner.id).some(n=>n.kind==='module'||n.kind==='question'))return '';
+  const open=(expanded.has(group.id)||(!owner&&!collapsedDuringSearch.has(group.id))||(filter&&!collapsedDuringSearch.has(group.id)));
+  const context=owner&&children(owner.id).some(n=>n.kind==='module'||n.kind==='question');
+  const cross=model.cross.filter(e=>group.cells.some(n=>n.id===e.source||n.id===e.target)).length;
+  return `<section class="relation-group ${context?'relation-context':''} ${!group.cells.length?'relation-summary':''}" style="--branch-color:var(--branch-${index%6})"><header><button class="relation-group-title" data-select="${esc(owner?.id||group.roots[0]?.id||'')}"><span class="relation-group-dot" aria-hidden="true"></span><span>${esc(owner?displayLabel(owner):localText('未分组的候选','Ungrouped candidates'))}</span></button><button class="relation-group-toggle" data-relation-toggle="${esc(group.id)}" aria-expanded="${open}" aria-label="${esc(localText('展开或收起','Expand or collapse')+' '+(owner?displayLabel(owner):group.id))}">${open?'−':'+'}</button></header><div class="relation-group-meta">${group.cells.length} ${esc(localText('个候选','candidates'))}${claims.length?' · '+claims.length+' '+esc(localText('条结论','findings')):''}${cross?' · '+cross+' '+esc(localText('条跨组关系，选中后查看','cross-group relations; select to inspect')):''}</div>${open?`<ul class="relation-tree">${roots}</ul>${claims.map(n=>`<div class="relation-claim">${relationCard(n)}</div>`).join('')}${group.warnings.length?`<p class="relation-warning">${esc(localText('含多来源或循环关系；详情保留完整关系。','Multiple parents or cycles: all relations are retained in details.'))}</p>`:''}`:''}</section>`;
+ }).join('');
+ const n=relationInspect?data.nodes[selected]:null;
+ let detail='';
+ if(n){
+  const related=Object.values(data.edges).filter(e=>e.source===n.id||e.target===n.id).filter(e=>data.nodes[e.source]&&data.nodes[e.target]);
+  const links=related.map(e=>{const outgoing=e.source===n.id,id=outgoing?e.target:e.source;let relation=e.relation;if(relation==='derived_from')relation=outgoing?localText('继承自','Derived from'):localText('派生版本','Derivative');else if(relation==='inspired_by')relation=outgoing?localText('参考自','Inspired by'):localText('被参考于','Inspiration for');return `<button class="relation-link" data-select="${esc(id)}"><small>${esc(relation)}</small>${esc(displayLabel(data.nodes[id]))}</button>`;}).join('');
+  detail=`<aside class="relation-detail" aria-label="${esc(t('inspector'))}"><header><h3>${esc(displayLabel(n))}</h3><button id="close-relation-detail" aria-label="${esc(t('close'))}">×</button></header>${links?`<div class="relation-links">${links}</div>`:''}${studyPanel(n)}</aside>`;
+ }
+ return `<div class="relation-intro">${esc(localText('按研究路线分组 · 组内线表示继承 · 点击候选查看指标、证据和跨组来源','Grouped by research track · Local lines show lineage · Select a candidate for evidence and cross-group relations'))}</div><div class="relation-layout ${n?'is-inspecting':''}"><div class="relation-grid">${sections||`<div class="empty">${esc(t('mapEmpty'))}</div>`}</div>${detail}</div>`;
+}
 function drawMapBody() {
  const rootNodes=children(data.project.id).filter(isMapNode).filter(hasMatch);
  const lineage=selectedLineage(),pathIds=new Set(lineage.map(n=>n.id));
  const trail=lineage.length?`<div class="map-trail"><span>${esc(t('currentBranch'))}</span><div>${lineage.map((n,index)=>`${index?'<i aria-hidden="true">›</i>':''}<button type="button" data-select="${esc(n.id)}" aria-current="${index===lineage.length-1?'page':'false'}">${esc(displayLabel(n))}</button>`).join('')}</div></div>`:'';
  if(layout==='tree')$('map-body').innerHTML=`${trail}<div class="tree"><ul class="tree-list">${rootNodes.map(n=>treeNode(n,0,pathIds)).join('')||`<div class="empty">${esc(t('mapEmpty'))}</div>`}</ul></div>`;
- else {
-  const groups=['module','question','cell','claim'];
-   const focus=data.nodes[selected]&&expanded.has(selected)?`<div class="lineage-focus">${studyPanel(data.nodes[selected])}</div>`:'';
-   $('map-body').innerHTML=`${trail}${focus}<div class="lineage-board" id="lineage-board"><svg id="lineage-svg" class="lineage-svg" aria-hidden="true"></svg><div class="lineage-grid">${groups.map(kind=>`<div><div class="lane-label">${esc(t(kind))}</div>${Object.values(data.nodes).filter(n=>n.kind===kind&&n.status!=='archived'&&(kind!=='claim'||isFeaturedClaim(n))&&hasMatch(n)).sort(sortNodes).map(n=>`<div class="lane-node ${n.id===selected?'selected':''}" id="lane-${esc(n.id)}" data-select="${esc(n.id)}" tabindex="0" role="button">${esc(displayLabel(n))}<small>${n.status==='provisional'?'':esc(statusText(n.status))+' · '}${children(n.id).length} ${esc(t('childItems'))}</small></div>`).join('')}</div>`).join('')}</div></div>`;
-  requestAnimationFrame(drawLines);
- }
+ else $('map-body').innerHTML=`${trail}${renderGroupedRelations()}`;
  bindNodeButtons($('map-body'));
+ $('map-body').querySelectorAll('[data-relation-toggle]').forEach(b=>b.onclick=()=>{const id=b.dataset.relationToggle;if(b.getAttribute('aria-expanded')==='true'){expanded.delete(id);collapsedDuringSearch.add(id);}else{expanded.add(id);collapsedDuringSearch.delete(id);}storageWrite();drawMapBody();});
+ const close=$('close-relation-detail');if(close)close.onclick=()=>{relationInspect=false;drawMapBody();};
  $('map-body').querySelectorAll('[data-inline-evidence]').forEach(b=>b.onclick=()=>showEvidence(b.dataset.inlineEvidence,b.dataset.title));
-}
-function drawLines(){
- const board=$('lineage-board'),svg=$('lineage-svg');if(!board||!svg)return;
- const rect=board.getBoundingClientRect();svg.setAttribute('width',board.scrollWidth);svg.setAttribute('height',board.scrollHeight);
- const links=Object.values(data.nodes).map(n=>({source:n.parent_id,target:n.id,related:false})).concat(Object.values(data.edges).map(e=>({...e,related:true})));
- svg.innerHTML=links.map(e=>{const a=$('lane-'+e.source),b=$('lane-'+e.target);if(!a||!b)return '';const ar=a.getBoundingClientRect(),br=b.getBoundingClientRect();const x1=ar.right-rect.left+board.scrollLeft,y1=ar.top+ar.height/2-rect.top+board.scrollTop,x2=br.left-rect.left+board.scrollLeft,y2=br.top+br.height/2-rect.top+board.scrollTop;return `<path d="M${x1},${y1} C${x1+24},${y1} ${x2-24},${y2} ${x2},${y2}" fill="none" stroke="${e.related?'#b5bfae':'#ccdacb'}" stroke-width="1.3" ${e.related?'stroke-dasharray="4 4"':''}/>`;}).join('');
 }
 function bindNodeButtons(root){root.querySelectorAll('[data-select]').forEach(b=>{b.onclick=()=>select(b.dataset.select);b.onkeydown=e=>{if(e.target===b&&(e.key==='Enter'||e.key===' ')){e.preventDefault();select(b.dataset.select);}};});root.querySelectorAll('[data-toggle]').forEach(b=>b.onclick=e=>{e.stopPropagation();const id=b.dataset.toggle,wasOpen=b.getAttribute('aria-expanded')==='true';if(wasOpen){expanded.delete(id);collapsedDuringSearch.add(id);let parent=selected,seen=new Set();while(parent&&parent!==id&&!seen.has(parent)){seen.add(parent);parent=data.nodes[parent]?.parent_id;}if(parent===id)selected=id;}else{expanded.add(id);collapsedDuringSearch.delete(id);if(!children(id).some(isMapNode))selected=id;}storageWrite();renderDetail();drawMapBody();});}
 function kv(obj){return `<dl class="kv">${Object.entries(obj).map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(pretty(v))}</dd>`).join('')}</dl>`;}
@@ -363,7 +423,7 @@ function init(){
  document.addEventListener('keydown',e=>{if($('modal').hidden)return;if(e.key==='Escape'){e.preventDefault();closeModal();}else if(e.key==='Tab'){e.preventDefault();const focusable=[$('close-modal'),$('evidence-content')],index=focusable.indexOf(document.activeElement);focusable[(index+(e.shiftKey?-1:1)+focusable.length)%focusable.length].focus();}});
  $('copy-prompt').onclick=async()=>{const text=t('prompt').replace('{project}',data?`「${data.project.name}」`:'');try{await navigator.clipboard.writeText(text);toast(t('copied'));}catch(_){openModal();$('modal-title').textContent=t('copyToAgent');$('modal-subtitle').textContent=t('noNewAgent');$('evidence-content').textContent=text;}};
  $('export-json').onclick=()=>{if(data){download('research-records-r'+data.revision+'.json',JSON.stringify(data,null,2),'application/json');toast(t('exportWarning'));}};
- window.addEventListener('resize',()=>{if(layout==='lineage'&&view==='map')drawLines();});load();
+ load();
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();

@@ -82,6 +82,16 @@ records their identities and completion scopes separately with source evidence.
 
 ## UI
 
+The relation view groups candidates by their nearest research module/question
+instead of placing every node kind in a global column. Within each group it
+projects explicit `derived_from` edges from origin to derivative, falling back
+to candidate hierarchy only when no explicit parent was recorded. Multiple
+parents and cycles are flagged; all original relations remain in the selected
+node's details. Cross-group edges are shown as navigable source/derivative links
+on selection rather than intersecting lines across the entire map. Runs and
+evidence stay in the detail inspector. Group collapse and search change only
+the presentation, never experiment identities, results or stored relationships.
+
 Bundled HTML/CSS/JS use no CDN, frontend build or runtime dependency. The local
 HTTP service exposes only state and known text evidence. It binds to loopback,
 checks Host, requires a random API token and rejects cross-site fetches. There
