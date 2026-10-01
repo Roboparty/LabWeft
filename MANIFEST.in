@@ -1,6 +1,6 @@
 include LICENSE README.md README.zh-CN.md CHANGELOG.md CONTRIBUTING.md SECURITY.md ACKNOWLEDGEMENTS.md
 include labweft.py bootstrap.py rh.py
-recursive-include docs *.md *.txt *.json *.png
+recursive-include docs *.md *.txt *.json *.png *.gif
 recursive-include examples *.md *.py *.json
 prune examples/policy-study/.research
 recursive-include research_harness/skill *.md

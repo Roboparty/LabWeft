@@ -31,19 +31,71 @@ The core and browser remain independent of model services. See the
 [small synthetic example](examples/shinka/README.md) and the guide's validation
 boundary: offline tests do not establish live search effectiveness or GPU readiness.
 
-## Try the demonstration
+### Quick research-tree preview and saved handoff
 
-For an instant multi-branch research tree (6 tracks, 37 candidates, 49 saved CPU
-evaluations), run:
+![Research-tree interaction demo](docs/assets/research-tree.gif)
+
+*Actual UI interactions with saved results: unfold branches, zoom/pan, and inspect
+nodes. This animation does not show live Shinka search or new evaluations.*
+
+From the LabWeft checkout, generate and open the complete preview with one command:
 
 ```sh
 python labweft.py demo ./tree-preview --scenario research-tree --open --port 0
 ```
 
-This replays bundled synthetic-task results without executing experiments or
-calling Shinka/models. Repeating it preserves research history and refreshes the
-renderer. Omit `--open --port 0` for an offline `.research/map.html` only.
-The default `demo` scenario below remains the original policy-study fixture.
+If LabWeft is installed, use:
+
+```sh
+labweft demo ./tree-preview --scenario research-tree --open --port 0
+```
+
+Port `0` selects an available loopback port. No Shinka,
+model account, GPU, Node.js or network is needed for this preview. One local
+Windows/Python 3.12.13 generation took about 1.9 seconds; this is a single
+observation, not a performance guarantee.
+
+Omit `--open --port 0` to generate only `tree-preview/.research/map.html`. The
+standalone page includes this synthetic example's source and evidence snapshots.
+Keep the entire directory to reopen, re-export or serve it later.
+
+#### Saved contents
+
+- Six tracks: algebra, symmetry, lookup/memorization, discretization, numerical
+  failures, and cross-branch composition.
+- 37 preset candidates, 36 primary lineage edges and two secondary references.
+- 49 saved CPU evaluations from 2026-10-01: 37 development evaluations and 12
+  additional-input checks, including four invalid candidates.
+- Per-input predictions, metrics, candidate/evaluator hashes and provenance.
+  Machine-local execution-command paths have been removed from the portable copy.
+
+Data lives in `research_harness/fixtures/research_tree.json`; the generator is
+`research_harness/research_tree_demo.py`. Both are shipped in the wheel and saved
+on `main`, without depending on this conversation or temporary machine paths.
+The example contains no private Luna experiment records.
+
+**Generation replays saved results. It does not rerun the 49 evaluations or ask
+Shinka/a model to propose candidates.** The command reports zero new CPU
+evaluations and model calls. For actual automatic research, use the separate
+[Shinka backend workflow](docs/AUTORESEARCH.md).
+
+#### Visual and reuse conventions
+
+The independently implemented canvas takes visual inspiration from the public
+Simate RoboScientist evolution view. Short ids and recorded status colors appear
+by default. Horizontal `L0/L1/...` denotes lineage depth, not real time or native
+generation numbers; vertical lanes denote research directions. Primary edges are
+visible, secondary references can be toggled, and details/evidence open on demand.
+Pan, zoom, fit, expand-canvas and descendant folding are available; the full-text
+Outline remains accessible. Scores never automatically become scientific claims.
+
+Running the same command again preserves the project id and event history, and
+refreshes the exported renderer. Use a new directory for a different fixture
+version or a real project: the generator refuses to overwrite them. The default
+`demo` scenario remains the policy-study fixture below. See the
+[Chinese handoff](docs/RESEARCH_TREE_DEMO.zh-CN.md) for the same saved conventions.
+
+## Try the demonstration
 
 From this directory, no pip install required:
 

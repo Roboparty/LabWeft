@@ -53,6 +53,6 @@ labweft demo ./tree-preview --scenario research-tree --open --port 0
 
 对同一个示例目录再次运行相同命令，会保留项目ID与已有事件历史，只重新导出当前版本
 的前端。这适合更新界面后快速预览。新示例数据版本、其他示例或真实项目须使用新目录，
-生成器不会覆盖它们。当前示例数据可通过 Git 分支 `codex/labweft-p0` 获取。
+生成器不会覆盖它们。当前示例数据与生成器已随 `main` 分支一起保存。
 
 原有 `demo` 默认仍生成 policy 示例；本功能必须选择 `--scenario research-tree`。
