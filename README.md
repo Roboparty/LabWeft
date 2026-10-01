@@ -20,6 +20,17 @@ server, Node.js install, or frontend build step. Python 3.11+ is the only runtim
 The model service used by your coding agent is separate and may require network
 access, payment and permission to process your code.
 
+## Optional automatic research
+
+The opt-in [Shinka backend](docs/AUTORESEARCH.md) adds `research prepare`,
+`start`, `status`, `stop`, `resume`, and `collect`. Freeze a task and preview it
+without a model dependency; explicitly execute it in an authorized environment
+with `pip install ".[shinka]"`. Candidates and native parent relationships enter
+the existing research map as provisional backend reports, including failures.
+The core and browser remain independent of model services. See the
+[small synthetic example](examples/shinka/README.md) and the guide's validation
+boundary: offline tests do not establish live search effectiveness or GPU readiness.
+
 ## Try the demonstration
 
 From this directory, no pip install required:

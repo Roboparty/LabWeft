@@ -18,6 +18,12 @@ be negative; a full factorial experiment table is not a mandatory goal.
 
 ## Implemented modules
 
+- `autoresearch.py`, `research_worker.py`, `backends/shinka.py`: optional pinned
+  Shinka backend, frozen task contracts, durable bounded batches, drained stop and
+  resume, native report import. See `docs/AUTORESEARCH.md` before extending or
+  executing. Model-backed execution and Luna integration still require deployment
+  validation; offline fixtures do not establish search effectiveness.
+
 - `store.py`: project identity, immutable text blobs, event replay, local lock,
   revision conflicts, schema/reference checks, human-protection convention.
 - `scan.py`: conservative inventory and static Python symbols; JSON/TOML/CSV

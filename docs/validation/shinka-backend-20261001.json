@@ -1,0 +1,36 @@
+{
+  "date": "2026-10-01",
+  "branch": "codex/labweft-p0",
+  "base_commit": "7d2cbc1489fc8f933137bfb9e97adf3b1d8a5e64",
+  "environment": "Windows, Python 3.12.13",
+  "unit_suite": {
+    "command": "python -m unittest discover -s tests -v",
+    "total": 88,
+    "passed": 87,
+    "skipped": 1,
+    "skip_reason": "Existing symlink test unsupported in this Windows environment",
+    "new_backend_tests": 19
+  },
+  "source_contract_check": {
+    "upstream_revision": "9912af12d423504b8d580f4179fd15f5f88b8c50",
+    "method": "AST comparison of adapter keyword arguments with pinned upstream dataclasses and runner constructor",
+    "interfaces": ["EvolutionConfig", "DatabaseConfig", "LocalJobConfig", "ShinkaEvolveRunner"],
+    "passed": true,
+    "is_runtime_sdk_validation": false
+  },
+  "synthetic_evaluator": {
+    "actual_cpu_subprocesses": 3,
+    "cases": ["valid baseline with error", "exact synthetic solution with improved score", "invalid code reported as failure"],
+    "model_calls": 0,
+    "gpu_jobs": 0
+  },
+  "wheel_smoke": {
+    "build": "uv build --wheel",
+    "isolated_install_without_dependencies": true,
+    "optional_shinka_installed": false,
+    "checks": ["workspace initialization", "frozen task preparation", "dry-run start", "workspace validation", "bundled Skill backend reference installation"],
+    "passed": true
+  },
+  "not_validated": ["live Shinka model-backed evolution", "provider billing accuracy", "GPU execution", "SSH resource scheduling", "Luna physical or data qualification", "abrupt-crash automatic recovery"],
+  "private_research_data_included": false
+}

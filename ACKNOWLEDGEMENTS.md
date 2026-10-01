@@ -26,3 +26,14 @@ content and rebrand it. This file is a design bibliography, not a license audit.
 LabWeft is the confirmed project name; Research Harness was the prototype name.
 No claim of first invention, exclusive functionality, universal model support,
 or parity with the systems above is made.
+
+## Optional executable dependency (2026-10-01)
+
+The `shinka` extra now optionally installs
+[SakanaAI/ShinkaEvolve](https://github.com/SakanaAI/ShinkaEvolve) at commit
+`9912af12d423504b8d580f4179fd15f5f88b8c50`, licensed Apache-2.0 upstream.
+LabWeft's adapter is independently authored against its public Python interfaces
+and native result schema. No Shinka source, prompts or assets are copied into
+this repository. The earlier no-runtime-dependency statement describes the core;
+it does not apply when this optional extra is explicitly installed. Retain and
+review upstream license/notice material if distributing its dependency artifacts.

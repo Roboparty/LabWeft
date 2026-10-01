@@ -17,6 +17,9 @@ classifiers = [
   "Topic :: Scientific/Engineering",
 ]
 
+[project.optional-dependencies]
+shinka = ["shinka-evolve @ git+https://github.com/SakanaAI/ShinkaEvolve.git@9912af12d423504b8d580f4179fd15f5f88b8c50"]
+
 [project.scripts]
 labweft = "research_harness.cli:main"
 rh = "research_harness.cli:main"

@@ -119,6 +119,20 @@ evidence. Archiving does not delete their source snapshots.
 
 ## Provider boundary
 
+The optional `autoresearch.py` workflow and `backends/shinka.py` adapter execute
+only through explicit CLI commands. Small task inputs are snapshotted and hashed.
+A machine-local worker lease serializes each activity; a control lock orders
+batch reservations and stop requests. Shinka owns candidate search and local job
+dispatch. Bounded native runs provide drained pause boundaries, retaining the
+same database and absolute generation budget. Ambiguous crashes do not auto-resume.
+
+The importer reads native SQLite reports without running source or importing SDKs,
+then writes deterministic Cell/Run/Evaluation identities through ordinary Store
+transactions and immutable evidence blobs. Search scores are backend attributes,
+not completed training-seed metrics or accepted scientific claims. See
+[the execution contract and limitations](AUTORESEARCH.md). The scanner, original
+semantic protocol and read-only HTTP service do not gain execution privileges.
+
 Skills for Codex and Claude use their respective discovery locations. Generic
 agents can read the same Skill and command protocol. This is capability-based
 integration: the host must read files and run commands. It is not an API router,

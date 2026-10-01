@@ -18,6 +18,11 @@ not a promise of one model API call or flawless interpretation of any repository
 
 ## Entry point
 
+For an explicit request to run automatic research with Shinka, read
+[the optional backend protocol](references/AUTORESEARCH.md). Ordinary project
+organization remains read-only. Existing authorization for model/compute scope
+applies across iterations; backend preparation alone is not execution permission.
+
 Use `labweft` if installed, or the exact command prefix in
 [LOCAL_COMMAND.md](references/LOCAL_COMMAND.md) when present. A cloned repository
 can run `python /absolute/path/to/labweft.py` without pip installation. The commands

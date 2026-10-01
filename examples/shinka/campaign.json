@@ -1,0 +1,15 @@
+{
+  "id": "synthetic-square",
+  "question": "Can program evolution reduce squared error on a synthetic function?",
+  "task_dir": "task",
+  "files": ["initial.py", "evaluate.py"],
+  "models": ["REPLACE_WITH_YOUR_MODEL_ID"],
+  "instructions": "Implement predict(x) for the synthetic target x squared. Only edit initial.py. Keep the evaluator fixed.",
+  "evaluation_protocol": "synthetic-square-seven-fixed-inputs-v1",
+  "max_generations": 4,
+  "batch_size": 2,
+  "max_evaluation_jobs": 1,
+  "num_islands": 2,
+  "evaluation_timeout_seconds": 30,
+  "max_api_cost_usd": 1.0
+}

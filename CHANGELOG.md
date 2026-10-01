@@ -2,6 +2,16 @@
 
 ## Unreleased — LabWeft P0 local handoff
 
+Added an optional pinned Shinka automatic-research backend. The new `research`
+CLI freezes small task inputs, previews execution, starts a background native
+search, drains bounded batches on stop, resumes clean checkpoints without
+resetting generation budgets, and imports native candidate evidence/lineage.
+Ambiguous crashes refuse automatic restart. Imported failures and unknown costs
+are retained; search scores are not scientific qualification or training-seed
+statistics. Core dependencies and read-only HTTP behavior remain unchanged.
+Includes a CPU-only synthetic evaluator, bilingual guide and offline lifecycle
+regressions; live model/GPU execution is not claimed as validated.
+
 The second bounded private-project pilot exercised folder-by-folder source
 addition, corrected evaluation provenance and later ablation branches. It found
 three current-view errors: an exact file-count scan limit could mark unseen

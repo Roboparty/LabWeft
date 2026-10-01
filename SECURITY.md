@@ -25,3 +25,14 @@ implemented by this core. Host-model context processing is separate.
 There is no published security contact yet. Before public release, establish a
 private reporting channel and test extraction, path, event and browser boundaries.
 Do not create a public issue containing sensitive research data or credentials.
+
+## Optional research execution
+
+The `research start/resume --execute` commands intentionally execute a frozen task
+and model-generated code through the optional Shinka dependency. They are separate
+from the read-only scanner/server. Only use them within authorized model/compute
+scope and an appropriately isolated execution environment. Hash checks detect
+changes but are not an OS sandbox. Do not resume untrusted native checkpoints.
+Stop drains a bounded batch; it is not emergency process termination. Crashes
+with potentially surviving evaluators need reconciliation before further execution.
+See [the backend guide](docs/AUTORESEARCH.md).

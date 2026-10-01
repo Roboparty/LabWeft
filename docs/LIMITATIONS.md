@@ -64,7 +64,11 @@ schema migrations and crash/power-loss durability need additional work.
 Evidence snapshots are local and excluded by the workspace Git ignore. Copying
 only the event index does NOT back up or replicate their bytes. No automatic
 GitHub repository creation, branch creation, upload, sync, issue/project creation,
-checkpoint deletion or experiment scheduling is included.
+checkpoint deletion is included. The optional [Shinka adapter](AUTORESEARCH.md)
+adds explicitly invoked same-host local experiment scheduling. It has no SSH/GPU
+resource allocation, whole-repository mutation, automatic orphan reconciliation,
+or independent scientific qualification. Ordinary scans and the UI never dispatch
+experiments. Offline adapter tests are not live provider or GPU validation.
 
 ## Agent integration
 

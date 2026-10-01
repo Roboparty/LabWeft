@@ -116,6 +116,8 @@ def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="labweft", description="LabWeft: local-first research workspace (prototype)")
     p.add_argument("--version", action="version", version=__version__)
     sub = p.add_subparsers(dest="command", required=True)
+    from .autoresearch import add_cli
+    add_cli(sub)
     s = sub.add_parser("init", help="Create a persistent research workspace, without moving source files")
     s.add_argument("workspace", nargs="?", default=".")
     s.add_argument("--name")
@@ -182,6 +184,10 @@ def main(argv: list[str] | None = None) -> int:
     configure_stdio()
     args = parser().parse_args(argv)
     try:
+        if args.command == "research":
+            from .autoresearch import dispatch
+            emit(dispatch(args))
+            return 0
         if args.command == "install-skill":
             emit(install_skill(args.agent, args.project, args.user))
             return 0
