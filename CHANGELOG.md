@@ -2,6 +2,12 @@
 
 ## Unreleased — LabWeft P0 local handoff
 
+Added `demo --scenario research-tree`: a portable, bundled replay of 37 preset
+candidates and 49 saved CPU evaluations, including four invalid candidates.
+Generation makes no experiment/model calls. Repeat generation refreshes the
+renderer without replacing events. `demo --open --port 0` uses an available local
+port. Saved snapshots exclude machine-local command paths and ship in the wheel.
+
 The default map is now a compact research-tree canvas, informed by the public
 Simate RoboScientist evolution view: candidate dots, lineage-depth columns and
 research-direction lanes replace dense text cards. Includes pan/zoom/fit, expanded

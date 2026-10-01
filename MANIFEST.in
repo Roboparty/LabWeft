@@ -5,3 +5,4 @@ recursive-include examples *.md *.py *.json
 prune examples/policy-study/.research
 recursive-include research_harness/skill *.md
 recursive-include research_harness/static *.html *.css *.js
+recursive-include research_harness/fixtures *.json

@@ -33,6 +33,18 @@ boundary: offline tests do not establish live search effectiveness or GPU readin
 
 ## Try the demonstration
 
+For an instant multi-branch research tree (6 tracks, 37 candidates, 49 saved CPU
+evaluations), run:
+
+```sh
+python labweft.py demo ./tree-preview --scenario research-tree --open --port 0
+```
+
+This replays bundled synthetic-task results without executing experiments or
+calling Shinka/models. Repeating it preserves research history and refreshes the
+renderer. Omit `--open --port 0` for an offline `.research/map.html` only.
+The default `demo` scenario below remains the original policy-study fixture.
+
 From this directory, no pip install required:
 
 ```sh

@@ -1,5 +1,10 @@
 # Synthetic Shinka task
 
+For the complete visual research-tree preview without running Shinka, use
+`python labweft.py demo ./tree-preview --scenario research-tree --open --port 0`.
+It replays 37 preset candidates and 49 saved CPU evaluations. See the
+[saved example and design handoff](../../docs/RESEARCH_TREE_DEMO.zh-CN.md).
+
 This example uses only Python's standard library and tiny CPU calculations.
 It contains no private research data. Generated search results are not scientific
 evidence. Running **Shinka evolution** additionally requires the optional backend,

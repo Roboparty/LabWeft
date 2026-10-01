@@ -176,6 +176,8 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--user", action="store_true")
     s = sub.add_parser("demo", help="Create a clearly synthetic, working ablation example")
     s.add_argument("workspace", nargs="?", default="./research-demo")
+    s.add_argument("--scenario", choices=["policy", "research-tree"], default="policy", help="policy: original fixture; research-tree: instant replay of saved tree results")
+    s.add_argument("--port", type=int, default=8787, help="Preview server port with --open; use 0 for a free port")
     s.add_argument("--open", action="store_true")
     return p
 
@@ -260,10 +262,14 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "serve":
             serve(store, args.port, args.open)
         elif args.command == "demo":
-            from .demo import create_demo
-            emit(create_demo(store.workspace))
+            if args.scenario == "research-tree":
+                from .research_tree_demo import create_research_tree_demo
+                emit(create_research_tree_demo(store.workspace))
+            else:
+                from .demo import create_demo
+                emit(create_demo(store.workspace))
             if args.open:
-                serve(store, 8787, True)
+                serve(store, args.port, True)
         return 0
     except (HarnessError, OSError, ValueError) as exc:
         print(json.dumps({"error": str(exc)}, ensure_ascii=False), file=sys.stderr)

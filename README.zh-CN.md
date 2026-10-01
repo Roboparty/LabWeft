@@ -26,6 +26,16 @@ status / stop / resume / collect`。可以先冻结小型任务并预览，再�
 
 ## 先体验完整示例
 
+快速打开多子树预览（6条路线、37个候选、49份已保存CPU评测）：
+
+```sh
+python labweft.py demo ./tree-preview --scenario research-tree --open --port 0
+```
+
+生成器回放包内保存的数据，不重新运行评测，不调用 Shinka 或模型；重复生成只更新
+预览页面，保留记录。离线文件为 `tree-preview/.research/map.html`。
+[生成方法、保存内容与界面约定](docs/RESEARCH_TREE_DEMO.zh-CN.md)。
+
 解压后进入本目录：
 
 ```sh

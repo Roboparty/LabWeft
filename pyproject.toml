@@ -28,4 +28,4 @@ rh = "research_harness.cli:main"
 include = ["research_harness*"]
 
 [tool.setuptools.package-data]
-research_harness = ["static/*", "skill/research-harness/SKILL.md", "skill/research-harness/references/*.md"]
+research_harness = ["static/*", "fixtures/*.json", "skill/research-harness/SKILL.md", "skill/research-harness/references/*.md"]

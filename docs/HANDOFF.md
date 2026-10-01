@@ -18,6 +18,11 @@ be negative; a full factorial experiment table is not a mandatory goal.
 
 ## Implemented modules
 
+- `research_tree_demo.py`, `fixtures/research_tree.json`: fast portable replay via
+  `demo --scenario research-tree`. Includes saved synthetic CPU measurements,
+  candidate sources and evidence snapshots, with no new execution or model calls.
+  The Chinese generation/design handoff is `docs/RESEARCH_TREE_DEMO.zh-CN.md`.
+
 - `autoresearch.py`, `research_worker.py`, `backends/shinka.py`: optional pinned
   Shinka backend, frozen task contracts, durable bounded batches, drained stop and
   resume, native report import. See `docs/AUTORESEARCH.md` before extending or
