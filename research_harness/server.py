@@ -11,13 +11,14 @@ from urllib.parse import urlparse, parse_qs
 import webbrowser
 from .store import Store, HarnessError, atomic_write, canonical
 from .reasoning import compare, drift
+from .organization import organization
 
 STATIC = Path(__file__).parent / "static"
 
 
 def presentation(store: Store) -> dict:
     state = store.load()
-    return {**state, "comparison": compare(state), "drift": drift(state), "mode": "live"}
+    return {**state, "comparison": compare(state), "drift": drift(state), "organization": organization(state), "mode": "live"}
 
 
 def export_html(store: Store, output: Path, *, include_evidence: bool = False,

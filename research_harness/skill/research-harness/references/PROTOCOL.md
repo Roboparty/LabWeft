@@ -16,6 +16,29 @@ Relations: `derived_from`, `compares`, `supports`, `contradicts`,
 `uses_checkpoint`, `supersedes`, `inspired_by`. Never confuse method derivation
 with inherited weights. Every edge endpoint must exist.
 
+## Research Organization and Display
+
+The map projects recorded Run-to-Run derivations between their owning Cells.
+This is read-only provenance aggregation, not a claim that every replicate has
+the same ancestry. Duplicate visual links retain their Run sources; intra-Cell
+replication is not a new condition. Multiple origins and cycles remain visible.
+Record the actual Run relationship instead of inventing a Cell-level one for
+the renderer.
+
+An optional `attrs.current_focus: "STABLE_NODE_ID"` on a project-level module
+selects the current research line. The focused view retains recorded origins;
+All research tracks and Outline expose the full history. It does not change
+scientific status, evidence, or run counts.
+Use a visible module, question or Cell ID; a Run ID resolves to its owning Cell.
+Archived declarations and unsupported focus targets do not hide the full map.
+
+Keep the research reasoning chain separate from implementation execution flow
+and the run ledger. Each major step identifies the question, baseline, change,
+observed result and ensuing decision. Source names and runtime phases are not
+research reasoning. The `organization` report in `context`/`validate` provides
+structural review hints; warnings neither invalidate schema nor establish
+scientific quality. Independent studies may legitimately have no lineage edges.
+
 ## Per-version change annotations
 
 Every version, attempt or candidate shown in a research map needs a readable
