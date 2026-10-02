@@ -63,7 +63,7 @@ class WorkspaceTests(unittest.TestCase):
                                  "--workspace", str(workspace), "--agent", "codex"],
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
         payload = json.loads(result.stdout.decode("utf-8"))
-        self.assertEqual(str(workspace), payload["workspace"])
+        self.assertEqual(str(workspace.resolve()), payload["workspace"])
         self.assertFalse((source / ".research").exists())
         self.assertFalse((source / ".agents").exists())
         self.assertTrue((workspace / ".agents" / "skills" / "research-harness" / "SKILL.md").is_file())
@@ -633,7 +633,7 @@ class WorkspaceTests(unittest.TestCase):
         sync(other)
         output = Path(self.temp.name) / "site"
         result = export_site([self.root, other_root], output, include_evidence=True)
-        self.assertEqual(str(output / "index.html"), result["index"])
+        self.assertEqual(str((output / "index.html").resolve()), result["index"])
         pages = [output / "index.html", *[Path(item["page"]) for item in result["projects"]]]
         payloads = []
         for page in pages:

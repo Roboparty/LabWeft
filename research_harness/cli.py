@@ -11,6 +11,7 @@ from . import __version__
 from .store import Store, HarnessError, atomic_write, read_json, json_write, validate_state
 from .scan import sync
 from .reasoning import compare, assess, drift
+from .organization import organization
 from .server import export_html, export_site, serve
 
 
@@ -222,7 +223,7 @@ def main(argv: list[str] | None = None) -> int:
                 top = [n for n in nodes if n["kind"] not in {"run", "evaluation", "artifact"}]
                 emit({"project": state["project"], "base_revision": state["revision"], "nodes": top,
                       "node_count": len(nodes), "file_count": len(state["files"]), "drift": drift(state),
-                      "scan": state["scan"], "history": state["history"][-12:],
+                      "scan": state["scan"], "history": state["history"][-12:], "organization": organization(state),
                       "next": "Use files for paginated evidence, context --node ID, or --full. Read evidence before applying a semantic patch."})
         elif args.command == "files":
             state = store.load()
@@ -253,7 +254,7 @@ def main(argv: list[str] | None = None) -> int:
                     except HarnessError as exc:
                         failures.append({"node": n["id"], "error": str(exc)})
             emit({"valid": not failures, "revision": state["revision"], "nodes": len(state["nodes"]),
-                  "evidence_errors": failures, "drift": drift(state),
+                  "evidence_errors": failures, "drift": drift(state), "organization": organization(state),
                   "scope": "Mechanical validation only; not validation of scientific truth or host-model reliability."})
             return 1 if failures else 0
         elif args.command == "export":
