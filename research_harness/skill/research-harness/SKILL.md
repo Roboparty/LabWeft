@@ -80,6 +80,14 @@ below use legacy `rh` as shorthand for that same CLI. Quote all paths.
    from sources, the researcher, or agent interpretation. Do not promote a
    directory hierarchy into this outline. If accounts conflict, retain their
    version and scope instead of choosing a convenient narrative.
+   Keep three separate explanations: research reasoning (failure/question ->
+   hypothesis -> controlled comparison -> result -> decision), the chosen
+   implementation's execution/data flow, and the full run ledger. A batch list
+   or runtime phase list is not a research reasoning chain. Explain why each
+   important result changed the next decision. Reuse the best-supported lineage
+   before opening another branch. When the user selects a main line, record its
+   stable ID as `attrs.current_focus` on the project-level research module;
+   retain parked studies and evidence as history.
 5. **Map the experiment design and testable claims.** Use `rh context WORKSPACE
    --full` or `--node ID` and reuse IDs. Nest modules for project-specific
    research tracks, studies and ablation groups; connect questions → cells → runs
@@ -153,6 +161,12 @@ below use legacy `rh` as shorthand for that same CLI. Quote all paths.
    human-protected corrections. Review source-drift flags without declaring every
    old conclusion invalid.
 9. **Check and visualize.** Run `rh validate WORKSPACE` and `rh compare WORKSPACE`.
+   Inspect `organization` in `context` and `validate`; `valid: true` checks
+   schema/evidence, not whether the research narrative is organized. Resolve or
+   explain structural review hints before delivery. Inspect the rendered map:
+   Run-level derivations must remain visible in the Cell overview. Never infer
+   parentage from version numbers or dates to make a prettier tree. A justified
+   independent comparison does not need artificial lineage edges.
    Current comparisons exclude runs whose metric evidence changed or disappeared;
    their old snapshots remain historical evidence. Address mechanical errors,
    not by weakening provenance. Export with `rh export

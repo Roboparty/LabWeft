@@ -66,7 +66,7 @@ function initialExpanded(){const ids=new Set();for(const n of Object.values(data
 words.zh.tree='大纲';words.en.tree='Outline';words.zh.relationsView='研究树';words.en.relationsView='Research tree';
 let data, view='map', selected=null, layout='lineage', filter='', compareFilter='', sourceMode='mapped', cellSelection=new Set(), metric='success_rate', differentOnly=false;
 let relationInspect=false;
-let treeCamera={x:0,y:0,scale:1},treeCollapsed=new Set(),treeSecondary=false,treeFullscreen=false,treeFitMode=false;
+let treeCamera={x:0,y:0,scale:1},treeCollapsed=new Set(),treeSecondary=false,treeFullscreen=false,treeFitMode=false,treeShowAll=false;
 let expanded = new Set(), collapsedDuringSearch=new Set(), token='', savedKey='', sourcePage=0, historyType='all', historyModule='all', timelineView='project', projectTimelineModule='all', projectTimelineType='all', timelineReturnEvent=null, compareOpenGroups=new Set();
 const snap = $('snapshot-data');
 try { token = new URLSearchParams(location.search).get('token') || sessionStorage.getItem('rh-token') || ''; if(token)sessionStorage.setItem('rh-token',token); if(location.search.includes('token='))history.replaceState({},'',location.pathname); } catch (_) {}
@@ -166,7 +166,23 @@ function renderMap() {
 }
 // BEGIN grouped-relation-model
 // This is only a display projection: no experimental identities or edges change.
+function projectedCellRelations(nodeMap, edgeList) {
+ const owner=id=>{let n=nodeMap[id],seen=new Set();if(!n||!['cell','run'].includes(n.kind))return null;while(n&&!seen.has(n.id)){if(n.status==='archived')return null;seen.add(n.id);if(n.kind==='cell')return n.id;n=nodeMap[n.parent_id];}return null;};
+ const out=new Map();
+ for(const edge of edgeList){
+  const source=owner(edge.source),target=owner(edge.target)||(edge.relation==='derived_from'?edge.target:null);
+  if(!source||!target||source===target)continue;
+  const projected=!!edge.projected||source!==edge.source||target!==edge.target;
+  if(projected&&!['derived_from','inspired_by','compares'].includes(edge.relation))continue;
+  const key=JSON.stringify([source,target,edge.relation]);
+  if(!out.has(key))out.set(key,{...edge,source,target,projected,originalEdges:[]});
+  const item=out.get(key);item.projected=item.projected&&projected;
+  item.originalEdges.push(...(edge.originalEdges||[{id:edge.id,source:edge.source,target:edge.target}]).map(e=>({...e})));
+ }
+ return [...out.values()];
+}
 function groupedRelationModel(nodeMap, edgeList) {
+ edgeList=projectedCellRelations(nodeMap,edgeList);
  const active=Object.values(nodeMap).filter(n=>n.status!=='archived');
  const byId=new Map(active.map(n=>[n.id,n]));
  const owners=active.filter(n=>n.kind==='module'||n.kind==='question');
@@ -203,7 +219,16 @@ function groupedRelationModel(nodeMap, edgeList) {
 }
 // END grouped-relation-model
 // BEGIN research-tree-model
-function researchTreeModel(nodeMap, edgeList, collapsed=new Set()) {
+function resolveTreeFocus(nodeMap, focusId) {
+ if(typeof focusId!=='string')return null;
+ let n=nodeMap[focusId],seen=new Set();
+ if(n?.kind==='run')while(n&&n.kind!=='cell'&&!seen.has(n.id)){if(n.status==='archived')return null;seen.add(n.id);n=nodeMap[n.parent_id];}
+ return n&&n.status!=='archived'&&['module','question','cell'].includes(n.kind)?n.id:null;
+}
+function recordedTreeFocus(nodeMap){return Object.values(nodeMap).filter(n=>n.status!=='archived').map(n=>resolveTreeFocus(nodeMap,n.attrs?.current_focus)).find(Boolean)||null;}
+function researchTreeModel(nodeMap, edgeList, collapsed=new Set(), focusId=null) {
+ focusId=resolveTreeFocus(nodeMap,focusId);
+ edgeList=projectedCellRelations(nodeMap,edgeList);
  const grouped=groupedRelationModel(nodeMap,edgeList),cells=grouped.groups.flatMap(g=>g.cells),byId=new Map(cells.map(n=>[n.id,n]));
  const parent=new Map(),warnings=[],order=(a,b)=>(a.attrs?.order??100)-(b.attrs?.order??100)||a.id.localeCompare(b.id);
  for(const n of cells){
@@ -217,11 +242,19 @@ function researchTreeModel(nodeMap, edgeList, collapsed=new Set()) {
  for(const n of [...cells].sort(order)){let p=n.id,seen=new Set();while(parent.has(p)){if(seen.has(p)){parent.delete(p);warnings.push({id:p,type:'cycle'});break;}seen.add(p);p=parent.get(p);}}
  const depth=new Map(),level=id=>{if(depth.has(id))return depth.get(id);const d=parent.has(id)?level(parent.get(id))+1:0;depth.set(id,d);return d;};
  cells.forEach(n=>level(n.id));
- const visible=cells.filter(n=>{let p=parent.get(n.id);while(p){if(collapsed.has(p))return false;p=parent.get(p);}return true;}),visibleIds=new Set(visible.map(n=>n.id));
+ let scope=null;
+ if(focusId&&nodeMap[focusId]?.status!=='archived'&&nodeMap[focusId]){
+  scope=new Set();
+  for(const n of cells){let current=n,seen=new Set();while(current&&!seen.has(current.id)){seen.add(current.id);if(current.id===focusId){scope.add(n.id);break;}current=nodeMap[current.parent_id];}}
+  // Keep every recorded origin, including secondary parents, as context.
+  const pending=[...scope];while(pending.length){const id=pending.pop(),origins=[parent.get(id),...edgeList.filter(e=>e.source===id&&e.relation==='derived_from').map(e=>e.target)];for(const origin of origins)if(byId.has(origin)&&!scope.has(origin)){scope.add(origin);pending.push(origin);}}
+ }
+ const visible=cells.filter(n=>{if(scope&&!scope.has(n.id))return false;let p=parent.get(n.id);while(p){if(collapsed.has(p))return false;p=parent.get(p);}return true;}),visibleIds=new Set(visible.map(n=>n.id));
  const children=new Map();for(const n of cells){const p=parent.get(n.id);if(p){if(!children.has(p))children.set(p,[]);children.get(p).push(n.id);}}
  const countDesc=id=>(children.get(id)||[]).reduce((sum,child)=>sum+1+countDesc(child),0);
  const nodes=[],lanes=[];let top=62;
- for(const group of grouped.groups){
+ const layoutGroups=scope?[{id:focusId,owner:nodeMap[focusId],cells:cells.filter(n=>scope.has(n.id))}]:grouped.groups;
+ for(const group of layoutGroups){
   const members=group.cells.filter(n=>visibleIds.has(n.id));if(!members.length)continue;
   const memberIds=new Set(members.map(n=>n.id)),localChildren=new Map();
   for(const n of members){const p=parent.get(n.id);if(memberIds.has(p)){if(!localChildren.has(p))localChildren.set(p,[]);localChildren.get(p).push(n);}}
@@ -234,17 +267,19 @@ function researchTreeModel(nodeMap, edgeList, collapsed=new Set()) {
   for(const n of members)nodes.push({id:n.id,node:n,lane:group.id,level:level(n.id),x:190+level(n.id)*142,y:ys.get(n.id),hidden:collapsed.has(n.id)?countDesc(n.id):0});
   top+=height;
  }
- const links=nodes.filter(n=>parent.has(n.id)&&visibleIds.has(parent.get(n.id))).map(n=>({source:parent.get(n.id),target:n.id,secondary:false}));
+ const links=nodes.filter(n=>parent.has(n.id)&&visibleIds.has(parent.get(n.id))).map(n=>{const edge=edgeList.find(e=>e.relation==='derived_from'&&e.source===n.id&&e.target===parent.get(n.id));return {source:parent.get(n.id),target:n.id,secondary:false,projected:!!edge?.projected,originalEdges:edge?.originalEdges||[]};});
  const secondary=edgeList.filter(e=>visibleIds.has(e.source)&&visibleIds.has(e.target)&&!(e.relation==='derived_from'&&parent.get(e.source)===e.target)).map(e=>({source:e.target,target:e.source,secondary:true,relation:e.relation}));
- return {nodes,lanes,links,secondary,parent,warnings,width:Math.max(900,280+Math.max(0,...nodes.map(n=>n.level))*142),height:Math.max(340,top+20),total:cells.length};
+ return {nodes,lanes,links,secondary,parent,warnings:warnings.filter(w=>visibleIds.has(w.id)),width:Math.max(900,280+Math.max(0,...nodes.map(n=>n.level))*142),height:Math.max(340,top+20),total:cells.length};
 }
 // END research-tree-model
+function currentTreeFocus(){return recordedTreeFocus(data.nodes);}
+function displayedTreeModel(){return researchTreeModel(data.nodes,Object.values(data.edges),treeCollapsed,treeShowAll||filter?null:currentTreeFocus());}
 function treeOutcome(n){
  if(n.status==='failed'||children(n.id).some(r=>r.kind==='run'&&(r.status==='failed'||r.attrs?.backend_correct===false)))return 'failed';
  const selection=n.attrs?.selection;if(typeof selection==='string'){if(/^(保留|keep)/i.test(selection))return 'retained';if(/^(退步|同分|discard|tie)/i.test(selection))return 'unselected';}
  return 'recorded';
 }
-function shortTreeLabel(n){const text=displayLabel(n),match=text.match(/^[A-Za-z]+\d+\b/);if(match)return match[0];if(Number.isInteger(n.attrs?.generation))return 'G'+n.attrs.generation;const part=text.split('·')[0].trim();return part.length>11?part.slice(0,10)+'…':part;}
+function shortTreeLabel(n){const text=displayLabel(n),match=text.match(/^[A-Za-z]+\d+\b/);if(match)return match[0];if(Number.isInteger(n.attrs?.generation))return 'G'+n.attrs.generation;const runs=children(n.id).filter(r=>r.kind==='run'),runId=runs[0]?.attrs?.id;if(typeof runId==='string'&&runId.length<=24)return runId+(runs.length>1?' +'+(runs.length-1):'');const part=text.split('·')[0].trim();return part.length>11?part.slice(0,10)+'…':part;}
 function treeNodeInspector(n){
  if(!n)return '';
  const local=(zh,en)=>lang==='zh'?zh:en;
@@ -253,13 +288,13 @@ function treeNodeInspector(n){
  return `<aside class="tree-node-inspector" aria-label="${esc(t('inspector'))}"><header><span>${esc(local('节点详情','Node inspector'))}</span><button id="close-relation-detail" aria-label="${esc(t('close'))}">×</button></header><h3>${esc(displayLabel(n))}</h3><p>${esc(n.attrs?.selection||displayDescription(n)||'')}</p>${n.attrs?.metrics?metricKv(n.attrs.metrics):''}<div class="tree-source-links">${links}</div>${n.kind==='cell'?`<button id="tree-fold-selected" class="smallbtn">${esc(treeCollapsed.has(n.id)?local('展开后续','Expand descendants'):local('折叠后续','Fold descendants'))}</button>`:''}<details class="tree-evidence"><summary>${esc(local('实验记录与证据','Runs and evidence'))}</summary>${studyPanel(n)}</details></aside>`;
 }
 function renderResearchTree(){
- const model=researchTreeModel(data.nodes,Object.values(data.edges),treeCollapsed),positions=new Map(model.nodes.map(n=>[n.id,n]));
+ const model=displayedTreeModel(),positions=new Map(model.nodes.map(n=>[n.id,n]));
  const local=(zh,en)=>lang==='zh'?zh:en,n=relationInspect?data.nodes[selected]:null,path=new Set();
  if(n){let id=n.id;while(id&&!path.has(id)){path.add(id);id=model.parent.get(id);}}
  const axes=Array.from({length:Math.max(0,...model.nodes.map(n=>n.level))+1},(_,i)=>`<text x="${190+i*142}" y="29" text-anchor="middle" class="tree-level">L${i}</text>`).join('');
- const lanes=model.lanes.map((lane,i)=>{const name=lane.rootOnly?local('起点','Root'):lane.owner?displayLabel(lane.owner):local('未分组','Ungrouped');return `<g class="tree-lane"><rect x="0" y="${lane.y}" width="${model.width}" height="${lane.height}" fill="${i%2?'#f6f8f633':'#edf2ef55'}"/><line x1="160" x2="${model.width-25}" y1="${lane.y+lane.height-1}" y2="${lane.y+lane.height-1}"/><text x="15" y="${lane.y+lane.height/2+4}" ${lane.owner?`data-select="${esc(lane.owner.id)}" role="button" tabindex="0"`:''}><title>${esc(name)}</title>${esc(name.length>15?name.slice(0,14)+'…':name)}</text></g>`;}).join('');
+ const lanes=model.lanes.map((lane,i)=>{const name=lane.owner?displayLabel(lane.owner):local('未分组','Ungrouped');return `<g class="tree-lane"><rect x="0" y="${lane.y}" width="${model.width}" height="${lane.height}" fill="${i%2?'#f6f8f633':'#edf2ef55'}"/><line x1="160" x2="${model.width-25}" y1="${lane.y+lane.height-1}" y2="${lane.y+lane.height-1}"/><text x="15" y="${lane.y+lane.height/2+4}" ${lane.owner?`data-select="${esc(lane.owner.id)}" role="button" tabindex="0"`:''}><title>${esc(name)}</title>${esc(name.length>15?name.slice(0,14)+'…':name)}</text></g>`;}).join('');
  const edgePath=e=>{const a=positions.get(e.source),b=positions.get(e.target);const mid=(a.x+b.x)/2;return `M${a.x},${a.y} C${mid},${a.y} ${mid},${b.y} ${b.x},${b.y}`;};
- const lines=[...model.links,...(treeSecondary?model.secondary:[])].map(e=>`<path class="tree-connection ${e.secondary?'secondary':''} ${n?(path.has(e.source)&&path.has(e.target)?'on-path':'muted'):''}" d="${edgePath(e)}"/>`).join('');
+ const lines=[...model.links,...(treeSecondary?model.secondary:[])].map(e=>`<path class="tree-connection ${e.secondary?'secondary':''} ${n?(path.has(e.source)&&path.has(e.target)?'on-path':'muted'):''}" d="${edgePath(e)}"><title>${esc(e.projected?local('运行谱系：','Run lineage: ')+(e.originalEdges||[]).map(x=>x.source+' → '+x.target).join('; '):local('已记录关系','Recorded relation'))}</title></path>`).join('');
  const dots=model.nodes.map(p=>{const match=!filter||(displayLabel(p.node)+' '+displayDescription(p.node)+' '+p.id).toLowerCase().includes(filter.toLowerCase()),outcome=treeOutcome(p.node);return `<g class="research-dot ${outcome} ${p.id===selected&&n?'selected':''} ${!match?'filtered':''}" transform="translate(${p.x} ${p.y})" data-select="${esc(p.id)}" data-tree-node="${esc(p.id)}" role="button" tabindex="0" aria-label="${esc(local('查看 ','Inspect ')+displayLabel(p.node))}"><title>${esc(displayLabel(p.node))}${p.node.attrs?.selection?' — '+esc(p.node.attrs.selection):''}</title><circle class="node-halo" r="15"/><circle class="node-hit" r="20"/><circle class="node-dot-shape" r="8"/>${outcome==='failed'?'<path class="node-failure-mark" d="M-3,-3 L3,3 M-3,3 L3,-3"/>':''}<text y="-20" text-anchor="middle" class="node-code">${esc(shortTreeLabel(p.node))}</text>${p.hidden?`<text y="30" text-anchor="middle" class="node-hidden">+${p.hidden}</text>`:''}</g>`;}).join('');
  const maxLevel=Math.max(0,...model.nodes.map(n=>n.level));
  const vertical=Array.from({length:maxLevel+1},(_,i)=>`<line class="tree-guide" x1="${190+i*142}" x2="${190+i*142}" y1="43" y2="${model.height-10}"/>`).join('');
@@ -268,7 +303,16 @@ function renderResearchTree(){
 function bindResearchTree(){
  const svg=$('research-tree-svg'),canvas=$('research-canvas');if(!svg)return;
  svg.setAttribute('preserveAspectRatio',canvas.clientWidth<600&&!treeFitMode?'xMinYMin slice':'xMidYMid meet');
- const model=researchTreeModel(data.nodes,Object.values(data.edges),treeCollapsed);
+ const model=displayedTreeModel();
+ canvas.classList.toggle('is-focused',!!currentTreeFocus()&&!treeShowAll&&!filter);
+ canvas.querySelectorAll('.node-code').forEach(text=>{if(text.getComputedTextLength()>112){text.setAttribute('textLength','112');text.setAttribute('lengthAdjust','spacingAndGlyphs');}});
+ if(currentTreeFocus()){
+  const label=document.createElement('label');label.className='tree-scope-control';
+  const input=document.createElement('input');input.type='checkbox';input.checked=treeShowAll;input.id='tree-show-all';
+  input.onchange=()=>{treeShowAll=input.checked;treeCamera={x:0,y:0,scale:1};drawMapBody();};
+  label.append(input,document.createTextNode(lang==='zh'?'全部研究方向':'All research tracks'));
+  canvas.parentElement.querySelector('.tree-actions').prepend(label);
+ }
  const paint=()=>{$('research-tree-transform')?.setAttribute('transform',`translate(${treeCamera.x} ${treeCamera.y}) scale(${treeCamera.scale})`);const label=$('tree-zoom-value');if(label)label.textContent=Math.round(treeCamera.scale*100)+'%';};
  const zoom=factor=>{const next=Math.max(.35,Math.min(3,treeCamera.scale*factor)),ratio=next/treeCamera.scale;treeCamera.x=model.width/2-(model.width/2-treeCamera.x)*ratio;treeCamera.y=model.height/2-(model.height/2-treeCamera.y)*ratio;treeCamera.scale=next;paint();};
  $('tree-zoom-in').onclick=()=>zoom(1.25);$('tree-zoom-out').onclick=()=>zoom(.8);

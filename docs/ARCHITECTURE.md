@@ -135,6 +135,29 @@ An archived Cell is absent from the current map hierarchy and numeric comparison
 archived claims and decisions remain in the historical decisions list with their
 evidence. Archiving does not delete their source snapshots.
 
+### Research organization review and focused lineage
+
+Recorded Run-to-Run derivations are projected between their owning Cells for
+display. The projection preserves source Run edges, merges duplicate visual
+links, and omits intra-Cell replication edges. It does not assert common ancestry
+for every replicate or alter identities. Missing origins, multiple parents and
+projection cycles remain reviewable; no lineage is inferred from labels or dates.
+
+A project-level module may name a stable `attrs.current_focus` node. The default
+canvas then shows that line and its recorded origins in one lane. All research
+tracks and Outline retain access to the complete history. Lane labels preserve
+the recorded research topic even when every condition is a root.
+A Run focus resolves to its owning Cell. Archived focus declarations are ignored;
+unsupported focus targets are reported without hiding the overview. Hierarchy
+ancestors are retained when they provide the recorded lineage fallback.
+
+`organization.py` provides read-only structural hints in `context`, `validate`
+and presentation data. A large condition list without synthesis or comparison,
+wide peer sections and invalid focus references request review. Independent
+study designs may legitimately have no lineage. These hints neither invalidate
+schema nor certify scientific meaning; the host still authors the research
+reasoning separately from implementation flow and the run ledger.
+
 ## Provider boundary
 
 The optional `autoresearch.py` workflow and `backends/shinka.py` adapter execute
