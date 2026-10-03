@@ -1,365 +1,110 @@
-# LabWeft
+<p align="center">
+  <img src="docs/assets/labweft-banner.en.png" alt="LabWeft — Weave experiments into understanding" width="100%">
+</p>
 
-**Let your existing coding agent organize research—without forgetting what you already learned.**
+<p align="center"><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a></p>
+<p align="center">Python 3.11+ · MIT · Local first · Alpha 0.1.0</p>
 
-[简体中文](README.zh-CN.md) · [Architecture](docs/ARCHITECTURE.md) · [Boundaries](docs/LIMITATIONS.md) · [Release gates](docs/RELEASE_GATES.md) · [Development handoff](docs/HANDOFF.md)
+LabWeft turns experiments, results, and research decisions into an evidence-linked workspace. Your existing coding agent reads and interprets the project; a small local harness preserves the records and makes them explorable.
 
-**v0.1.0 local prototype.** LabWeft is the confirmed project name. The source
-repository is [Roboparty/LabWeft](https://github.com/Roboparty/LabWeft).
-The package has not been published to PyPI.
+**Understand what changed, why it changed, and what the evidence actually supports.**
 
-One conversation. One workspace. No manual multi-agent setup.
+<p align="center"><a href="#quick-start">Quick start</a> · <a href="#connect-your-project">Connect your project</a> · <a href="docs/AUTORESEARCH.md">Automatic research</a> · <a href="docs/ARCHITECTURE.md">Architecture</a> · <a href="CONTRIBUTING.md">Contribute</a></p>
 
-## A Skill and a harness
+## See a research tree
 
-LabWeft is a **harness with a Skill entry point**: the host agent reasons
-about the research, while a small local program indexes evidence, validates
-updates, preserves decisions, compares cells and renders a research map.
-It has no mandatory model provider, external account, network call, database
-server, Node.js install, or frontend build step. Python 3.11+ is the only runtime.
-The model service used by your coding agent is separate and may require network
-access, payment and permission to process your code.
+![Interactive research tree with candidate lineage and evidence](docs/assets/research-tree.gif)
 
-## Optional automatic research
+The bundled teaching example contains **37 preset candidates, 49 saved CPU evaluations, and six research directions**. Explore the lineage, inspect failed attempts, and trace results to their inputs. Opening this example replays saved synthetic results: it makes **zero new model calls or experiment evaluations**. [Example guide](docs/RESEARCH_TREE_DEMO.md).
 
-The opt-in [Shinka backend](docs/AUTORESEARCH.md) adds `research prepare`,
-`start`, `status`, `stop`, `resume`, and `collect`. Freeze a task and preview it
-without a model dependency; explicitly execute it in an authorized environment
-with `pip install ".[shinka]"`. Candidates and native parent relationships enter
-the existing research map as provisional backend reports, including failures.
-The core and browser remain independent of model services. See the
-[small synthetic example](examples/shinka/README.md) and the guide's validation
-boundary: offline tests do not establish live search effectiveness or GPU readiness.
+## A workspace for the whole research story
 
-### Quick research-tree preview and saved handoff
+| View | What you can explore |
+|---|---|
+| Research map | A semantic outline and an interactive research tree, with expandable branches and focused details. |
+| Experiment lineage | Recorded parent versions, secondary references, and run-level derivations, with explanations of changes and outcomes. |
+| Evidence | Source-linked text snapshots and hashes, including failures and missing or changed evidence. |
+| Condition comparison | Experimental conditions (Cells) and runs, with scope checks and recorded seed-level statistics. |
+| Findings and decisions | Evidence-supported conclusions, their limits, and the research choices they informed. |
+| Timeline | Source-dated research events and workspace update history, with module filters. |
 
-![Research-tree interaction demo](docs/assets/research-tree.gif)
+The interface opens in **Chinese** and switches to **English**. Multiple independent projects can share a local site with a project selector. Research text uses recorded translations when available and otherwise retains its original language.
 
-*Actual UI interactions with saved results: unfold branches, zoom/pan, and inspect
-nodes. This animation does not show live Shinka search or new evaluations.*
+## Quick start
 
-From the LabWeft checkout, generate and open the complete preview with one command:
+From a source checkout, all you need for the examples is Python 3.11+:
 
 ```sh
-python labweft.py demo ./tree-preview --scenario research-tree --open --port 0
+git clone https://github.com/Roboparty/LabWeft.git
+cd LabWeft
+python labweft.py demo --scenario research-tree ./tree-preview --open --port 0
 ```
 
-If LabWeft is installed, use:
+This generates a synthetic workspace and opens its read-only local preview. `--port 0` chooses an available port. Stop the preview with Ctrl+C; the workspace remains on disk. There is no model account, GPU, Node.js, or frontend installation requirement.
 
-```sh
-labweft demo ./tree-preview --scenario research-tree --open --port 0
-```
-
-Port `0` selects an available loopback port. No Shinka,
-model account, GPU, Node.js or network is needed for this preview. One local
-Windows/Python 3.12.13 generation took about 1.9 seconds; this is a single
-observation, not a performance guarantee.
-
-Omit `--open --port 0` to generate only `tree-preview/.research/map.html`. The
-standalone page includes this synthetic example's source and evidence snapshots.
-Keep the entire directory to reopen, re-export or serve it later.
-
-#### Saved contents
-
-- Six tracks: algebra, symmetry, lookup/memorization, discretization, numerical
-  failures, and cross-branch composition.
-- 37 preset candidates, 36 primary lineage edges and two secondary references.
-- 49 saved CPU evaluations from 2026-10-01: 37 development evaluations and 12
-  additional-input checks, including four invalid candidates.
-- Per-input predictions, metrics, candidate/evaluator hashes and provenance.
-  Machine-local execution-command paths have been removed from the portable copy.
-
-Data lives in `research_harness/fixtures/research_tree.json`; the generator is
-`research_harness/research_tree_demo.py`. Both are shipped in the wheel and saved
-on `main`, without depending on this conversation or temporary machine paths.
-The example contains no private Luna experiment records.
-
-**Generation replays saved results. It does not rerun the 49 evaluations or ask
-Shinka/a model to propose candidates.** The command reports zero new CPU
-evaluations and model calls. For actual automatic research, use the separate
-[Shinka backend workflow](docs/AUTORESEARCH.md).
-
-#### Visual and reuse conventions
-
-The independently implemented canvas takes visual inspiration from the public
-Simate RoboScientist evolution view. Short ids and recorded status colors appear
-by default. Horizontal `L0/L1/...` denotes lineage depth, not real time or native
-generation numbers; vertical lanes denote research directions. Primary edges are
-visible, secondary references can be toggled, and details/evidence open on demand.
-Pan, zoom, fit, expand-canvas and descendant folding are available; the full-text
-Outline remains accessible. Scores never automatically become scientific claims.
-
-Running the same command again preserves the project id and event history, and
-refreshes the exported renderer. Use a new directory for a different fixture
-version or a real project: the generator refuses to overwrite them. The default
-`demo` scenario remains the policy-study fixture below. See the
-[Chinese handoff](docs/RESEARCH_TREE_DEMO.zh-CN.md) for the same saved conventions.
-
-## Try the demonstration
-
-From this directory, no pip install required:
+For a smaller condition-comparison example:
 
 ```sh
 python labweft.py demo ./research-demo
 python labweft.py serve ./research-demo --open
 ```
 
-The browser shows an expandable research tree, a relationship view, cell/config
-comparison, source snapshots and an update timeline. Use the `中文 / English`
-control to change the interface language; a private pilot opens in Chinese by
-default. A node may optionally provide `attrs.i18n.zh` and `attrs.i18n.en`
-labels/descriptions. Missing translations fall back to the recorded original.
-The switch never translates original source evidence or changes scientific
-data. **All demonstration metrics
-and decisions are synthetic. No training was performed.**
+You can also install the local checkout with `python -m pip install .` and use the `labweft` command. LabWeft has not been published to PyPI.
 
-The agent should first draft a sourced scientific outline: research questions,
-method and baseline families, study and nested ablation design, endpoints and
-candidate main findings. It then verifies each finding against actual conditions
-and result evidence. Directory and phase names locate files; they do not define
-the scientific map. Optional `attrs.role`, `attrs.design` and `attrs.finding`
-metadata keep this structure project-specific. Main findings appear in the map
-and at the top of the findings page by research theme; audit/status notes remain
-available in a collapsed section. A prominent finding requires direct evidence
-and scope. A scientific finding is distinct from a scoped research decision.
+## Connect your project
 
-Selecting a map node opens one inline detail below it; collapsing that branch
-closes the detail and the colored path and breadcrumb identify its ancestors.
-Study headings can show a sourced bilingual result table there. A featured
-claim may also provide `attrs.finding_card.zh` and `.en`, each with sourced
-`value`, `label`, `context` and `limit` strings. The visible limit belongs beside
-the headline result; the full explanation, scope and evidence remain in the
-same card. These display fields do not create a new scientific result.
-The comparison picker groups cells by recorded `config.model` when available,
-or by their closest study module when no model field is recorded. A family or
-study can be selected in one click while individual conditions remain available.
-Internal condition codes and source paths belong
-in details rather than the scientific heading.
-
-An offline interactive page is also generated at
-`research-demo/.research/map.html`. It contains synthetic evidence. For real
-projects, source-text inclusion requires an explicit export option.
-
-Several **separate** workspaces can be presented in one private offline site:
+Keep tool source, project source, and private workspace records in separate directories:
 
 ```sh
-labweft export-site --output-dir /private/research-site --include-evidence \
-  /workspaces/project-a /workspaces/project-b
+python bootstrap.py --project /path/to/project --results /path/to/results --workspace /path/to/workspace --agent codex
 ```
 
-Open `index.html`; the switcher at the top opens each project's map, comparison,
-findings, sources and timeline. Each page keeps its own project ID, evidence and
-local view state. Navigation does not pool runs or claims across projects. The
-site embeds private source text when `--include-evidence` is used; review it
-before sharing.
+Bootstrap installs one controller Skill and performs an initial factual scan. Source files stay in place; LabWeft stores its records under the workspace's `.research` directory. `--agent claude` and `--agent generic` provide other installation layouts.
 
-The source view opens on files linked directly to the research map. Its
-`Unmapped` and `All indexed` tabs retain the rest of the indexed scope, so a
-large source collection is not mistaken for a small one.
+Then ask your coding agent to read the project and use the Skill, for example:
 
-The research timeline displays explicitly source-dated project events in
-chronological order when the agent has recorded them. A separate record-revisions
-tab lists file, node and relation changes under each recorded
-revision. It can filter by change type and research module; node changes keep
-their module identity from the historical event. File-to-module filtering uses
-currently recorded evidence links. The event time is when LabWeft observed or
-recorded a change, not the historical experiment date. The page shows the
-configured scan scope and file count; "scan complete" refers only to those
-configured sources and limits, never to an entire research project.
+> Read the source reports, code, experimental conditions, results, and researcher corrections. Organize the map by research purpose. Explain each version's change, motivation, comparator, and measured outcome. Link conclusions to evidence and preserve their scope. When new experiments arrive, update the existing map and comparisons.
 
-Status labels have narrow meanings. `Recorded` means an object was indexed;
-`Reported complete` means a source reports a run or evaluation complete;
-`Needs review` names an unresolved evidence or identity issue. `Source-based`
-means organized from sources and is not a human-confirmed claim. `Human
-confirmed` requires an explicit confirmation and scope. `Archived` as a **node
-status** keeps earlier records and evidence without deleting files. An archived
-Cell leaves the current map hierarchy and numeric comparison; archived claims
-and decisions remain visible in the historical decisions list with their sources.
-The status describes a LabWeft node; it does not delete, freeze or verify an
-underlying research project or its files.
-To reduce repetitive warnings, provisional modules, questions and Cells do not
-repeat a badge on every tree card; their status remains available in details.
+The scanner collects facts; **the host agent supplies research interpretation**. LabWeft does not infer a scientific map from directory names alone. The [bundled Skill protocol](research_harness/skill/research-harness/references/PROTOCOL.md) specifies how to record that interpretation. Fresh-chat automatic Skill discovery and every client/platform combination have not yet been certified.
 
-## Connect a real project, once
+## Keep it local, share deliberately
 
 ```sh
-python bootstrap.py --project /path/to/your/project --results /path/to/results --agent codex
+python labweft.py export /path/to/workspace --output /private/map.html
+python labweft.py export-site --output-dir /private/site /workspaces/project-a /workspaces/project-b
 ```
 
-For a read-only source or a separate local workspace, add
-`--workspace /path/to/writable/workspace`. The Skill and `.research` stay there;
-the selected project and results are read as sources.
+Offline exports bundle the interface. Add `--include-evidence` to include bounded text snapshots, subject to a 5 MiB limit per project. Review exports before sharing: they can contain private research. Large artifacts and original source files remain at their source locations; a workspace index is not a backup.
 
-Use `--agent claude` for Claude Code, `--agent auto` for local discovery, or
-`--agent generic` for the standard `.agents/skills` entry. Discovery does not log
-in to anything. It checks local agent-directory conventions only.
+## Optional automatic research
 
-Setup installs **one Skill**, initializes `.research` in the selected project,
-reads the selected directories and exports an initial factual map. It does not
-edit training code or start experiments. The initial map is NOT a claim that
-scientific intent was automatically understood.
-
-Then ask your existing agent, in the same conversation:
-
-> Use LabWeft to organize this project's current progress. Inspect the
-> actual ablation conditions and results, reuse relevant historical decisions,
-> and update the local map. Do not launch experiments or upload data.
-
-The agent follows the Skill: read context → scan → inspect evidence → map
-questions/cells → check historical scope → submit a validated patch → export.
-You do not manually dispatch separate planner, analyzer or visualization agents.
-For an agent without Skill discovery, ask it to read
-`research_harness/skill/research-harness/SKILL.md` and use the same CLI. The
-`research-harness` Skill ID remains for compatibility with existing installs.
-
-**Compatibility target is tool-capable agents, not arbitrary bare models.**
-Installation paths and the command protocol are implemented. Two bounded private
-project pilots were run in Codex desktop by following the Skill procedure in the
-current conversation, including staged experiment folders. Fresh-chat Skill
-discovery and other providers have not
-been independently certified.
-
-## Optional package installation
-
-In your usual isolated Python environment:
+The optional [Shinka backend](docs/AUTORESEARCH.md) adds durable search batches, stop/resume handling, and imported candidate evidence and lineage:
 
 ```sh
-python -m pip install .
-labweft --help
-labweft install-skill --agent codex --project /path/to/your/project
+python -m pip install ".[shinka]"
+python labweft.py research --help
 ```
 
-User-wide Skill installation (`--user`) is explicit. The installer refuses to overwrite an
-edited Skill, upgrades unchanged managed files and never overwrites `AGENTS.md`
-or `CLAUDE.md`.
+Follow the backend guide before executing a campaign. Live searches require separately authorized model access, compute, and an appropriate execution environment. Their measured scores remain evidence for the specified task; they do not automatically establish a scientific conclusion. Core scanning, viewing, and demos do not require Shinka.
 
-## What this version actually does
+## Read more
 
-| Implemented | Important boundary |
+| Guide | Contents |
 |---|---|
-| Stable workspace ID, independent of branch names | Does not auto-merge projects across repositories. |
-| Conservative scan, text snapshots, static Python symbols | Does not execute source or reconstruct unknown past code. |
-| JSON/TOML configuration and JSON/CSV metrics ingestion | YAML and custom logs are indexed for the host agent, not automatically normalized. |
-| Candidate cell grouping and run identity | Names/identical configs are not proof of scientific equivalence. |
-| Versioned, atomic semantic updates | Local single-writer design; no distributed conflict merge. |
-| Protected human corrections | CLI convention, not an adversarial agent sandbox. |
-| Scope-aware reuse checks | Human-confirmed scope and complete recorded conditions required. |
-| Mean/sample SD across eligible seeds | No causal claim, automatic winner or equivalence test. |
-| Local interactive UI and offline HTML export | Browser is read-only; it does not invoke the model. |
-| Skill installer for Codex/Claude/generic locations | No claim of tested compatibility with all client versions. |
+| [Architecture](docs/ARCHITECTURE.md) | Storage model, evidence, semantic patches, and the controller workflow. |
+| [Research tree example](docs/RESEARCH_TREE_DEMO.md) | Saved evaluations, replay behavior, and canvas navigation. |
+| [Automatic research](docs/AUTORESEARCH.md) | Optional execution lifecycle and its boundaries. |
+| [Known limits](docs/LIMITATIONS.md) · [Release gates](docs/RELEASE_GATES.md) | What has been checked and what remains open. |
+| [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) | Privacy boundaries and contribution workflow. |
+| [Handoff](docs/HANDOFF.md) · [Changelog](CHANGELOG.md) | Project continuity and recent changes. |
 
-## Typical commands
-
-```sh
-labweft init /path/to/project --name "My study" --source code=/path/to/code --source results=/path/to/results
-labweft sync /path/to/project
-labweft context /path/to/project
-labweft files /path/to/project --offset 0 --limit 50
-labweft context /path/to/project --full
-labweft apply /path/to/project /path/to/semantic-patch.json
-labweft validate /path/to/project
-labweft compare /path/to/project --metric success_rate
-labweft export /path/to/project --output /path/to/project/.research/map.html
-labweft export /path/to/project --include-evidence --output /path/to/project/.research/map-with-text.html
-labweft serve /path/to/project --open
-```
-
-These are normally called by the agent, not manually sequenced by the researcher.
-From a source checkout, replace `labweft` with `python /path/to/LabWeft/labweft.py`.
-The former `rh` command, `research_harness` Python package, and
-`research-harness-local` distribution name remain available for compatibility.
-`sync` reads sources; it does not independently infer research motives. `apply`
-accepts the structured analysis written by the host agent after reading evidence.
-See the [patch protocol](research_harness/skill/research-harness/references/PROTOCOL.md).
-Offline export omits source text by default. `--include-evidence` explicitly
-embeds indexed small-text snapshots, including indexed files not linked to a
-semantic node, up to a combined **5 MiB**. Files omitted by that limit or
-without a text snapshot are labelled accordingly and cannot be opened from the
-offline page. The live local view can read known snapshots without this export.
-
-## Historical judgment test
-
-```sh
-labweft assess research-demo research-demo/.research/proposal-covered.json
-labweft assess research-demo research-demo/.research/proposal-changed-protocol.json
-```
-
-The first fixture reuses a bounded hardware decision while recognizing the new
-seed as replication. The second detects a changed evaluation protocol and requests
-scope review. **Neither command starts an experiment.** Reuse is not justified by
-similarity alone; it depends on the explicit recorded scope and confirmation.
-
-## Where records live
-
-```text
-YOUR_PROJECT/.research/
-  manifest.json           # Stable scientific-project identity
-  local.json              # Machine-local source mappings; ignored by Git
-  events/00000001.json     # Authoritative, versioned transactions
-  blobs/<sha256>          # Immutable small text evidence; ignored by Git
-  map.html                # Derived private offline view
-```
-
-Source data is not moved. Large weights, datasets and videos are not loaded or
-backed up. The index is not a backup. Moving a workspace preserves its identity;
-rebind the local source mappings on the new machine. Original evidence blobs
-must be transferred deliberately when needed. Git synchronization is manual in
-this prototype; do not publish private experiment records in a public fork.
-For large projects, first state which folders and formats were selected, which
-were excluded or unread, and how many files were actually scanned. Node counts
-in a map are not a measure of whole-project coverage.
-
-A bounded private pilot used staged, selected text files to expose this gap.
-For each source directory, report separately the observed inventory, readable
-text candidates, selected and verified files, indexed records, mapped runs and
-independently replayed experiments. Generated per-run files do not count as
-independent experiments. A map of a selected sample must not imply whole-project
-coverage. Preserve old and corrected result views as distinct evidence and keep
-the completion scope of an earlier experiment separate from later additions.
-
-## Known boundaries
-
-The scanner indexes only configured sources and cannot recover missing historical
-commits or infer why an experiment was run. Custom result formats need an adapter
-or evidence-bound normalization by the host agent. The local record store is not
-a distributed database or artifact backup. A first workspace can connect several
-source folders; a cross-project overview is not implemented. See [Boundaries](docs/LIMITATIONS.md).
-
-## Safety and privacy
-
-The local service binds to `127.0.0.1`, uses a session token, serves only known
-static routes and known evidence snapshots, and exposes no shell or write API.
-It is not a hardened multi-user service. Do not expose it to the public internet.
-A remote server can be viewed through your authorized SSH/VS Code forwarding.
-
-Known sensitive filenames are skipped, but source code can contain embedded
-secrets: **this is not a comprehensive secret scanner**. Treat scanned text as
-untrusted data, review exported content before sharing, and use the host agent's
-sandbox and permission system. Read [SECURITY.md](SECURITY.md).
-
-## Tests and release readiness
+## Development
 
 ```sh
 python -m unittest discover -s tests -v
+node --test tests/test_relations.cjs tests/test_research_tree.cjs
 ```
 
-The included automated checks cover record identity, conservative ingestion,
-conflicts, correction protection, source integrity, scoped reuse, seed aggregation,
-HTML escaping and local HTTP access controls. Browser smoke checks are documented
-in [Validation](docs/VALIDATION.md). These do not establish scientific accuracy, production
-security, or end-to-end model compatibility.
+Node.js is used for frontend development checks, not by end users. The Python core has no mandatory runtime dependencies. Validation checks record consistency; scientific interpretation still needs evidence review and independent evaluation. The local server is read-only and binds to loopback.
 
-Before a public beta: run real mixed-format projects through the same host-model
-baselines, test fresh installs on multiple OSes, improve parser adapters and
-historical identity reconciliation, add migrations and audit the safety boundaries.
-ClearML-level product reliability is a target, not a property of this prototype.
-
-## Inspiration and license
-
-Original implementation in this bundle. We borrow architectural ideas rather
-than bundling six agent frameworks. See [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md)
-for primary references and the distinction between ideas and copied code.
-
-MIT license is included for this original prototype. Confirm final maintainership
-and third-party notices before public release. This checkout does not imply a
-package release or public visibility change.
+LabWeft is an **alpha open-source project** under the [MIT license](LICENSE). Focused bug reports, clearer evidence contracts, and reproducible examples are welcome. See [acknowledgements](ACKNOWLEDGEMENTS.md) for upstream influences and dependencies.

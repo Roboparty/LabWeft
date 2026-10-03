@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-10-03 — Public presentation refresh
+
+Integrated the latest main, including the contributor's research-organization
+review and run-level lineage rendering fixes. Added an original woven LabWeft
+mark to the bundled UI and paired English/Chinese README banners, a social
+preview image, and editable vector assets. Reorganized both READMEs around
+real quick-start commands, project connection, evidence boundaries, and guides;
+added the English research-tree example guide. The default Chinese UI,
+research records, and offline export behavior are retained.
+
+The repository owner authorized public source publication. The tool's MIT
+license and alpha reliability boundaries remain explicit; private project
+workspaces are excluded from the repository.
+
 ## Unreleased — LabWeft P0 local handoff
 
 Added `demo --scenario research-tree`: a portable, bundled replay of 37 preset

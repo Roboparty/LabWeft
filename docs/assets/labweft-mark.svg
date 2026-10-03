@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" role="img" aria-labelledby="title">
+<title id="title">LabWeft woven evidence mark</title><rect width="96" height="96" rx="23" fill="#123e32"/><g fill="none" stroke-linecap="round">
+<path d="M28 20v56M48 20v56M68 20v56" stroke="#efc779" stroke-width="8"/>
+<path d="M20 28h56M20 48h56M20 68h56" stroke="#b6dac5" stroke-width="8"/>
+<path d="M28 22v12M68 22v12M48 42v12M28 62v12M68 62v12" stroke="#123e32" stroke-width="14"/>
+<path d="M28 22v12M68 22v12M48 42v12M28 62v12M68 62v12" stroke="#efc779" stroke-width="8"/>
+</g></svg>
