@@ -95,8 +95,8 @@ python labweft.py research --help
 | [研究树示例](docs/RESEARCH_TREE_DEMO.zh-CN.md) | 已保存评测、回放行为与画布操作。 |
 | [自动研究](docs/AUTORESEARCH.zh-CN.md) | 可选执行流程及边界。 |
 | [已知边界](docs/LIMITATIONS.zh-CN.md) · [发布门槛](docs/RELEASE_GATES.zh-CN.md) | 已核查的内容和待完成事项。 |
-| [安全](SECURITY.md) · [参与贡献](CONTRIBUTING.md) | 隐私边界与贡献流程。 |
-| [交接记录](docs/HANDOFF.md) · [更新记录](CHANGELOG.md) | 项目衔接和近期变化。 |
+| [安全](SECURITY.zh-CN.md) · [参与贡献](CONTRIBUTING.md) | 隐私边界与贡献流程。 |
+| [交接记录](docs/HANDOFF.zh-CN.md) · [更新记录](CHANGELOG.md) | 项目衔接和近期变化。 |
 
 ## 开发
 

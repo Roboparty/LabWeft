@@ -1,5 +1,7 @@
 # Security and privacy boundaries
 
+[简体中文](SECURITY.zh-CN.md)
+
 Prototype, not a multi-tenant service. Bind to loopback only. Do not remove the
 HTTP token or Host checks to make public deployment easier. Use authorized SSH
 forwarding for remote access and keep tokens private. There is no write/shell API.
@@ -22,9 +24,11 @@ explicitly transferred; the index is not a backup. Review HTML/JSON exports,
 especially `--include-evidence`, before sharing. No telemetry/network uploads are
 implemented by this core. Host-model context processing is separate.
 
-There is no published security contact yet. Before public release, establish a
-private reporting channel and test extraction, path, event and browser boundaries.
-Do not create a public issue containing sensitive research data or credentials.
+Use [GitHub's private vulnerability reporting form](https://github.com/Roboparty/LabWeft/security/advisories/new)
+for suspected security vulnerabilities. Private reporting was enabled and verified
+on 2026-10-03. Include reproduction steps and the affected version, with sensitive
+research data and credentials removed. Do not put those details in a public issue.
+Reports are handled by project maintainers; no response-time guarantee is offered.
 
 ## Optional research execution
 

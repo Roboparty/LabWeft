@@ -72,7 +72,7 @@ continue cross-agent compatibility tests before optional remote adapters.
 The 2026-10-03 main refresh retains the optional Shinka backend, saved research
 tree replay, and contributor fixes for organization review and run-level lineage.
 It adds original branding and paired English/Chinese READMEs. Source publication
-has explicit owner authorization; verify repository visibility separately.
+has explicit owner authorization; public GitHub visibility was verified on 2026-10-03.
 
 Do not start by implementing another chat product, GPU scheduler, model gateway,
 plugin marketplace, ten messaging platforms, vector database or public hosting.
