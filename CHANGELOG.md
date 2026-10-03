@@ -10,7 +10,9 @@ real quick-start commands, project connection, evidence boundaries, and guides;
 added the English research-tree example guide. The default Chinese UI,
 research records, and offline export behavior are retained.
 
-The repository owner authorized public source publication. The tool's MIT
+The repository owner authorized public source publication; GitHub visibility
+was changed to public on 2026-10-03 and private vulnerability reporting enabled.
+The tool's MIT
 license and alpha reliability boundaries remain explicit; private project
 workspaces are excluded from the repository.
 

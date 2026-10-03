@@ -1,4 +1,4 @@
-include LICENSE README.md README.zh-CN.md CHANGELOG.md CONTRIBUTING.md SECURITY.md ACKNOWLEDGEMENTS.md
+include LICENSE README.md README.zh-CN.md CHANGELOG.md CONTRIBUTING.md SECURITY.md SECURITY.zh-CN.md ACKNOWLEDGEMENTS.md
 include labweft.py bootstrap.py rh.py
 recursive-include docs *.md *.txt *.json *.png *.gif *.svg
 recursive-include examples *.md *.py *.json
