@@ -2,7 +2,37 @@
 
 [简体中文](VALIDATION.zh-CN.md)
 
-## Latest local check (2026-09-28, still a bounded pilot)
+
+## Public source verification (2026-10-03)
+
+The current Windows Python 3.14 suite ran **100 tests: 99 passed and one
+symlink-capability test skipped**. JavaScript relation and research-tree tests
+passed **19/19**. Git whitespace checks passed.
+
+An independent reviewer checked the English/Chinese README and demo-guide links,
+actual demo commands, and Edge offline pages at 1440px and 390px. The original
+inline mark, Chinese → English → Chinese switching, candidate details, research
+tree and Outline views passed, with zero page errors or horizontal overflow.
+The review found and closed Chinese banner rendering and Run-focus wording issues.
+
+Wheel and sdist were rebuilt from a clean Git archive and installed separately
+in fresh Windows Python 3.14 environments. Both passed the saved research-tree
+demo, `validate`, offline export, and project-local Codex Skill installation.
+Each demo retained 37 preset candidates and 49 saved CPU evaluations, while
+making zero new model calls or experiment evaluations. Independent archive review
+verified branding, bundled UI/Skill/fixture hashes, and private-workspace exclusion.
+Both installed-package exports also passed independent Edge desktop checks for
+the inline mark, 37 candidate nodes, Chinese/English switching, and zero page
+errors. These checks do not certify fresh-chat Skill discovery, every platform, or live
+Shinka/model execution.
+
+The latest main retains the contributor's organization-review and Run-lineage
+fixes. GitHub source visibility was changed to Public with owner authorization;
+private vulnerability reporting was enabled. Anonymous repository access returned
+HTTP 200. Tool-source publication excludes private research maps and workspaces.
+Scientific interpretation and broad reliability gates remain separately evaluated.
+
+## Earlier local check (2026-09-28, bounded pilot)
 
 The current Windows Python 3.14 suite has **64 tests: 63 passed and one
 symlink-capability test skipped**. JavaScript syntax (`node --check`) and Git
