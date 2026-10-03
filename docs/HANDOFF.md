@@ -66,8 +66,13 @@ historical gaps, without requiring retroactive training reruns.
 Then improve import adapters (starting with common actual user layouts), durable
 job checkpoints for interrupted long scans, record migrations, source reconciliation,
 component-level UI editing and accessibility improvements for the multilingual
-UI. Add multi-project home and cross-agent compatibility tests before optional
-remote adapters.
+UI. Multi-project offline export and project switching are now available;
+continue cross-agent compatibility tests before optional remote adapters.
+
+The 2026-10-03 main refresh retains the optional Shinka backend, saved research
+tree replay, and contributor fixes for organization review and run-level lineage.
+It adds original branding and paired English/Chinese READMEs. Source publication
+has explicit owner authorization; verify repository visibility separately.
 
 Do not start by implementing another chat product, GPU scheduler, model gateway,
 plugin marketplace, ten messaging platforms, vector database or public hosting.

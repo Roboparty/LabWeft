@@ -1,5 +1,7 @@
 # 快速生成研究树示例与交接记录
 
+[English](RESEARCH_TREE_DEMO.md)
+
 ## 一条命令生成并打开
 
 在 LabWeft 源码目录中运行：

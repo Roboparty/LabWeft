@@ -331,3 +331,6 @@ button.history-change:hover{background:var(--soft)}
 .source-modes button[aria-pressed="true"]{background:#174a3d;border-color:#174a3d;color:#fff}
 .source-scope-hint{margin:9px 21px 0;font-size:12px;color:#53675a;line-height:1.6}
 @media(max-width:700px){.source-modes{padding:13px 15px 0}.source-modes button{font-size:11px;padding:6px 8px}.source-scope-hint{margin:8px 15px 0}}
+
+/* Original LabWeft mark is inline so offline exports stay self-contained. */
+.brandmark-weft{padding:0;background:none;letter-spacing:normal}.brandmark-weft svg{display:block;width:100%;height:100%}
