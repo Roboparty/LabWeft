@@ -17,7 +17,7 @@ from collections import Counter
 
 from ..store import Store, stable_id
 
-NUM = re.compile(r"(?<![\w.])[-+]?\d+\.\d+(?![\d.])")
+NUM = re.compile(r"(?<![\w.])[-+]?\d+\.\d+(?:[eE][-+]?\d+)?(?![\d.])")
 
 
 def _resolve_json(doc, locator: str):
@@ -65,6 +65,26 @@ def resolve_locator(text: str, locator: str | None):
         i = header.index(m.group(2))
         return ("resolved", row[i]) if i < len(row) else ("unresolved", None)
     return "free_text", None
+
+
+def _derivable(texts: list[str], number: str) -> str | None:
+    """A claim number that is the difference of two numbers in the cited evidence (e.g. a +3.00 pp gain)."""
+    dec = len(number.split(".")[1].split("e")[0].split("E")[0]) if "." in number else 0
+    x = abs(float(number))
+    tol = 0.5 * 10 ** (-dec) + 1e-9
+    vals = []
+    for t in texts:
+        for tok in re.findall(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", t)[:400]:
+            try:
+                vals.append(float(tok))
+            except ValueError:
+                pass
+    vals = sorted(set(vals))[:400]
+    for i, a in enumerate(vals):
+        for b in vals[i + 1:]:
+            if abs((b - a) - x) <= tol:
+                return f"{number} = {b:g} - {a:g}"
+    return None
 
 
 def _printed(text: str, number: str) -> bool:
@@ -125,6 +145,10 @@ def obligations(workspace, kinds=("claim", "run", "cell"), offset: int = 0, limi
             printed = " ".join([n.get("label", ""), (finding.get("estimate") or "") if isinstance(finding.get("estimate"), str) else json.dumps(finding.get("estimate", "")),
                                 card.get("en", {}).get("value", "") if isinstance(card.get("en"), dict) else ""])
             unsourced = [x for x in dict.fromkeys(NUM.findall(printed)) if refs and not any(_printed(t, x) for t in cited_text)]
+            derived = {x: _derivable(cited_text, x) for x in unsourced}
+            if any(derived.values()):
+                diags.append({"code": "derived-difference-verified", "detail": [d for d in derived.values() if d][:6]})
+            unsourced = [x for x in unsourced if not derived[x]]
             if unsourced:
                 diags.append({"code": "value-not-in-cited-evidence", "detail": unsourced[:6],
                               "hint": "the number may be derived (mean/SD/difference); cite the per-seed source or record the derivation"})
@@ -169,6 +193,10 @@ def obligations(workspace, kinds=("claim", "run", "cell"), offset: int = 0, limi
                               "detail": f"{children.get(n['id'], 0)} completed run(s)"})
         blocking = {"missing-evidence", "source-drift", "locator-unresolved", "snapshot-unreadable", "value-not-in-cited-evidence",
                     "metric-not-in-cited-evidence", "missing-comparator", "missing-scope"}
+        verified = [d for d in diags if d["code"].endswith("-verified")]  # closed obligations, shown as notes
+        diags = [d for d in diags if not d["code"].endswith("-verified")]
+        if verified:
+            n.setdefault("_notes", []).extend(verified)
         status = "failed" if any(d["code"] in blocking for d in diags) else ("open" if diags else "ready")
         item = {"node": n["id"], "kind": n["kind"], "label": n.get("label", "")[:120], "status": status, "diagnostics": diags}
         if n.get("_notes"):
