@@ -191,3 +191,86 @@ def brief(con, scope: str | None = None, limit: int = 25) -> dict:
     return result("found", con, key_documents=key_docs, layout=root.get("entries", {}).get("items", []), flagged_studies=flagged,
                   next=["trace read --path <key document>", "trace outline / trace experiments --scope <area>",
                         "trace reconcile --path <report>", "trace validity --scope <area>"])
+
+
+HOST_TOKEN = re.compile(r"^(?:h(?:20|200)?[-_]?\d{1,3}|h20[-_]\d|h200[-_]\d|4090[-_]\d+(?:[-_]\d+)?|"
+                        r"5090[-_]?d?[-_]\d+|(?:a100|h100|pro6000)[-_]?\d+|node\d+|gpu\d{2,})$", re.I)
+
+
+def host_hints(path: str) -> list[dict]:
+    """Host names encoded in the layout (`collected/h204/`, `queues/final/rp6.jsonl`). Authority: path-token (inferred)."""
+    out = []
+    for comp in path.split("/"):
+        stem = posixpath.splitext(comp)[0]
+        if HOST_TOKEN.match(stem):
+            out.append({"token": stem, "from": comp, "authority": "path-token"})
+    return out
+
+
+def dir_provenance(con, path: str) -> dict:
+    """Provenance for a directory (a study's summary/ or run folder): who writes into it, which scripts sit in it
+    or above it, and who cites it."""
+    d = path.strip("/")
+    n = con.execute("SELECT COUNT(*) FROM files WHERE path LIKE ?", (d + "/%",)).fetchone()[0]
+    if not n:
+        return result("not_found", con, path=path)
+    writers = [dict(file=r["src"], via=r["mode"], ref=r["raw"]) for r in con.execute(
+        "SELECT DISTINCT src, raw, mode FROM refs WHERE (target = ? OR target LIKE ?) AND mode = 'write' LIMIT 40", (d, d + "/%"))]
+    scripts = []
+    parts = d.split("/")
+    for i in range(len(parts), max(0, len(parts) - 4), -1):
+        anc = "/".join(parts[:i])
+        for r in con.execute(f"SELECT path, role FROM files WHERE dir = ? AND role IN ({','.join('?' * len(SCRIPT_ROLES))})", (anc, *SCRIPT_ROLES)):
+            scripts.append({"file": r["path"], "role": r["role"], "levels_up": len(parts) - i})
+    cited_by = [dict(file=r["src"], mode=r["mode"]) for r in con.execute(
+        "SELECT DISTINCT src, mode FROM refs WHERE (target = ? OR target LIKE ?) AND src NOT LIKE ? LIMIT 40", (d, d + "/%", d + "/%"))]
+    roles = dict(con.execute("SELECT role, COUNT(*) FROM files WHERE path LIKE ? GROUP BY role", (d + "/%",)).fetchall())
+    hosts = sorted({h["token"] for (p,) in con.execute("SELECT path FROM files WHERE path LIKE ? LIMIT 5000", (d + "/%",))
+                    for h in host_hints(p[len(d) + 1:])})
+    return result("found", con, path=d, kind="directory", files=n, roles=roles, writers=writers, scripts_here_or_above=scripts[:30],
+                  cited_by=cited_by, host_hints_below=hosts[:20],
+                  limitations=["scripts listed by location; read them to see which outputs they produce"])
+
+
+def pair(a_doc, b_doc, key: str | None = None, value: str | None = None) -> dict:
+    """Paired per-item comparison of two result documents (e.g. per-episode success arrays from two evaluations)."""
+    def arrays(doc):
+        flat = {}
+
+        def walk(o, p="$"):
+            if isinstance(o, dict):
+                for k, v in o.items():
+                    walk(v, f"{p}.{k}")
+            elif isinstance(o, list) and o and all(isinstance(x, (int, float, bool)) for x in o):
+                flat[p] = o
+        walk(doc)
+        return flat
+    fa, fb = arrays(a_doc), arrays(b_doc)
+    succ = re.compile(r"(success|succ|solved|done|correct|hit)", re.I)
+    ids = re.compile(r"(episode|ids?|index|indices|seed|start)", re.I)
+
+    def pick(flat, wanted, rx, binary):
+        if wanted:
+            return next((p for p in flat if p.endswith("." + wanted) or p == wanted), None)
+        cands = [p for p in flat if rx.search(p.split(".")[-1]) and (not binary or set(map(float, flat[p])) <= {0.0, 1.0})]
+        return cands[0] if cands else None
+    va, vb = pick(fa, value, succ, True), pick(fb, value, succ, True)
+    if not va or not vb:
+        return {"status": "unknown", "reason": "no binary per-item array found; pass --value", "arrays_a": list(fa)[:12], "arrays_b": list(fb)[:12]}
+    ka, kb = pick(fa, key, ids, False), pick(fb, key, ids, False)
+    A, B = fa[va], fb[vb]
+    if ka and kb and len(fa[ka]) == len(A) and len(fb[kb]) == len(B):
+        ma = dict(zip(fa[ka], A))
+        mb = dict(zip(fb[kb], B))
+        common = sorted(set(ma) & set(mb), key=str)
+        pairs = [(ma[i], mb[i]) for i in common]
+        aligned = f"by {ka.split('.')[-1]}"
+    elif len(A) == len(B):
+        pairs = list(zip(A, B))
+        aligned = "by position (no shared id array found)"
+    else:
+        return {"status": "unknown", "reason": f"arrays differ in length ({len(A)} vs {len(B)}) and no id array to align"}
+    c = Counter((bool(x), bool(y)) for x, y in pairs)
+    return {"status": "found", "aligned": aligned, "n": len(pairs), "a_value": va, "b_value": vb,
+            "both": c[(True, True)], "only_a": c[(True, False)], "only_b": c[(False, True)], "neither": c[(False, False)],
+            "a_rate": round(sum(x for x, _ in pairs) / max(1, len(pairs)), 6), "b_rate": round(sum(y for _, y in pairs) / max(1, len(pairs)), 6)}
