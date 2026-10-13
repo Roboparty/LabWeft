@@ -65,8 +65,13 @@ names are skipped; secret-looking values are redacted.
    `rh trace reconcile --path REPORT --number 66.17` (or `--state unsourced`, `--line N`)
    returns just that number with its derivation or the reason it cannot be traced.
    `rh trace pair --a RESULT_A --b RESULT_B` compares per-episode outcomes of two
-   evaluations aligned by episode id (both / only_a / only_b / neither).
-   `rh trace read --path FILE.json --json-path status` returns one JSON branch.
+   evaluations aligned by episode id (both / only_a / only_b / neither). Put `*` in
+   both paths (e.g. `..._search_rh1_s*/result.json` vs `..._direct_rh1_s*/result.json`)
+   to pair every seed and get the summed `total` in ONE call.
+   `rh trace read --path FILE.json --json-path status` returns one JSON branch;
+   `rh trace read --path FILE --pattern TEXT` returns only matching lines (±2).
+   IDs/run names that live in job queues or manifests: `trace xrefs --token ID` or
+   `trace find` (falls back to structured facts when no prose contains the phrase).
    `provenance` also accepts a directory (writers, scripts here or above, citers,
    `host_hints_below`) and reports `host_hints` from layout tokens like `collected/h204/`.
 7. `rh trace search --query Q`, `rh trace grep --pattern P`, `rh trace read --path P`

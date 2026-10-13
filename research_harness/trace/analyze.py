@@ -687,7 +687,11 @@ def reconcile(con, scope: str | None = None, path: str | None = None, offset: in
                             conv = ("sample" if sds is not None and _close(float(b), sds * scale, db) else
                                     "population" if sdp is not None and _close(float(b), sdp * scale, db) else None)
                             if conv:
-                                hits.append({"study": sid, "cell": cid, "n": n, "sd": conv, "source": ssrc, "example_run": rsrc, "locator": rloc})
+                                # spell out the other convention so a reader can state both
+                                alt = {"sample_sd": round(sds * scale, 4) if sds is not None else None,
+                                       "population_sd": round(sdp * scale, 4) if sdp is not None else None}
+                                hits.append({"study": sid, "cell": cid, "n": n, "sd": conv, "sd_values": alt, "source": ssrc,
+                                             "example_run": rsrc, "locator": rloc})
                 local = [h for h in hits if _area(h["source"]) == area] or hits
                 state = "derived" if 0 < len(local) <= 5 else ("ambiguous" if local else
                                                                "declared_external" if DECLARED_EXTERNAL.search(r["text"]) else "unsourced")
