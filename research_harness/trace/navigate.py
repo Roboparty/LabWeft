@@ -227,8 +227,14 @@ def dir_provenance(con, path: str) -> dict:
     roles = dict(con.execute("SELECT role, COUNT(*) FROM files WHERE path LIKE ? GROUP BY role", (d + "/%",)).fetchall())
     hosts = sorted({h["token"] for (p,) in con.execute("SELECT path FROM files WHERE path LIKE ? LIMIT 5000", (d + "/%",))
                     for h in host_hints(p[len(d) + 1:])})
+    declared_hosts = []
+    host_key = re.compile(r"(^|[._])(host|hostname|machine|node_name|server|cluster)$", re.I)
+    for r in con.execute("SELECT x.path, x.json FROM facts x WHERE x.path LIKE ? AND x.json LIKE '%declared%' LIMIT 400", (d + "/%",)):
+        for loc, val in (json.loads(r["json"]).get("declared") or {}).items():
+            if host_key.search(loc) and isinstance(val, str) and len(declared_hosts) < 10:
+                declared_hosts.append({"path": r["path"], "key": loc, "value": val})
     return result("found", con, path=d, kind="directory", files=n, roles=roles, writers=writers, scripts_here_or_above=scripts[:30],
-                  cited_by=cited_by, host_hints_below=hosts[:20],
+                  cited_by=cited_by, host_hints_below=hosts[:20], declared_hosts=declared_hosts, named_by=name_mentions(con, d),
                   limitations=["scripts listed by location; read them to see which outputs they produce"])
 
 
@@ -257,7 +263,15 @@ def pair(a_doc, b_doc, key: str | None = None, value: str | None = None) -> dict
     va, vb = pick(fa, value, succ, True), pick(fb, value, succ, True)
     if not va or not vb:
         return {"status": "unknown", "reason": "no binary per-item array found; pass --value", "arrays_a": list(fa)[:12], "arrays_b": list(fb)[:12]}
-    ka, kb = pick(fa, key, ids, False), pick(fb, key, ids, False)
+    def pick_key(flat, wanted, exclude):
+        if wanted:
+            return pick(flat, wanted, ids, False)
+        # an id array: unique values, same length as the outcome array, and not the outcome array itself
+        n = len(flat[exclude])
+        cands = [p for p in flat if p != exclude and ids.search(p.split(".")[-1]) and len(flat[p]) == n
+                 and len(set(flat[p])) == n and not succ.search(p.split(".")[-1])]
+        return cands[0] if cands else None
+    ka, kb = pick_key(fa, key, va), pick_key(fb, key, vb)
     A, B = fa[va], fb[vb]
     if ka and kb and len(fa[ka]) == len(A) and len(fb[kb]) == len(B):
         ma = dict(zip(fa[ka], A))
@@ -319,3 +333,23 @@ def find(con, queries: list[str], context: int = 3, per_query: int = 4, scope: s
     return result("found" if any(o["hits"] for o in out) else "not_found", con, results=out,
                   limitations=["searches text snapshots (reports, READMEs, notes, launchers, small JSON); use grep for other files",
                                "all terms of one query must occur in the same file"])
+
+
+def name_mentions(con, path: str, limit: int = 15) -> list[dict]:
+    """Files whose extracted content names this artifact's own directory/file stem — job queues, manifests, launch
+    lists. `pusht_e1opt_search_rh1_s42` in `queues/final/rp6.jsonl` links the result folder to its job."""
+    parts = path.rstrip("/").split("/")
+    names = [posixpath.splitext(parts[-1])[0]] if "." in parts[-1] else []
+    names += [p for p in reversed(parts[:-1] if "." in parts[-1] else parts) if len(p) >= 8 and re.search(r"[_\-]", p)][:2]
+    out, seen = [], set()
+    for nm in names:
+        if len(nm) < 8:
+            continue
+        for r in con.execute("SELECT f.path, f.role FROM facts x JOIN files f ON f.path = x.path WHERE x.json LIKE ? AND f.path NOT LIKE ? LIMIT ?",
+                             (f"%{nm}%", "/".join(parts[:-1]) + "/%" if "." in parts[-1] else path.rstrip("/") + "/%", limit)):
+            if r["path"] not in seen:
+                seen.add(r["path"])
+                out.append({"file": r["path"], "role": r["role"], "names": nm})
+        if out:
+            break
+    return out[:limit]

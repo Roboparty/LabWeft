@@ -62,7 +62,15 @@ def dispatch(args):
     payload["workspace"] = args.workspace
     out = call(tool, payload)
     if getattr(args, "out_format", "json") == "text":
-        print(compact(out))
+        hits = out.get("hits") if isinstance(out, dict) else None
+        if isinstance(hits, list) and hits and all(isinstance(h, dict) and "path" in h for h in hits):
+            # grep-style: one line per hit, so it can be piped into further filters
+            for h in hits:
+                print(f"{h['path']}:{h.get('line') or ''}: {h.get('text', '')}")
+            rest = {k: v for k, v in out.items() if k != "hits"}
+            print(compact(rest))
+        else:
+            print(compact(out))
         return None
     return out
 
