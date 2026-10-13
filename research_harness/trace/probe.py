@@ -25,7 +25,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 
 PROBE_VERSION = "6"
-RESUME_COMPATIBLE = {"6"}  # v6 adds declared status facts; older parts are re-parsed
+BULK_MIN_FILES = 5000
+RESUME_COMPATIBLE = {"5", "6"}  # v5 lacks only JSON declared facts; reuse its parse work on huge trees
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", ".mypy_cache", ".pytest_cache",
              ".ipynb_checkpoints", "wandb-cache", ".cache", ".research"}
 SENSITIVE = re.compile(r"(^|[._-])(secret|secrets|token|credentials?|password|passwd|id_rsa|id_ed25519|netrc)([._-]|$)|\.env$|\.pem$|\.key$", re.I)
@@ -576,6 +577,19 @@ def walk(root, excludes, deadline):
             continue
         entries.sort(key=lambda e: e.name)
         subdirs = []
+        # A person glances at a 200k-image dataset folder and moves on: summarize bulk binary directories
+        # (many files, sample all non-text) instead of stat-ing every file. Sub-directories are still walked.
+        files_here = [e for e in entries if not e.name.startswith(".") and e.is_file(follow_symlinks=False)]
+        if len(files_here) >= BULK_MIN_FILES:
+            step = max(1, len(files_here) // 300)
+            sample = files_here[::step]
+            exts = {}
+            for e in files_here:
+                x = os.path.splitext(e.name)[1].lower()
+                exts[x] = exts.get(x, 0) + 1
+            if all(os.path.splitext(e.name)[1].lower() not in TEXT_EXT for e in sample):
+                yield ("bulk", cur, len(files_here), dict(sorted(exts.items(), key=lambda kv: -kv[1])[:8]))
+                entries = [e for e in entries if not (e in files_here)]
         for e in entries:
             rel = (cur + "/" + e.name) if cur else e.name
             try:
@@ -714,6 +728,11 @@ def main(argv=None):
         if kind == "deadline":
             stats["complete"], stats["stop_reason"] = False, "deadline"
             break
+        if kind == "bulk":
+            stats["bulk_dirs"] = stats.get("bulk_dirs", 0) + 1
+            stats["bulk_files"] = stats.get("bulk_files", 0) + size
+            emit({"t": "bulk", "p": rel, "n": size, "exts": mtime})
+            continue
         if kind != "file":
             if kind == "skip_dir":
                 stats["skipped_dirs"] += 1
