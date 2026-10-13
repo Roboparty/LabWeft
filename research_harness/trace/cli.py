@@ -25,6 +25,8 @@ def add_cli(sub) -> None:
     for name, (_, desc, props, req) in TOOLS.items():
         p = ts.add_parser(name.removeprefix("trace_"), help=desc)
         p.add_argument("workspace")
+        p.add_argument("--format", choices=["json", "text"], default="json", dest="out_format",
+                       help="text = compact indented outline for reading in a terminal or agent context")
         for key, schema in props.items():
             if key == "workspace":
                 continue
@@ -58,4 +60,52 @@ def dispatch(args):
     _, _, props, _ = TOOLS[tool]
     payload = {k: getattr(args, k) for k in props if getattr(args, k, None) not in (None, False)}
     payload["workspace"] = args.workspace
-    return call(tool, payload)
+    out = call(tool, payload)
+    if getattr(args, "out_format", "json") == "text":
+        print(compact(out))
+        return None
+    return out
+
+
+def _scalar(v) -> str:
+    if isinstance(v, float):
+        return f"{v:.6g}"
+    if isinstance(v, str):
+        v = v.replace("\n", " ")
+        return v if len(v) <= 240 else v[:237] + "..."
+    return "null" if v is None else str(v)
+
+
+def compact(obj, indent: int = 0) -> str:
+    """Indented outline: dict keys as `key:`, short scalar lists inline, list items as `-` blocks. No data dropped
+    beyond long strings (pagination already bounds lists)."""
+    pad = "  " * indent
+    lines = []
+    if isinstance(obj, list) and obj and all(isinstance(x, dict) and set(x) == {"n", "text"} for x in obj):
+        return "\n".join(f"{pad}{x['n']:>5}: {x['text']}" for x in obj)  # file lines read like a listing
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k == "_meta":
+                continue
+            if isinstance(v, (dict, list)) and v:
+                if isinstance(v, list) and all(not isinstance(x, (dict, list)) for x in v) and len(v) <= 12:
+                    lines.append(f"{pad}{k}: [{', '.join(_scalar(x) for x in v)}]")
+                elif isinstance(v, dict) and all(not isinstance(x, (dict, list)) for x in v.values()) and len(v) <= 8:
+                    lines.append(f"{pad}{k}: {{{', '.join(f'{a}={_scalar(b)}' for a, b in v.items())}}}")
+                else:
+                    lines.append(f"{pad}{k}:")
+                    lines.append(compact(v, indent + 1))
+            else:
+                lines.append(f"{pad}{k}: {_scalar(v) if not isinstance(v, (dict, list)) else ('{}' if isinstance(v, dict) else '[]')}")
+    elif isinstance(obj, list):
+        for x in obj:
+            if isinstance(x, dict):
+                inner = compact(x, indent + 1).splitlines()
+                if inner:
+                    lines.append(pad + "- " + inner[0].lstrip())
+                    lines.extend(inner[1:])
+            else:
+                lines.append(f"{pad}- {_scalar(x)}")
+    else:
+        lines.append(pad + _scalar(obj))
+    return "\n".join(l for l in lines if l)

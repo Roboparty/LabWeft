@@ -142,9 +142,27 @@ def obligations(workspace, kinds=("claim", "run", "cell"), offset: int = 0, limi
                 diags.append({"code": "unknown-seed"})
             if not attrs.get("eval_protocol"):
                 diags.append({"code": "unknown-eval-protocol"})
+            resolved_nums = []
+            for t in cited_text:
+                try:
+                    v = json.loads(t)
+                except ValueError:
+                    v = t
+                try:
+                    resolved_nums.append(float(str(v).strip().strip('"').rstrip("%")))
+                except ValueError:
+                    pass
             for key, val in (attrs.get("metrics") or {}).items():
-                if isinstance(val, (int, float)) and refs and not any(_printed(t, repr(float(val)) if "." in repr(float(val)) else f"{val}.0") for t in cited_text):
-                    diags.append({"code": "metric-not-in-cited-evidence", "detail": f"{key}={val}"})
+                if not isinstance(val, (int, float)) or not refs:
+                    continue
+                if any(_printed(t, repr(float(val)) if "." in repr(float(val)) else f"{val}.0") for t in cited_text):
+                    continue
+                # Derived metric: the mean of the cited per-evaluation values (each locator resolves to one number).
+                if len(resolved_nums) == len(refs) and resolved_nums and abs(sum(resolved_nums) / len(resolved_nums) - float(val)) <= 1e-6 * max(1.0, abs(float(val))):
+                    diags_ok = {"code": "derived-mean-verified", "detail": f"{key}={val} = mean of {len(resolved_nums)} cited values"}
+                    n.setdefault("_notes", []).append(diags_ok)
+                    continue
+                diags.append({"code": "metric-not-in-cited-evidence", "detail": f"{key}={val}"})
         elif n["kind"] == "cell":
             if children.get(n["id"], 0) < 2:
                 diags.append({"code": "single-seed" if children.get(n["id"], 0) == 1 else "no-completed-runs",
@@ -152,7 +170,10 @@ def obligations(workspace, kinds=("claim", "run", "cell"), offset: int = 0, limi
         blocking = {"missing-evidence", "source-drift", "locator-unresolved", "snapshot-unreadable", "value-not-in-cited-evidence",
                     "metric-not-in-cited-evidence", "missing-comparator", "missing-scope"}
         status = "failed" if any(d["code"] in blocking for d in diags) else ("open" if diags else "ready")
-        items.append({"node": n["id"], "kind": n["kind"], "label": n.get("label", "")[:120], "status": status, "diagnostics": diags})
+        item = {"node": n["id"], "kind": n["kind"], "label": n.get("label", "")[:120], "status": status, "diagnostics": diags}
+        if n.get("_notes"):
+            item["verified"] = n.pop("_notes")
+        items.append(item)
     order = {"failed": 0, "open": 1, "ready": 2}
     items.sort(key=lambda x: (order[x["status"]], x["kind"], x["node"]))
     summary = Counter(x["status"] for x in items)
@@ -194,24 +215,37 @@ def propose(workspace, alias: str, study: dict, cells: list[dict], parent_id: st
         label = ", ".join(f"{k}={v}" for k, v in c["levels"].items()) or "all units"
         runs = [r for r in c["runs"] if r.get("value") is not None]
         cell_refs = [x for x in (ref(r["source"], r["locator"]) for r in runs[:1]) if x]
+        # One Run = one independent training seed. Evaluation-seed rows of the same training seed are averaged
+        # (and all of them cited), never counted as extra replicates.
+        train_keys = [k for k in (study.get("replicate_keys") or []) if not re.search(r"eval", k, re.I)]
+        eval_keys = [k for k in (study.get("replicate_keys") or []) if re.search(r"eval", k, re.I)]
+        if eval_keys and train_keys:
+            grouped: dict[str, list] = {}
+            for r in runs:
+                key = json.dumps({k: r["seed"].get(k) for k in train_keys}, sort_keys=True, default=str)
+                grouped.setdefault(key, []).append(r)
+            runs = [{"source": g[0]["source"], "locator": g[0]["locator"], "rows": g,
+                     "seed": {k: g[0]["seed"].get(k) for k in train_keys},
+                     "value": sum(x["value"] for x in g) / len(g), "eval_n": len(g)} for g in grouped.values()]
         nodes.append({"id": cid, "kind": "cell", "label": label[:200], "parent_id": qid, "status": "recorded",
                       "description": "Draft condition from factor recovery; seed is not a factor.", "attrs": {"config": cfg},
                       "evidence": cell_refs})
         seen_seeds = Counter()
         for r in runs:
-            seed = next((v for v in r["seed"].values() if v is not None), None) if r.get("seed") else None
+            seed = next((v for k, v in sorted(r["seed"].items(), key=lambda kv: ("train" not in kv[0], kv[0])) if v is not None), None) if r.get("seed") else None
             seen_seeds[json.dumps(seed, default=str)] += 1
             rid = stable_id("run", state["project"]["id"], study["id"], c["id"], r["source"], str(r["locator"]))
             run_cfg = dict(cfg)
             run_cfg["seed"] = seed
-            ev = ref(r["source"], r["locator"])
+            evs = [x for x in (ref(row["source"], row["locator"]) for row in r.get("rows", [r])) if x]
+            ev = evs[0] if evs else None
             nodes.append({"id": rid, "kind": "run", "label": f"{label[:120]} | seed {seed}", "parent_id": cid,
                           "status": "needs_review" if seen_seeds[json.dumps(seed, default=str)] > 1 or seed is None else "completed",
                           "description": "Draft run; completion and seed identity must be verified in the cited source.",
                           "attrs": {"config": run_cfg, "seed": seed, "run_id": f"{r['source']}#{r['locator']}", "eval_protocol": protocol,
-                                    "code_revision": None, "metrics": {study["primary_metric"]: r["value"]},
-                                    "seed_keys": r.get("seed")},
-                          "evidence": [ev] if ev else []})
+                                    "code_revision": None, "metrics": {study["primary_metric"]: round(r["value"], 6)},
+                                    "seed_keys": r.get("seed"), "eval_rows_averaged": r.get("eval_n", 1)},
+                          "evidence": evs})
     ids = {n["id"]: n for n in nodes}
     for ax in study["controlled_axes"]:
         for a, b in ax.get("example_pairs", []):

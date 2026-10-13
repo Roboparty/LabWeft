@@ -73,13 +73,15 @@ def collect(workspace: Path, name: str, root: str, host: str | None = None, remo
     (tdir / "parts").mkdir(parents=True, exist_ok=True)
     cfg_file = config_path(workspace, name)
     cfg = read_json(cfg_file) if cfg_file.exists() else {}
-    if cfg and (cfg.get("root") != root or cfg.get("host") != host):
+    if cfg and cfg.get("root") != root:
         raise HarnessError(f"Source {name!r} already points at {cfg.get('host')}:{cfg.get('root')}; use a new name")
+    moved = bool(cfg) and cfg.get("host") != host  # same tree via another host that mounts it: keep history, rescan fully
     parts = sorted(p.name for p in (tdir / "parts").glob("part-*.jsonl.gz"))
+    resumable = [] if moved else parts  # resume files live on the probing host
     seq = len(parts) + 1
     part = f"part-{seq:03d}-{time.strftime('%Y%m%dT%H%M%S')}.jsonl.gz"  # unique: a stale earlier probe can never share it
     extra = list(extra or [])
-    cfg = {"name": name, "root": root, "host": host, "remote_dir": remote_dir, "parts": parts}
+    cfg = {**cfg, "name": name, "root": root, "host": host, "remote_dir": remote_dir, "parts": parts}
     json_write(cfg_file, cfg)
     if not host:
         cmd = [sys.executable, str(PROBE), "--root", root, "--out", str(tdir / "parts" / part),
@@ -88,19 +90,30 @@ def collect(workspace: Path, name: str, root: str, host: str | None = None, remo
         cfg["parts"].append(part)
         json_write(cfg_file, cfg)
         return {"status": "complete", "part": part}
+    health(host, root)
     rdir = remote_dir or "~/.labweft-trace"
     rparts = f"{rdir}/{name}"
     _check(_ssh(host, f"mkdir -p {rparts} && cat > {rdir}/probe.py", 60, PROBE.read_bytes()), "upload probe")
-    resume = " ".join(f"--resume-from {shlex.quote(rparts + '/' + p)}" for p in parts)
+    resume = " ".join(f"--resume-from {shlex.quote(rparts + '/' + p)}" for p in resumable)
     # The subshell must not inherit the SSH channel, or ssh waits for the whole scan.
     run = (f"cd {rparts} && (setsid nohup python3 {rdir}/probe.py --root {shlex.quote(root)} --out {part} --status {part}.status "
            f"{resume} {' '.join(shlex.quote(x) for x in extra)} > {part}.stderr 2>&1 < /dev/null &) && echo started")
-    _check(_ssh(host, run, 60), "start probe")
     cfg["pending"] = part
     json_write(cfg_file, cfg)
-    if not wait:
-        return {"status": "running", "part": part, "hint": "run `labweft trace resume WORKSPACE --source NAME` to wait, download and index"}
-    return wait_and_fetch(workspace, name, poll=poll, max_wait=max_wait, log=log)
+    if wait:
+        # Foreground: keep the SSH session open for the whole scan. Hosts with logind KillUserProcesses
+        # (Linger=no) kill even setsid/nohup children when the last session closes. If the connection
+        # drops, `collect` again resumes from the flushed partial part.
+        fg = (f"cd {rparts} && python3 {rdir}/probe.py --root {shlex.quote(root)} --out {part} --status {part}.status "
+              f"{resume} {' '.join(shlex.quote(x) for x in extra)} > /dev/null 2> {part}.stderr < /dev/null; echo __EXIT__$?")
+        proc = _ssh(host, fg, max_wait)
+        if b"__EXIT__0" not in proc.stdout:
+            raise HarnessError(f"probe on {host} failed: {proc.stdout.decode(errors='replace')[-300:]} {proc.stderr.decode(errors='replace')[-500:]}")
+        return wait_and_fetch(workspace, name, poll=poll, max_wait=max_wait, log=log)
+    _check(_ssh(host, run, 60), "start probe")
+    return {"status": "running", "part": part,
+            "hint": "run `labweft trace resume WORKSPACE --source NAME` to wait, download and index; "
+                    "on hosts that kill a user's processes at logout (loginctl Linger=no) prefer the default foreground mode"}
 
 
 def wait_and_fetch(workspace: Path, name: str, poll: int = 15, max_wait: int = 6 * 3600, log=None) -> dict:
@@ -136,11 +149,50 @@ def wait_and_fetch(workspace: Path, name: str, poll: int = 15, max_wait: int = 6
     return {"status": "complete", "part": part, "records": n, "bytes": len(data)}
 
 
+def health(host: str, root: str, seconds: int = 15) -> None:
+    """Refuse to pile work onto a hung network mount: listing AND reading one small file must succeed quickly.
+
+    A hard-mounted NFS client can list directories while every read blocks forever in D state; such
+    readers cannot be killed. Fail fast and suggest another host that mounts the same share.
+    """
+    q = shlex.quote(root)
+    cmd = (f"cd {q} && f=$(timeout -k 2 {seconds} find . -maxdepth 3 -type f -size -64k -print -quit 2>/dev/null); "
+           f"test -n \"$f\" || {{ echo NOFILE; exit 0; }}; timeout -k 2 {seconds} head -c 64 \"$f\" > /dev/null && echo READ_OK || echo READ_FAIL")
+    try:
+        out = _ssh(host, cmd, seconds * 2 + 30).stdout.decode(errors="replace")
+    except HarnessError:
+        out = "TIMEOUT"
+    if "READ_OK" not in out and "NOFILE" not in out:
+        raise HarnessError(f"{host}: {root} lists but cannot be read within {seconds}s (hung network mount?). "
+                           "Use another host that mounts the same share (--host); do not retry on this one.")
+
+
 def _safe(rel: str) -> str:
     rel = posixpath.normpath(rel)
     if rel.startswith("/") or rel.startswith(".."):
         raise HarnessError(f"Path escapes the source root: {rel}")
     return rel
+
+
+def _hosts(cfg: dict) -> list[str]:
+    """Read paths can use other hosts that mount the same tree (a sick NFS client should not block reads)."""
+    out = list(cfg.get("read_hosts") or []) + ([cfg["host"]] if cfg.get("host") else [])
+    return list(dict.fromkeys(out))
+
+
+def _remote(cfg: dict, cmd: str, timeout: int, what: str, stdin: bytes | None = None, ok_codes=(0,)) -> tuple[str, bytes]:
+    """Try each host in order; a timeout (exit 124 / ssh timeout) moves on. Raises with every attempt listed."""
+    attempts = []
+    for host in _hosts(cfg):
+        try:
+            proc = _ssh(host, cmd, timeout, stdin)
+        except HarnessError as exc:
+            attempts.append(f"{host}: {exc}")
+            continue
+        if proc.returncode in ok_codes:
+            return host, proc.stdout
+        attempts.append(f"{host}: exit {proc.returncode} {proc.stderr.decode(errors='replace')[-200:]}")
+    raise HarnessError(f"{what} failed on every host ({'; '.join(attempts)}); status unknown, not absent")
 
 
 def read(workspace: Path, name: str, rel: str, start: int = 1, lines: int = 120) -> dict:
@@ -149,8 +201,9 @@ def read(workspace: Path, name: str, rel: str, start: int = 1, lines: int = 120)
     lines = max(1, min(lines, 800))
     end = start + lines - 1
     if cfg.get("host"):
-        cmd = f"cd {shlex.quote(cfg['root'])} && timeout 30 sed -n '{int(start)},{int(end)}p' -- {shlex.quote(rel)} && timeout 30 wc -l < {shlex.quote(rel)}"
-        out = _check(_ssh(cfg["host"], cmd, 75), "remote read").decode("utf-8", errors="replace").splitlines()
+        cmd = f"cd {shlex.quote(cfg['root'])} && timeout 20 sed -n '{int(start)},{int(end)}p' -- {shlex.quote(rel)} && timeout 20 wc -l < {shlex.quote(rel)}"
+        _, raw = _remote(cfg, cmd, 50, "remote read")
+        out = raw.decode("utf-8", errors="replace").splitlines()
         total = int(out[-1]) if out and out[-1].strip().isdigit() else None
         body = out[:-1]
     else:
@@ -162,27 +215,44 @@ def read(workspace: Path, name: str, rel: str, start: int = 1, lines: int = 120)
 
 
 def grep(workspace: Path, name: str, pattern: str, sub: str = ".", include: list[str] | None = None, regex: bool = False,
-         limit: int = 200) -> dict:
+         limit: int = 200, per_file: int = 50) -> dict:
     cfg = load(workspace, name)
     sub = _safe(sub)
     incl = " ".join(f"--include={shlex.quote(g)}" for g in (include or []))
     flag = "-E" if regex else "-F"
     if cfg.get("host"):
-        cmd = (f"cd {shlex.quote(cfg['root'])} && timeout 120 grep -rIn {flag} -m 5 {incl} -- {shlex.quote(pattern)} {shlex.quote(sub)}"
+        # `set -o pipefail` keeps grep's exit code: 0 hits, 1 no hits, 124 budget exhausted (=> unknown).
+        cmd = (f"set -o pipefail; cd {shlex.quote(cfg['root'])} && timeout 90 grep -rIn {flag} -m {max(1, int(per_file))} {incl} -- {shlex.quote(pattern)} {shlex.quote(sub)}"
                f" 2>/dev/null | head -n {int(limit) + 1}")
-        proc = _ssh(cfg["host"], cmd, 150)
-        out = proc.stdout.decode("utf-8", errors="replace").splitlines()
+        attempts, out, rc, host_used = [], [], None, None
+        for host in _hosts(cfg):
+            try:
+                proc = _ssh(host, cmd, 120)
+            except HarnessError as exc:
+                attempts.append(f"{host}: {exc}")
+                continue
+            out = proc.stdout.decode("utf-8", errors="replace").splitlines()
+            rc, host_used = proc.returncode, host
+            if rc in (0, 1, 141) or out:  # 141: head closed the pipe after `limit` lines
+                break
+            attempts.append(f"{host}: exit {rc}")
     else:
-        cmd = ["grep", "-rIn", flag, "-m", "5"] + [f"--include={g}" for g in (include or [])] + ["--", pattern, sub]
+        cmd = ["grep", "-rIn", flag, "-m", str(max(1, int(per_file)))] + [f"--include={g}" for g in (include or [])] + ["--", pattern, sub]
         proc = subprocess.run(cmd, cwd=cfg["root"], capture_output=True, timeout=150)
         out = proc.stdout.decode("utf-8", errors="replace").splitlines()
+        rc, host_used, attempts = proc.returncode, None, []
     hits = []
     for line in out[:limit]:
         path, _, rest = line.partition(":")
         num, _, text = rest.partition(":")
         hits.append({"path": path[2:] if path.startswith("./") else path, "line": int(num) if num.isdigit() else None, "text": text[:300]})
-    return {"status": "found" if hits else "not_found", "pattern": pattern, "truncated": len(out) > limit, "hits": hits,
-            "limitations": ["at most 5 matches per file; 120 s budget; binary files skipped"],
+    exhaustive = rc in (0, 1)
+    status = "found" if hits else ("not_found" if exhaustive else "unknown")
+    lim = [f"at most {per_file} matches per file; 90 s budget per host; binary files skipped"]
+    if not exhaustive and not hits:
+        lim.append("search did not finish (" + ("; ".join(attempts) or f"exit {rc}") + "): absence is unknown")
+    return {"status": status, "pattern": pattern, "truncated": len(out) > limit, "hits": hits, "host": host_used,
+            "limitations": lim,
             "_meta": {"untrusted_content": True}}
 
 
@@ -196,8 +266,7 @@ def fetch(workspace: Path, name: str, paths: list[str], index_sha: dict[str, str
         return {"fetched": 0}
     if cfg.get("host"):
         listing = ("\n".join(rels) + "\n").encode()
-        data = _check(_ssh(cfg["host"], f"cd {shlex.quote(cfg['root'])} && timeout 900 tar cf - --files-from=- 2>/dev/null; true", 1000, listing),
-                      "remote tar")
+        _, data = _remote(cfg, f"cd {shlex.quote(cfg['root'])} && timeout 900 tar cf - --files-from=- 2>/dev/null; true", 1000, "remote tar", listing)
         members = {}
         with tarfile.open(fileobj=io.BytesIO(data), mode="r:") as tar:
             for m in tar.getmembers():
