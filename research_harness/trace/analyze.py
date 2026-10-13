@@ -588,6 +588,7 @@ def _candidates(con, x: float, decimals: int):
     return out
 
 
+DECLARED_EXTERNAL = re.compile(r"(retained|reported in|from the paper|paper value|original paper|quoted|citing|baseline from|保留|原论文|论文值|引用|沿用|历史值|官方报告)", re.I)
 ISO_TIME = re.compile(r"\d{4}-\d{2}-\d{2}[T ][\d:.]+(?:[+-]\d{2}:?\d{2}|Z)?|\b\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?\b")
 
 
@@ -682,7 +683,8 @@ def reconcile(con, scope: str | None = None, path: str | None = None, offset: in
                             if conv:
                                 hits.append({"study": sid, "cell": cid, "n": n, "sd": conv, "source": ssrc, "example_run": rsrc, "locator": rloc})
                 local = [h for h in hits if _area(h["source"]) == area] or hits
-                state = "derived" if 0 < len(local) <= 5 else ("ambiguous" if local else "unsourced")
+                state = "derived" if 0 < len(local) <= 5 else ("ambiguous" if local else
+                                                               "declared_external" if DECLARED_EXTERNAL.search(r["text"]) else "unsourced")
                 nums.append({"line": r["line"], "number": m.group(0), "kind": "mean±sd", "state": state, "sources": local[:3],
                              "n_sources": len(local), "sd_conventions": sorted({h["sd"] for h in local}), "context": r["text"][:160]})
                 consumed.update({m.start(1), m.start(2)})
@@ -702,7 +704,9 @@ def reconcile(con, scope: str | None = None, path: str | None = None, offset: in
                 use = local if local else cands
                 diff = next(([p, q] for i, p in enumerate(values) for q in values[i + 1:]
                              if p != x and q != x and (_close(x, p - q, dec) or _close(x, q - p, dec))), None)
-                if 0 < len(use) <= 5:
+                if not use and not diff and DECLARED_EXTERNAL.search(r["text"]):
+                    state = "declared_external"  # the report itself says this value is retained/quoted, not recomputed here
+                elif 0 < len(use) <= 5:
                     state = "sourced"
                 elif diff:
                     state = "derived"
@@ -716,13 +720,22 @@ def reconcile(con, scope: str | None = None, path: str | None = None, offset: in
         if nums:
             c = Counter(n["state"] for n in nums)
             docs.append({"report": d["path"], "numbers": len(nums), "by_state": dict(c),
-                         "traced_ratio": round((c["sourced"] + c["derived"]) / len(nums), 3), "_nums": nums})
+                         "traced_ratio": round((c["sourced"] + c["derived"] + c["declared_external"]) / len(nums), 3), "_nums": nums})
     docs.sort(key=lambda x: (x["traced_ratio"], -x["numbers"]))
     if path:
         if not docs:
             return result("unknown", con, path=path, limitations=["no numeric lines extracted for this report"])
         doc = docs[0]
         nums = doc.pop("_nums")
+        # Summarise untraceable numbers by table row label: "the Pure-CEM rows have no raw data here" reads better
+        # than 25 separate misses.
+        rows = defaultdict(list)
+        for n in nums:
+            if n["state"] == "unsourced":
+                cells = [c.strip(" *`") for c in n["context"].strip().strip("|").split("|")]
+                label = " | ".join(c for c in cells if c and not NUM_TOKEN.search(c))[:120] or f"line {n['line']}"
+                rows[label].append(n["number"])
+        doc["unsourced_by_row"] = [{"row": k, "count": len(v), "numbers": v[:6]} for k, v in sorted(rows.items(), key=lambda kv: -len(kv[1]))]
         return result("found", con, report=doc, numbers=page(nums, offset, limit),
                       limitations=["value matches are coincidences at printed precision (also x100 / /100) until the locator is read",
                                    "unsourced can mean the source was not collected (binary, too large, another project) or was computed elsewhere"])

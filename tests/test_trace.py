@@ -191,3 +191,63 @@ class TraceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NavigateTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        base = Path(self.tmp.name)
+        src = base / "proj"
+        study = src / "supplement" / "mech_multitask_e5.incomplete_do_not_use" / "results"
+        study.mkdir(parents=True)
+        (study / "AUDIT.json").write_text(json.dumps({"status": "complete", "control_cells": 36}))
+        (src / "supplement" / "mech_multitask_e5.incomplete_do_not_use" / "README_CN.md").write_text("# Multitask mechanism\n", encoding="utf-8")
+        runs = src / "study" / "collected" / "h204" / "independent_2x" / "train3072"
+        runs.mkdir(parents=True)
+        (runs / "result.json").write_text(json.dumps({"eval_episodes": [1, 2, 3, 4], "episode_successes": [1, 0, 1, 1]}))
+        other = src / "study" / "collected" / "h201" / "shared" / "train3072"
+        other.mkdir(parents=True)
+        (other / "result.json").write_text(json.dumps({"eval_episodes": [4, 3, 2, 1], "episode_successes": [0, 1, 1, 0]}))
+        (src / "study" / "run_fixed.py").write_text("VARIANTS = {'independent_2x': 2, 'shared': 1}\nif __name__ == '__main__':\n    pass\n")
+        (src / "study" / "aggregate_results.py").write_text("NAMES = ['independent_2x', 'shared']\nif __name__ == '__main__':\n    pass\n")
+        self.ws = base / "ws"
+        tools.t_collect(str(self.ws), "p", str(src))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_ls_and_brief(self):
+        out = tools.t_ls(str(self.ws), "p", "supplement")
+        entry = out["entries"]["items"][0]
+        self.assertTrue(entry["dir"].endswith("incomplete_do_not_use/") and entry["flag"])
+        brief = tools.t_brief(str(self.ws), "p")
+        self.assertTrue(any(f["area"].endswith("incomplete_do_not_use") for f in brief["flagged_studies"]))
+
+    def test_validity_flags_contradiction_with_declared_status(self):
+        out = tools.t_validity(str(self.ws), "p")
+        area = out["flagged_areas"]["items"][0]
+        kinds = {c["kind"] for c in area["contradictions"]}
+        self.assertIn("flagged-but-declares-complete", kinds)
+        self.assertIn("claims-more-results-than-indexed", kinds)
+
+    def test_inferred_producer_and_host_hints(self):
+        out = tools.t_provenance(str(self.ws), "p", "study/collected/h204/independent_2x/train3072/result.json")
+        self.assertEqual(out["inferred_producers"][0]["file"], "study/run_fixed.py")
+        self.assertEqual([h["token"] for h in out["host_hints"]], ["h204"])
+        d = tools.t_provenance(str(self.ws), "p", "study/collected")
+        self.assertEqual(d["kind"], "directory")
+        self.assertEqual(d["host_hints_below"], ["h201", "h204"])
+
+    def test_pair_aligns_by_episode_id(self):
+        out = tools.t_pair(str(self.ws), "p", "study/collected/h204/independent_2x/train3072/result.json",
+                           "study/collected/h201/shared/train3072/result.json")
+        self.assertEqual(out["aligned"], "by eval_episodes")
+        # ep1: 1/0, ep2: 0/1, ep3: 1/1, ep4: 1/0
+        self.assertEqual((out["both"], out["only_a"], out["only_b"], out["neither"]), (1, 2, 1, 0))
+
+    def test_read_json_path(self):
+        out = tools.t_read(str(self.ws), "p", "supplement/mech_multitask_e5.incomplete_do_not_use/results/AUDIT.json", json_path="status")
+        self.assertEqual(out["value"], "complete")
+        miss = tools.t_read(str(self.ws), "p", "supplement/mech_multitask_e5.incomplete_do_not_use/results/AUDIT.json", json_path="$.nope")
+        self.assertEqual(miss["status"], "not_found")
+        self.assertIn("status", miss["top_level_keys"])
