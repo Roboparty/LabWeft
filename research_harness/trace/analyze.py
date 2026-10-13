@@ -88,27 +88,69 @@ def overview(con, depth: int = 2, limit: int = 40) -> dict:
 # ---------------------------------------------------------------- search / xrefs
 
 def search(con, query: str, roles: list[str] | None = None, offset: int = 0, limit: int = 30) -> dict:
-    """Literal, case-insensitive search over extracted facts (paths, titles, headings, numeric lines, commands, keys)."""
-    q = f"%{query.lower()}%"
+    """Case-insensitive search; every whitespace-separated term must match (AND).
+
+    Covers paths, titles, extracted numeric/heading/command lines, metric and config keys, and the full
+    text of prose files (reports, READMEs, notes, launchers) kept by the probe.
+    """
+    terms = [t.lower() for t in query.split() if t.strip()] or [query.lower()]
     hits: dict[str, dict] = {}
 
     def add(path, where, text=None, line=None):
         h = hits.setdefault(path, {"path": path, "matches": []})
         if len(h["matches"]) < 5:
             h["matches"].append({k: v for k, v in (("in", where), ("line", line), ("text", text)) if v is not None})
-    for r in con.execute("SELECT path, title FROM files WHERE lower(path) LIKE ? OR lower(title) LIKE ?", (q, q)):
+
+    def where(cols):
+        clause = " AND ".join("(" + " OR ".join(f"lower({c}) LIKE ?" for c in cols) + ")" for _ in terms)
+        args = [f"%{t}%" for t in terms for _ in cols]
+        return clause, args
+    w, a = where(["path", "coalesce(title, '')"])
+    for r in con.execute(f"SELECT path, title FROM files WHERE {w} LIMIT 3000", a):
         add(r["path"], "path/title", r["title"])
-    for r in con.execute("SELECT path, line, kind, text FROM lines WHERE lower(text) LIKE ? LIMIT 5000", (q,)):
+    w, a = where(["text"])
+    for r in con.execute(f"SELECT path, line, kind, text FROM lines WHERE {w} LIMIT 5000", a):
         add(r["path"], r["kind"], r["text"], r["line"])
-    for r in con.execute("SELECT DISTINCT path, key FROM metrics WHERE lower(key) LIKE ? LIMIT 3000", (q,)):
+    w, a = where(["key"])
+    for r in con.execute(f"SELECT DISTINCT path, key FROM metrics WHERE {w} LIMIT 3000", a):
         add(r["path"], "metric_key", r["key"])
-    for r in con.execute("SELECT DISTINCT path, key, value FROM config WHERE lower(key) LIKE ? OR lower(value) LIKE ? LIMIT 3000", (q, q)):
+    w, a = where(["key", "value"])
+    for r in con.execute(f"SELECT DISTINCT path, key, value FROM config WHERE {w} LIMIT 3000", a):
         add(r["path"], "config", f"{r['key']}={r['value']}")
+    try:
+        w, a = where(["text"])
+        for r in con.execute(f"SELECT path, text FROM texts WHERE {w} LIMIT 2000", a):
+            lines = r["text"].splitlines()
+            scored = []
+            for i, line in enumerate(lines, 1):
+                low = line.lower()
+                n = sum(t in low for t in terms)
+                if n:
+                    scored.append((-n, i, line))
+            for n, i, line in sorted(scored)[:3]:
+                add(r["path"], "text" if -n == len(terms) else "text(partial line)", line.strip()[:300], i)
+    except Exception:  # older index without prose text
+        pass
     role_of = dict(con.execute("SELECT path, role FROM files").fetchall())
     items = [dict(h, role=role_of.get(h["path"])) for h in hits.values() if not roles or role_of.get(h["path"]) in roles]
-    items.sort(key=lambda x: (-len(x["matches"]), x["path"]))
+    rank = {"report": 0, "page": 1, "result_table": 2, "result": 3, "config": 4}
+    items.sort(key=lambda x: (rank.get(x["role"], 9), -len(x["matches"]), "::" in x["path"], x["path"]))
+    # Identical bytes in several places (a report and its copy inside a bundle) are one hit with extra locations.
+    sha_of = {r["path"]: r["sha"] for r in con.execute(
+        f"SELECT path, sha FROM files WHERE path IN ({','.join('?' * len(items))})", [i["path"] for i in items])} if items else {}
+    first: dict[str, dict] = {}
+    merged = []
+    for it in items:
+        sha = sha_of.get(it["path"])
+        if sha and sha in first:
+            first[sha].setdefault("same_content_at", []).append(it["path"])
+            continue
+        if sha:
+            first[sha] = it
+        merged.append(it)
+    items = merged
     return result("found" if items else "not_found", con, query=query, results=page(items, offset, limit),
-                  limitations=["searches extracted facts, not full file text; use `grep` for raw text on the source host"])
+                  limitations=["all terms must match within one file; binary and very large files are not searched; use `grep` for raw text on the source host"])
 
 
 def xrefs(con, token: str, offset: int = 0, limit: int = 40) -> dict:
@@ -379,8 +421,11 @@ def experiments(con, scope: str | None = None, metric: str | None = None, min_un
             opaque = []
             for k in keys:
                 vals = {str(u["config"].get(k, (None,))[0]) for u in units}
+                # A categorical column with few levels (e.g. direct / actor_cem300x30 / guarded_a128x3) is one
+                # factor as the author named it; only id-like columns and run-name paths are decomposed.
+                many = len(vals) > 12 or len(vals) >= max(4, len(units) // 2)
                 if len(vals) > 1 and not SEED_KEY.search(k.split(".")[-1]) and "~" not in k and (
-                        k.startswith("path[") or any(("_" in v or "/" in v) and re.search(r"\d", v) for v in vals)):
+                        k.startswith("path[") or (many and any(("_" in v or "/" in v) and re.search(r"\d", v) for v in vals))):
                     opaque.append(k)
             if not opaque:
                 break
@@ -579,6 +624,19 @@ def _cell_stats(con, scope):
                 if len(group) > 1:
                     per_cell = [c["stats"]["mean"] for c in group if c["stats"]]
                     add(per_cell, s["id"], group[0]["id"], s["source"], group[0]["runs"][0], f"|macro-over-{f['key']}")
+                    # The usual paper convention: per training seed, average over the pooled factor (e.g. tasks),
+                    # then report mean ± SD across those seeds.
+                    for k in s["replicate_keys"]:
+                        per_seed = defaultdict(lambda: defaultdict(list))
+                        for c in group:
+                            lvl = json.dumps(c["levels"].get(f["key"]), default=str)
+                            for r in c["runs"]:
+                                if r["value"] is not None:
+                                    per_seed[json.dumps(r["seed"].get(k), default=str)][lvl].append(r["value"])
+                        complete = [lv for lv in per_seed.values() if len(lv) == len(group)]
+                        if len(complete) > 1:
+                            add([statistics.fmean(statistics.fmean(v) for v in lv.values()) for lv in complete], s["id"],
+                                group[0]["id"], s["source"], group[0]["runs"][0], f"|macro-over-{f['key']}-per-{k}")
     try:
         con._lw_cells = (scope, out)
     except AttributeError:

@@ -40,6 +40,13 @@ def make_project(root: Path) -> dict:
               "\nAn unrelated number 12.345 appears here.\n")
     (root / "REPORT.md").write_text(report, encoding="utf-8")
     (root / "secrets.env").write_text("API_KEY=sk-should-not-be-read\n")
+    import io as _io
+    import tarfile as _tarfile
+    note = "# Bundled comparison\n\nSpatial Lite has 2.817M parameters versus 21.144M.\n".encode()
+    with _tarfile.open(root / "bundle.tgz", "w:gz") as tf:
+        info = _tarfile.TarInfo("./docs/COMPARISON.md")
+        info.size = len(note)
+        tf.addfile(info, _io.BytesIO(note))
     return values
 
 
@@ -152,6 +159,14 @@ class TraceTests(unittest.TestCase):
         self.assertNotIn("metric-not-in-cited-evidence", codes)
         cells = [i for i in led["obligations"]["items"] if i["kind"] == "cell"]
         self.assertTrue(cells and all(i["status"] == "ready" for i in cells), cells)
+
+    def test_archive_members_are_searchable_and_readable(self):
+        out = analyze.search(self.con, "Spatial Lite parameters")
+        paths = [r["path"] for r in out["results"]["items"]]
+        self.assertIn("bundle.tgz::docs/COMPARISON.md", paths)
+        read = tools.t_read(str(self.ws), "proj", "bundle.tgz::docs/COMPARISON.md", start=3, lines=1)
+        self.assertIn("2.817M", read["lines"][0]["text"])
+        self.assertTrue(read["origin"].startswith("probe snapshot"))
 
     def test_locator_resolution(self):
         self.assertEqual(ledger.resolve_locator('{"a": {"b": [1, 2]}}', "$.a.b[1]"), ("resolved", 2))

@@ -24,8 +24,8 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 
-PROBE_VERSION = "3"
-RESUME_COMPATIBLE = {"2", "3"}  # facts from these versions can be reused; timeouts/errors are always retried
+PROBE_VERSION = "6"
+RESUME_COMPATIBLE = {"6"}  # v6 adds declared status facts; older parts are re-parsed
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", ".mypy_cache", ".pytest_cache",
              ".ipynb_checkpoints", "wandb-cache", ".cache", ".research"}
 SENSITIVE = re.compile(r"(^|[._-])(secret|secrets|token|credentials?|password|passwd|id_rsa|id_ed25519|netrc)([._-]|$)|\.env$|\.pem$|\.key$", re.I)
@@ -52,11 +52,12 @@ READ_FLAG = re.compile(r"--(?:config|cfg|load|resume|init|ckpt|checkpoint|weight
 PROGRESS = re.compile(r"(?:epoch|ep)\s*[:=\[ ]\s*(\d+)\s*(?:/\s*(\d+))?|step\s*[:= ]\s*(\d+)\s*(?:/\s*(\d+))?", re.I)
 KV_IN_LINE = re.compile(r"([A-Za-z][\w/.\-]{1,48})\s*[=:]\s*([-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)%?")
 ERROR_RE = re.compile(r"Traceback \(most recent call last\)|\b(Error|Exception|CUDA out of memory|Killed|Segmentation fault|NaN detected)\b")
+STATUS_KEY = re.compile(r"(^|_)(status|state|verdict|valid|validity|complete|completed|completion|usable|ok|passed|outcome|result_status|deprecated|superseded|host|hostname|machine|node_name|server|cluster|gpu_name|device_name)$", re.I)
 NONMETRIC_KEY = re.compile(r"(^|_)(ids?|index|idx|indices|position|positions|start_steps?|return_code|returncode|pid|port|rank|gpu|gpu_id|env_index|episode_ids?|timestamp|time_stamp|created|mtime|size|bytes|version|line|row)$", re.I)
 INFRA_KEY = re.compile(r"^(gpu|gpus|gpu_id|device|rank|local_rank|pid|port|host|hostname|node|worker|job|job_id|shard|index|idx|row|line)$", re.I)
 PATH_KV = re.compile(r"(?i)(?:^|[_\-./])(lr|seed|ep|epoch|epochs|bs|lam|lambda|sig|vis|qq|beta|gamma|tau|dim|h|k|n|rh|e)[_=-]?(\d+(?:p\d+|\.\d+)?(?:e-?\d+)?)(?=$|[_\-./])")
 
-LIMITS = {"metrics": 600, "config": 400, "refs": 200, "ids": 200, "numbers": 400, "outline": 120, "cmds": 60,
+LIMITS = {"text_bytes": 256 * 1024, "metrics": 600, "config": 400, "refs": 200, "ids": 200, "numbers": 400, "outline": 120, "cmds": 60,
           "table_rows": 3000, "table_bytes": 768 * 1024, "dates": 40, "kv": 400}
 
 
@@ -121,6 +122,7 @@ def json_facts(rel, data, facts):
     leaves = flatten(data)
     metrics, config, strings = [], {}, []
     vectors = []
+    declared = {}
     for loc, val in leaves:
         key = leaf_key(loc)
         if isinstance(val, tuple) and val and val[0] == "__vector__":
@@ -136,6 +138,8 @@ def json_facts(rel, data, facts):
             elif len(metrics) < LIMITS["metrics"]:
                 metrics.append([loc, key, val])
         elif isinstance(val, str):
+            if STATUS_KEY.search(key) and len(val) <= 80 and len(declared) < 60:
+                declared[loc] = val  # the authors' own declared state ("complete", "invalid", "superseded")
             if CONFIG_KEY.search(key) and len(val) <= 120 and len(config) < LIMITS["config"]:
                 config[loc] = val
             if len(val) <= 400:
@@ -143,6 +147,11 @@ def json_facts(rel, data, facts):
         elif isinstance(val, bool) and CONFIG_KEY.search(key) and len(config) < LIMITS["config"]:
             config[loc] = val
     facts["n_leaves"] = len(leaves)
+    for loc, val in leaves:
+        if isinstance(val, bool) and STATUS_KEY.search(leaf_key(loc)) and len(declared) < 60:
+            declared[loc] = val
+    if declared:
+        facts["declared"] = declared
     if vectors:
         facts["vectors"] = vectors
     named_metrics = sum(1 for _, k, _ in metrics if METRIC_KEY.search(k))
@@ -384,28 +393,91 @@ def refs_and_ids(text, rel):
     return uniq, [k for k, _ in top], dates
 
 
-def analyze(root, rel, size, mtime, max_text):
-    path = os.path.join(root, rel)
+ARCHIVE_RE = re.compile(r"\.(tar|tgz|tar\.gz|tar\.bz2|tar\.xz|zip)$", re.I)
+
+
+def peek_archive(path, rel, mtime, max_text, max_members=5000, max_read=64 * 1024 * 1024):
+    """Look inside tar/zip bundles the way REA unpacks app bundles: list every member, analyse small text members
+    as virtual files `bundle.tgz::inner/path`. Never extracts to disk."""
+    import tarfile
+    import zipfile
+    members, listed, read_total = [], 0, 0
+
+    def member(name, msize, data):
+        rel_m = rel + "::" + name.lstrip("./")
+        if data is None:
+            return {"t": "file", "p": rel_m, "s": msize, "m": int(mtime), "ext": os.path.splitext(name)[1].lower(),
+                    "k": "archived", "st": "metadata_only", "r": "archive_member"}
+        sub = analyze(None, rel_m, msize, mtime, max_text, _raw=data)
+        sub["r"] = "archive_member"
+        return sub
+    if rel.lower().endswith(".zip"):
+        with zipfile.ZipFile(path) as zf:
+            for info in zf.infolist()[:max_members]:
+                if info.is_dir():
+                    continue
+                listed += 1
+                ext = os.path.splitext(info.filename)[1].lower()
+                take = ext in TEXT_EXT and info.file_size <= max_text and read_total + info.file_size <= max_read
+                data = zf.read(info) if take else None
+                read_total += len(data or b"")
+                members.append(member(info.filename, info.file_size, data))
+    else:
+        with tarfile.open(path, "r:*") as tf:
+            for info in tf:
+                if listed >= max_members:
+                    break
+                if not info.isfile():
+                    continue
+                listed += 1
+                ext = os.path.splitext(info.name)[1].lower()
+                take = ext in TEXT_EXT and info.size <= max_text and read_total + info.size <= max_read
+                data = tf.extractfile(info).read() if take else None
+                read_total += len(data or b"")
+                members.append(member(info.name, info.size, data))
+    return members, {"members_listed": listed, "bytes_read": read_total, "complete": listed < max_members}
+
+
+def analyze(root, rel, size, mtime, max_text, _raw=None, max_archive=128 * 1024 * 1024):
     ext = os.path.splitext(rel)[1].lower()
     rec = {"t": "file", "p": rel, "s": size, "m": int(mtime), "ext": ext}
-    if SENSITIVE.search(os.path.basename(rel)):
+    if SENSITIVE.search(os.path.basename(rel.split("::")[-1])):
         rec.update(st="skipped", r="sensitive_name", k="sensitive")
         return rec
-    try:
-        with open(path, "rb") as fh:
-            head = fh.read(8192)
-            kind = sniff_kind(rel, ext, head)
-            rec["k"] = kind
-            if kind != "text":
-                rec["st"] = "metadata_only"
-                return rec
-            if size > max_text:
-                rec.update(st="too_large", r="max_text_bytes")
-                return rec
-            raw = head + fh.read()
-    except OSError as exc:
-        rec.update(st="error", r=type(exc).__name__)
-        return rec
+    if _raw is not None:
+        raw = _raw
+        rec["k"] = sniff_kind(rel, ext, raw[:8192])
+        if rec["k"] != "text":
+            rec["st"] = "metadata_only"
+            return rec
+    else:
+        path = os.path.join(root, rel)
+        try:
+            with open(path, "rb") as fh:
+                head = fh.read(8192)
+                kind = sniff_kind(rel, ext, head)
+                rec["k"] = kind
+                if kind != "text":
+                    if kind == "archive" and ARCHIVE_RE.search(rel):
+                        if size > max_archive:
+                            rec.update(st="metadata_only", r="archive_too_large")
+                            return rec
+                        try:
+                            members, info = peek_archive(path, rel, mtime, max_text)
+                        except Exception as exc:  # corrupt / partial bundles stay inventoried
+                            rec.update(st="metadata_only", r="archive_unreadable:" + type(exc).__name__)
+                            return rec
+                        rec.update(st="parsed", role="archive", f={"archive": info, "title": os.path.basename(rel)}, members=members)
+                        return rec
+                    rec["st"] = "metadata_only"
+                    return rec
+                if size > max_text:
+                    rec.update(st="too_large", r="max_text_bytes")
+                    return rec
+                raw = head + fh.read()
+        except OSError as exc:
+            rec.update(st="error", r=type(exc).__name__)
+            return rec
     rec["h"] = hashlib.sha256(raw).hexdigest()
     text = raw.decode("utf-8", errors="replace").lstrip("\ufeff")  # Excel/PowerShell CSVs start with a BOM
     facts = {}
@@ -478,6 +550,11 @@ def analyze(root, rel, size, mtime, max_text):
                 title = line.strip().lstrip("#").strip()[:160]
                 break
         facts["title"] = redact(title)
+        # Human-written prose (reports, READMEs, notes, launchers) is what the agent must read to name things;
+        # keep it (redacted, capped) so reading and phrase search work even when the source mount is sick.
+        if (doc or role in ("launcher", "other_text") or re.search(r"(readme|notes?|handoff|protocol|status|plan)", rel, re.I)) \
+                and len(raw) <= LIMITS["text_bytes"]:
+            facts["text"] = redact(text)
     except RecursionError:
         rec.update(st="error", r="recursion")
         return rec
@@ -609,6 +686,9 @@ def main(argv=None):
             if rec.get("role"):
                 stats["by_role"][rec["role"]] = stats["by_role"].get(rec["role"], 0) + 1
             stats["parsed"] += st == "parsed"
+            for m in rec.pop("members", []):
+                stats["archive_members"] = stats.get("archive_members", 0) + 1
+                emit(m)
             emit(rec)
         for fut, (rel, _) in list(pending.items()):
             t0 = started_at.get(rel)

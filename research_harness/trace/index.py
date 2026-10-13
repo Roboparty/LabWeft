@@ -9,7 +9,7 @@ import re
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 SCHEMA = """
 CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE files(fid INTEGER PRIMARY KEY, path TEXT UNIQUE, dir TEXT, size INTEGER, mtime INTEGER, ext TEXT, kind TEXT,
@@ -21,6 +21,8 @@ CREATE TABLE tokens_t(token TEXT, fid INTEGER, source TEXT);
 CREATE TABLE refs_t(src INTEGER, raw TEXT, target TEXT, mode TEXT);
 CREATE TABLE lines_t(fid INTEGER, line INTEGER, kind TEXT, text TEXT);
 CREATE TABLE skips(path TEXT, kind TEXT, reason TEXT);
+CREATE TABLE texts_t(fid INTEGER PRIMARY KEY, text TEXT);
+CREATE VIEW texts AS SELECT f.path AS path, t.text AS text FROM texts_t t JOIN files f ON f.fid = t.fid;
 CREATE VIEW facts AS SELECT f.path AS path, t.json AS json FROM facts_t t JOIN files f ON f.fid = t.fid;
 CREATE VIEW metrics AS SELECT f.path AS path, t.locator AS locator, t.key AS key, t.value AS value FROM metrics_t t JOIN files f ON f.fid = t.fid;
 CREATE VIEW config AS SELECT f.path AS path, t.locator AS locator, t.key AS key, t.value AS value, t.num AS num, t.authority AS authority
@@ -109,7 +111,22 @@ def resolve_ref(raw: str, root: str, inventory: set[str], by_base: dict[str, lis
     return None
 
 
+def _first_meta(part: Path) -> dict:
+    opener = gzip.open if str(part).endswith(".gz") else open
+    try:
+        with opener(part, "rt", encoding="utf-8") as fh:
+            rec = json.loads(fh.readline())
+            return rec if rec.get("t") == "meta" else {}
+    except (OSError, EOFError, ValueError):
+        return {}
+
+
 def build(workspace: Path, name: str, parts: list[Path], root: str | None = None) -> dict:
+    # A full scan (no resume input) supersedes everything before it; incremental parts layer on top.
+    for i in range(len(parts) - 1, -1, -1):
+        if _first_meta(parts[i]).get("resume_parts", 0) == 0:
+            parts = parts[i:]
+            break
     out = trace_dir(workspace, name)
     out.mkdir(parents=True, exist_ok=True)
     db_path = out / "index.sqlite"
@@ -147,6 +164,7 @@ def build(workspace: Path, name: str, parts: list[Path], root: str | None = None
     known = inventory | dirs  # computed once; per-ref unions made large projects quadratic
     tails = tail_index(known)
     rows_files, rows_facts, rows_metrics, rows_config, rows_tokens, rows_refs, rows_lines = [], [], [], [], [], [], []
+    rows_texts = []
     for fid, (p, r) in enumerate(sorted(records.items()), 1):
         f = r.get("f") or {}
         table = f.get("table") or {}
@@ -175,6 +193,8 @@ def build(workspace: Path, name: str, parts: list[Path], root: str | None = None
                 t[k] = [fix(c) for c in t.get(k, [])]
             t["col_kinds"] = {fix(c): v for c, v in t.get("col_kinds", {}).items()}
             t["rows"] = [{fix(c): v for c, v in r.items()} for r in t.get("rows", [])]
+        if isinstance(f.get("text"), str):
+            rows_texts.append((fid, f.pop("text")))
         rows_facts.append((fid, json.dumps(f, ensure_ascii=False)))
         for loc, key, val in f.get("metrics", []):
             rows_metrics.append((fid, loc, norm_key(loc), float(val)))
@@ -218,6 +238,7 @@ def build(workspace: Path, name: str, parts: list[Path], root: str | None = None
     con.executemany("INSERT INTO tokens_t VALUES (?,?,?)", rows_tokens)
     con.executemany("INSERT INTO refs_t VALUES (?,?,?,?)", rows_refs)
     con.executemany("INSERT INTO lines_t VALUES (?,?,?,?)", rows_lines)
+    con.executemany("INSERT INTO texts_t VALUES (?,?)", rows_texts)
     con.executemany("INSERT INTO skips VALUES (?,?,?)", [(s.get("p"), s.get("kind"), str(s.get("r"))) for s in skips])
     complete = bool(ends) and all(e["stats"].get("complete") for e in ends) and not any(r.get("st") == "unchanged_missing_base" for r in records.values())
     meta = {"schema_version": SCHEMA_VERSION, "name": name, "root": root, "host": metas[-1].get("host") if metas else None,
