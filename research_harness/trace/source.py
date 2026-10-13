@@ -226,6 +226,11 @@ def read_bytes(workspace: Path, name: str, rel: str, max_bytes: int = 8 * 1024 *
 def grep(workspace: Path, name: str, pattern: str, sub: str = ".", include: list[str] | None = None, regex: bool = False,
          limit: int = 200, per_file: int = 50) -> dict:
     cfg = load(workspace, name)
+    if not regex and re.search(r"(\|)|(\.\*)|(\\[dsw])|(\[[^\]]+\])", pattern):
+        regex = True  # looks like a regular expression; a literal search would silently report not_found
+        auto_regex = True
+    else:
+        auto_regex = False
     sub = _safe(sub)
     incl = " ".join(f"--include={shlex.quote(g)}" for g in (include or []))
     flag = "-E" if regex else "-F"
@@ -260,7 +265,8 @@ def grep(workspace: Path, name: str, pattern: str, sub: str = ".", include: list
     lim = [f"at most {per_file} matches per file; 90 s budget per host; binary files skipped"]
     if not exhaustive and not hits:
         lim.append("search did not finish (" + ("; ".join(attempts) or f"exit {rc}") + "): absence is unknown")
-    return {"status": status, "pattern": pattern, "truncated": len(out) > limit, "hits": hits, "host": host_used,
+    return {"status": status, "pattern": pattern, "mode": ("regex (auto-detected)" if auto_regex else "regex" if regex else "literal"),
+            "truncated": len(out) > limit, "hits": hits, "host": host_used,
             "limitations": lim,
             "_meta": {"untrusted_content": True}}
 

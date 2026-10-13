@@ -112,6 +112,41 @@ def validity(con, scope: str | None = None, offset: int = 0, limit: int = 30) ->
             if leaf in ("n_cells", "cells", "control_cells", "probe_cells", "n_jobs", "expected_jobs") and r["value"] > max(4, 2 * info["result_files"]):
                 info["contradictions"].append({"kind": "claims-more-results-than-indexed", "path": r["path"], "key": r["key"],
                                                "claimed": r["value"], "result_files_indexed": info["result_files"]})
+        missing = []
+        for r in con.execute("SELECT DISTINCT src, raw FROM refs WHERE src LIKE ? AND mode = 'mention'", (area + "/%",)):
+            raw = r["raw"].strip("`'\" ")
+            segs = [x for x in raw.strip("/").split("/") if x]
+            if raw.startswith(("/", "http", "~")) or "*" in raw or len(missing) >= 6 or posixpath.basename(r["src"]).startswith("."):
+                continue
+            # a path, not prose like `0/1/42` or `pixels/action/state`: a named first segment plus an extension or a known folder word
+            if not segs or not re.search(r"[A-Za-z]{3}", segs[0]) or not (
+                    re.search(r"\.[A-Za-z0-9]{1,5}$", segs[-1]) or raw.endswith("/") or
+                    segs[0].lower() in ("results", "runs", "logs", "cells", "probes", "checkpoints", "ckpt", "outputs", "data", "summary", "evals")):
+                continue
+            cand = posixpath.normpath(posixpath.join(posixpath.dirname(r["src"]), raw))
+            if not con.execute("SELECT 1 FROM files WHERE path = ? OR path LIKE ? LIMIT 1", (cand, cand.rstrip("/") + "/%")).fetchone():
+                missing.append({"cited_in": r["src"], "path": raw})
+        # authors usually write paths in backticks: `results/cells/` — check those relative to the citing document
+        try:
+            doc_rows = con.execute("SELECT path, text FROM texts WHERE path LIKE ?", (area + "/%",)).fetchall()
+        except Exception:
+            doc_rows = []
+        for r in doc_rows:
+            if posixpath.basename(r["path"]).startswith("."):
+                continue
+            for raw in re.findall(r"`([^`\s]+/[^`\s]*)`", r["text"] or ""):
+                if raw.startswith(("/", "http", "~")) or "*" in raw or "{" in raw or len(missing) >= 8 or \
+                        not re.search(r"[A-Za-z]{3}", raw.split("/")[0]):
+                    continue
+                cand = posixpath.normpath(posixpath.join(posixpath.dirname(r["path"]), raw))
+                alt = posixpath.normpath(posixpath.join(area, raw))
+                if not any(con.execute("SELECT 1 FROM files WHERE path = ? OR path LIKE ? LIMIT 1", (c, c.rstrip("/") + "/%")).fetchone()
+                           for c in (cand, alt)):
+                    item = {"cited_in": r["path"], "path": raw}
+                    if item not in missing:
+                        missing.append(item)
+        if missing:
+            info["contradictions"].append({"kind": "referenced-but-missing", "items": missing})
         info["contradictions"] = info["contradictions"][:8]
     items = sorted(areas.values(), key=lambda a: (-len(a["contradictions"]), a["area"]))
     loose = [m for m in uniq if not any(m["path"].startswith(a + "/") for a in areas)]
@@ -329,7 +364,16 @@ def find(con, queries: list[str], context: int = 3, per_query: int = 4, scope: s
             windows.append((score, {"path": r["path"], "role": r["role"], "line": i + 1,
                                     "window": [f"{j + 1}: {lines[j][:300]}" for j in range(max(0, i - context), min(len(lines), i + context + 1))]}))
         windows.sort(key=lambda w: w[0], reverse=True)
-        out.append({"query": q, "match": mode, "files_matched": len(rows), "hits": [w for _, w in windows[:per_query]]})
+        if not windows:
+            # IDs and names often live only in structured files (job queues, manifests, tables): look in extracted facts.
+            for r in con.execute("SELECT x.path, x.json, f.role FROM facts x JOIN files f ON f.path = x.path WHERE x.path LIKE ? "
+                                 "AND lower(x.json) LIKE ? LIMIT 50", (like, f"%{q.lower()}%")):
+                facts = json.loads(r["json"])
+                rows_hit = [row for row in ((facts.get("table") or {}).get("rows") or []) if q.lower() in json.dumps(row, ensure_ascii=False).lower()]
+                snippet = rows_hit[:2] or [v for v in (facts.get("refs", []) + facts.get("ids", [])) if q.lower() in str(v).lower()][:3]
+                windows.append(((True, True, False, 0), {"path": r["path"], "role": r["role"], "in": "structured facts", "matches": snippet}))
+            mode = mode + "+facts" if windows else mode
+        out.append({"query": q, "match": mode, "files_matched": len(rows) or len(windows), "hits": [w for _, w in windows[:per_query]]})
     return result("found" if any(o["hits"] for o in out) else "not_found", con, results=out,
                   limitations=["searches text snapshots (reports, READMEs, notes, launchers, small JSON); use grep for other files",
                                "all terms of one query must occur in the same file"])
