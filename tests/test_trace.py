@@ -268,3 +268,24 @@ class FindTests(unittest.TestCase):
             self.assertEqual(len(first["hits"]), 1)  # identical copies collapse
             self.assertTrue(any("superseded" in line for line in first["hits"][0]["window"]))
             self.assertEqual(second["hits"][0]["line"], 4)
+
+
+class BulkTests(unittest.TestCase):
+    def test_bulk_binary_directory_is_summarized(self):
+        from research_harness.trace import probe as P
+        old = P.BULK_MIN_FILES
+        P.BULK_MIN_FILES = 50
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                src = Path(tmp) / "p"
+                imgs = src / "datasets" / "imgs"
+                imgs.mkdir(parents=True)
+                for i in range(60):
+                    (imgs / f"{i:04d}.png").write_bytes(b"\x89PNG")
+                (src / "README.md").write_text("# x\n")
+                out = Path(tmp) / "o.jsonl"
+                kinds = [k for k, *_ in P.walk(str(src), [], 0)]
+                self.assertEqual(kinds.count("bulk"), 1)
+                self.assertEqual(kinds.count("file"), 1)
+        finally:
+            P.BULK_MIN_FILES = old

@@ -144,6 +144,8 @@ def build(workspace: Path, name: str, parts: list[Path], root: str | None = None
             records.setdefault(rec["p"], {"t": "file", "p": rec["p"], "st": "unchanged_missing_base"})
         elif t == "skip":
             skips.append(rec)
+        elif t == "bulk":  # summarized bulk binary directory (dataset images etc.)
+            skips.append({"p": rec["p"], "kind": "bulk", "r": json.dumps({"files": rec["n"], "exts": rec.get("exts")})})
         elif t == "meta":
             metas.append(rec)
         elif t == "end":

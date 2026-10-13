@@ -35,6 +35,12 @@ def _coverage(con) -> dict:
     for key in ("too_large", "timeout", "error", "skipped"):
         if counts.get(key):
             limits.append(f"{counts[key]} files {key}")
+    try:
+        bulk = [json.loads(r[0]) for r in con.execute("SELECT reason FROM skips WHERE kind = 'bulk'")]
+    except Exception:
+        bulk = []
+    if bulk:
+        limits.append(f"{sum(b['files'] for b in bulk)} files in {len(bulk)} bulk binary directories (datasets/media) summarized, not listed")
     if not m.get("complete"):
         limits.append("collection stopped early (deadline/max-files) or a resumed base part is missing")
     return {"status": status, "inventory": sum(counts.values()), "by_status": counts, "limitations": limits,
