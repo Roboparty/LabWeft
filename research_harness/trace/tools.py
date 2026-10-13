@@ -108,6 +108,12 @@ def t_brief(ws, name, scope=None, limit=25):
         return navigate.brief(con, scope=scope, limit=limit)
 
 
+def t_find(ws, name, query, context=3, per_query=4, scope=None):
+    queries = query if isinstance(query, list) else [query]
+    with _con(ws, name) as con:
+        return navigate.find(con, queries, context=context, per_query=per_query, scope=scope)
+
+
 def t_ls(ws, name, path="", offset=0, limit=60):
     with _con(ws, name) as con:
         return navigate.ls(con, path, offset=offset, limit=limit)
@@ -263,6 +269,8 @@ TOOLS = {
                     ["workspace", "source", "token"]),
     "trace_brief": (t_brief, "START HERE: one-call orientation — the authors' key documents with full paths (shallow, non-vendored first), folder layout, flagged/unusable studies.",
                     {**NAME, "scope": S, "limit": I}, ["workspace", "source"]),
+    "trace_find": (t_find, "Several literal queries in ONE call (repeat --query): best text windows (±context lines) from the authors' documents, key docs first, duplicates collapsed. Like grep -C over the whole project without touching the mount.",
+                   {**NAME, "query": {"type": "array", "items": S}, "context": I, "per_query": I, "scope": S}, ["workspace", "source", "query"]),
     "trace_ls": (t_ls, "List one directory of the indexed source: sub-folders with file counts by role (flagged names marked), then files with role/title.",
                  {**NAME, "path": S, "offset": I, "limit": I}, ["workspace", "source"]),
     "trace_validity": (t_validity, "Studies the authors marked unusable/incomplete/superseded (folder names or report text) and contradictions such as a flagged folder whose audit claims completion.",
