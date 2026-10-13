@@ -249,7 +249,8 @@ def t_grep(ws, name, pattern, sub=".", include=None, regex=False, limit=200, per
 
 
 def t_fetch(ws, name, paths=None, study=None, sync=False):
-    paths = list(paths or [])
+    # accept repeated --paths and comma-separated lists alike
+    paths = [p.strip() for item in (paths or []) for p in str(item).split(",") if p.strip()]
     with _con(ws, name) as con:
         if study:
             ex = analyze.experiments(con, study=study, limit=100000, full_runs=True)
@@ -257,7 +258,13 @@ def t_fetch(ws, name, paths=None, study=None, sync=False):
                 raise HarnessError(f"Unknown study {study}")
             paths += [r["source"] for c in ex["cells"]["items"] for r in c["runs"]]
         shas = {r["path"]: r["sha"] for r in con.execute("SELECT path, sha FROM files")}
+    unknown = [p for p in paths if p not in shas]
+    if paths and len(unknown) == len(paths):
+        raise HarnessError(f"none of the {len(paths)} paths is in the index (first: {unknown[0]!r}); use paths relative to the source root, "
+                           "as printed by trace ls/brief")
     res = source.fetch(Path(ws), name, paths, shas)
+    if unknown:
+        res["not_in_index"] = unknown[:20]
     if sync:
         from ..scan import sync as do_sync
         from ..store import Store
