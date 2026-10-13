@@ -119,6 +119,8 @@ def parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command", required=True)
     from .autoresearch import add_cli
     add_cli(sub)
+    from .trace.cli import add_cli as add_trace_cli
+    add_trace_cli(sub)
     s = sub.add_parser("init", help="Create a persistent research workspace, without moving source files")
     s.add_argument("workspace", nargs="?", default=".")
     s.add_argument("--name")
@@ -190,6 +192,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "research":
             from .autoresearch import dispatch
             emit(dispatch(args))
+            return 0
+        if args.command in ("trace", "mcp"):
+            from .trace.cli import dispatch as trace_dispatch
+            out = trace_dispatch(args)
+            if out is not None:
+                emit(out)
             return 0
         if args.command == "install-skill":
             emit(install_skill(args.agent, args.project, args.user))
@@ -272,7 +280,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.open:
                 serve(store, args.port, True)
         return 0
-    except (HarnessError, OSError, ValueError) as exc:
+    except (HarnessError, OSError, ValueError, KeyError) as exc:
         print(json.dumps({"error": str(exc)}, ensure_ascii=False), file=sys.stderr)
         return 2
 
