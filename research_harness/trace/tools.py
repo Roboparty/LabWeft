@@ -6,6 +6,7 @@ write only inside the workspace, and `trace_propose`, which returns a patch with
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from ..store import HarnessError
@@ -91,6 +92,7 @@ def t_provenance(ws, name, path, all_mentions=False):
             return navigate.dir_provenance(con, path)
         out = analyze.provenance(con, path)
         out["host_hints"] = navigate.host_hints(path)
+        out["named_by"] = navigate.name_mentions(con, path)
         if out.get("role") is not None or out["status"] == "found":
             out.update(navigate.producers(con, path))
             if not out.get("producers") and out.get("inferred_producers"):
@@ -134,7 +136,32 @@ def t_outline(ws, name, scope=None, limit=25):
         return analyze.outline(con, scope=scope, limit=limit)
 
 
+def _expand(ws, name, pattern):
+    if "*" not in pattern:
+        return {"": pattern}
+    rx = re.compile("^" + re.escape(pattern).replace("\\*", "(.+?)") + "$")
+    out = {}
+    with _con(ws, name) as con:
+        for (p,) in con.execute("SELECT path FROM files WHERE path LIKE ?", (pattern.replace("*", "%"),)):
+            m = rx.match(p)
+            if m:
+                out["|".join(m.groups())] = p
+    return out
+
+
 def t_pair(ws, name, a, b, key=None, value=None):
+    if "*" in a or "*" in b:
+        ea, eb = _expand(ws, name, a), _expand(ws, name, b)
+        matched = sorted(set(ea) & set(eb))
+        per = [_pair_one(ws, name, ea[k], eb[k], key=key, value=value) | {"match": k} for k in matched]
+        ok = [x for x in per if x.get("status") == "found"]
+        total = {f: sum(x[f] for x in ok) for f in ("n", "both", "only_a", "only_b", "neither")}
+        return {"status": "found" if ok else "unknown", "pairs": per, "total": total,
+                "unmatched_a": sorted(set(ea) - set(eb)), "unmatched_b": sorted(set(eb) - set(ea))}
+    return _pair_one(ws, name, a, b, key=key, value=value)
+
+
+def _pair_one(ws, name, a, b, key=None, value=None):
     def load_doc(p):
         with _con(ws, name) as con:
             try:
@@ -160,6 +187,7 @@ def t_reconcile(ws, name, scope=None, path=None, offset=0, limit=None, number=No
         if line:
             items = [n for n in items if n["line"] == int(line)]
         full["numbers"] = analyze.page(items, offset or 0, limit or 50)
+        full["report"] = {k: v for k, v in full.get("report", {}).items() if k in ("report", "numbers", "by_state")}
         return full
     limit = limit or 60
     with _con(ws, name) as con:
@@ -215,7 +243,8 @@ def t_read(ws, name, path, start=1, lines=None, live=False, limit=None, json_pat
     return source.read(Path(ws), name, path, start=start, lines=lines)
 
 
-def t_grep(ws, name, pattern, sub=".", include=None, regex=False, limit=200, per_file=50):
+def t_grep(ws, name, pattern, sub=".", include=None, regex=False, limit=200, per_file=50, path=None):
+    sub = path or sub
     return source.grep(Path(ws), name, pattern, sub=sub, include=include, regex=regex, limit=limit, per_file=per_file)
 
 
@@ -281,7 +310,7 @@ TOOLS = {
                           {**NAME, "scope": S, "metric": S, "study": S, "offset": I, "limit": I}, ["workspace", "source"]),
     "trace_outline": (t_outline, "Proposal of a human-style decomposition: research lines -> questions from controlled factors -> conditions, with the authors' own report headings.",
                       {**NAME, "scope": S, "limit": I}, ["workspace", "source"]),
-    "trace_pair": (t_pair, "Paired per-item comparison of two result JSONs (e.g. per-episode success arrays): both / only_a / only_b / neither, aligned by a shared id array when present.",
+    "trace_pair": (t_pair, "Paired per-item comparison of two result JSONs (e.g. per-episode success arrays): both / only_a / only_b / neither, aligned by a shared id array. Use `*` in --a/--b (e.g. ..._s*/result.json) to pair every matching seed and get a total.",
                    {**NAME, "a": S, "b": S, "key": S, "value": S}, ["workspace", "source", "a", "b"]),
     "trace_reconcile": (t_reconcile, "Trace numbers printed in reports to raw values, recovered mean±SD (with SD convention) or same-line differences; lists unsourced numbers.",
                         {**NAME, "scope": S, "path": S, "offset": I, "limit": I, "number": S, "state": S, "line": I}, ["workspace", "source"]),
@@ -290,7 +319,7 @@ TOOLS = {
                    {**NAME, "path": S, "start": I, "lines": I, "limit": I, "json_path": S, "live": {"type": "boolean"}},
                    ["workspace", "source", "path"]),
     "trace_grep": (t_grep, "Bounded raw-text grep on the source host (literal by default).",
-                   {**NAME, "pattern": S, "sub": S, "include": {"type": "array", "items": S}, "regex": {"type": "boolean"}, "limit": I, "per_file": I},
+                   {**NAME, "pattern": S, "sub": S, "include": {"type": "array", "items": S}, "regex": {"type": "boolean"}, "limit": I, "per_file": I, "path": S},
                    ["workspace", "source", "pattern"]),
     "trace_fetch": (t_fetch, "Copy selected files (or all sources of a study) into the workspace mirror, verify hashes, optionally sync them as LabWeft evidence.",
                     {**NAME, "paths": {"type": "array", "items": S}, "study": S, "sync": {"type": "boolean"}}, ["workspace", "source"]),
