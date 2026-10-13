@@ -28,6 +28,11 @@ Use `labweft` if installed, or the exact command prefix in
 can run `python /absolute/path/to/labweft.py` without pip installation. The commands
 below use legacy `rh` as shorthand for that same CLI. Quote all paths.
 
+For a large, remote (NAS/SSH) or custom-format project, investigate it first with
+[trace](references/TRACE.md): it recovers experiments by what was varied and
+measured, traces printed numbers to sources and drafts evidence-linked Cells/Runs,
+so you do not hand-write per-project parsing scripts.
+
 ## Non-negotiable boundaries
 
 - Read user/project constraints and persisted state before making a new plan.
@@ -67,6 +72,10 @@ below use legacy `rh` as shorthand for that same CLI. Quote all paths.
    reconciling it. If review establishes the new primary result is valid, submit
    a versioned patch for the run's status, evidence and transition marker, then
    sync again. Do not relabel an older fallback result as the current one.
+   **Large, remote or unfamiliar trees:** investigate first with `rh trace`
+   ([INVESTIGATE.md](references/INVESTIGATE.md)): collect next to the data,
+   read `overview`/`outline`, recover experiments and reconcile report numbers,
+   then `trace fetch --sync` only the evidence the map will cite.
 3. **Read necessary evidence.** Run `rh files WORKSPACE --offset 0 --limit 50`;
    follow `next_offset`. Read snapshots using `rh evidence WORKSPACE --sha HASH`;
    follow `next_start_line` when needed. Inspect the actual implementation path,
