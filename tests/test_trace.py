@@ -251,3 +251,20 @@ class NavigateTests(unittest.TestCase):
         miss = tools.t_read(str(self.ws), "p", "supplement/mech_multitask_e5.incomplete_do_not_use/results/AUDIT.json", json_path="$.nope")
         self.assertEqual(miss["status"], "not_found")
         self.assertIn("status", miss["top_level_keys"])
+
+
+class FindTests(unittest.TestCase):
+    def test_find_phrase_windows_in_one_call(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "p"
+            (src / "docs").mkdir(parents=True)
+            (src / "docs" / "README_CN.md").write_text("# Study\n\nOld Table IV is superseded.\nNew table: 87.56 +/- 0.38\n", encoding="utf-8")
+            (src / "docs" / "COPY.md").write_text("# Study\n\nOld Table IV is superseded.\nNew table: 87.56 +/- 0.38\n", encoding="utf-8")
+            ws = Path(tmp) / "ws"
+            tools.t_collect(str(ws), "p", str(src))
+            out = tools.t_find(str(ws), "p", ["table iv", "87.56"], context=1)
+            first, second = out["results"]
+            self.assertEqual(first["match"], "phrase")
+            self.assertEqual(len(first["hits"]), 1)  # identical copies collapse
+            self.assertTrue(any("superseded" in line for line in first["hits"][0]["window"]))
+            self.assertEqual(second["hits"][0]["line"], 4)

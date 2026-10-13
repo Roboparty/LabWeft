@@ -274,3 +274,48 @@ def pair(a_doc, b_doc, key: str | None = None, value: str | None = None) -> dict
     return {"status": "found", "aligned": aligned, "n": len(pairs), "a_value": va, "b_value": vb,
             "both": c[(True, True)], "only_a": c[(True, False)], "only_b": c[(False, True)], "neither": c[(False, False)],
             "a_rate": round(sum(x for x, _ in pairs) / max(1, len(pairs)), 6), "b_rate": round(sum(y for _, y in pairs) / max(1, len(pairs)), 6)}
+
+
+def find(con, queries: list[str], context: int = 3, per_query: int = 4, scope: str | None = None) -> dict:
+    """Several literal queries in one call; each returns the best text windows (±context lines) from the probe's text
+    snapshots, authors' key documents first, identical content collapsed. Like `grep -C` over many files at once,
+    without touching the (possibly slow) source mount."""
+    like = f"{scope.rstrip('/')}/%" if scope else "%"
+    out = []
+    for q in queries:
+        # A phrase first (what a person types into grep); fall back to all-terms-in-file only if the phrase is absent.
+        rows = con.execute("SELECT t.path, t.text, f.sha, f.role FROM texts t JOIN files f ON f.path = t.path "
+                           "WHERE t.path LIKE ? AND lower(t.text) LIKE ? LIMIT 400", [like, f"%{q.lower()}%"]).fetchall()
+        terms = [q.lower()]
+        mode = "phrase"
+        if not rows:
+            terms = [t.lower() for t in q.split() if t.strip()] or [q.lower()]
+            where = " AND ".join("lower(t.text) LIKE ?" for _ in terms)
+            rows = con.execute(f"SELECT t.path, t.text, f.sha, f.role FROM texts t JOIN files f ON f.path = t.path "
+                               f"WHERE t.path LIKE ? AND {where} LIMIT 400", [like] + [f"%{t}%" for t in terms]).fetchall()
+            mode = "all-terms"
+        windows, seen_sha = [], set()
+        for r in rows:
+            if r["sha"] in seen_sha:
+                continue
+            seen_sha.add(r["sha"])
+            lines = r["text"].splitlines()
+            best = None
+            for i, line in enumerate(lines):
+                low = line.lower()
+                n = sum(t in low for t in terms)
+                if n and (best is None or n > best[0]):
+                    best = (n, i)
+            if best is None:  # terms spread over several lines: take the first line with any term
+                best = next(((1, i) for i, l in enumerate(lines) if any(t in l.lower() for t in terms)), (0, 0))
+            i = best[1]
+            base = posixpath.basename(r["path"])
+            vendored = bool(re.search(r"(^|/)(code|repositories|working-snapshots|runtime|third_party|vendor|site-packages)/", r["path"]))
+            score = (best[0] == len(terms), not vendored, bool(KEY_DOC.search(base)), -r["path"].count("/"))
+            windows.append((score, {"path": r["path"], "role": r["role"], "line": i + 1,
+                                    "window": [f"{j + 1}: {lines[j][:300]}" for j in range(max(0, i - context), min(len(lines), i + context + 1))]}))
+        windows.sort(key=lambda w: w[0], reverse=True)
+        out.append({"query": q, "match": mode, "files_matched": len(rows), "hits": [w for _, w in windows[:per_query]]})
+    return result("found" if any(o["hits"] for o in out) else "not_found", con, results=out,
+                  limitations=["searches text snapshots (reports, READMEs, notes, launchers, small JSON); use grep for other files",
+                               "all terms of one query must occur in the same file"])
