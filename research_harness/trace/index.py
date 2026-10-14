@@ -242,7 +242,8 @@ def build(workspace: Path, name: str, parts: list[Path], root: str | None = None
     con.executemany("INSERT INTO refs_t VALUES (?,?,?,?)", rows_refs)
     con.executemany("INSERT INTO lines_t VALUES (?,?,?,?)", rows_lines)
     con.executemany("INSERT INTO texts_t VALUES (?,?)", rows_texts)
-    con.executemany("INSERT INTO skips VALUES (?,?,?)", [(s.get("p"), s.get("kind"), str(s.get("r"))) for s in skips])
+    last = {(s.get("p"), s.get("kind")): s for s in skips}  # later parts win (a rescan may add a symlink target)
+    con.executemany("INSERT INTO skips VALUES (?,?,?)", [(s.get("p"), s.get("kind"), str(s.get("r"))) for s in last.values()])
     complete = bool(ends) and all(e["stats"].get("complete") for e in ends) and not any(r.get("st") == "unchanged_missing_base" for r in records.values())
     meta = {"schema_version": SCHEMA_VERSION, "name": name, "root": root, "host": metas[-1].get("host") if metas else None,
             "parts": [p.name for p in parts], "probe_versions": sorted({m.get("probe_version") for m in metas}),

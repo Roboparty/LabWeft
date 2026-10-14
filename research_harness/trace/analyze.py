@@ -16,7 +16,7 @@ import re
 import statistics
 from collections import Counter, defaultdict
 
-from .index import meta
+from .index import fid_range, meta
 
 PRIMARY_METRIC = re.compile(r"(success_rate|successes|success($|[_.%])|macro_sr|sr_percent|(^|[_.])sr($|[_.%])|accuracy|(^|[_.])acc($|[_.])|top1|(^|[_.])reward($|[_.])|(^|[_.])return($|[_.])|(^|[_.])score($|[_.])|fid|psnr|win_rate)", re.I)
 DIAGNOSTIC_METRIC = re.compile(r"(pearson|spearman|corr|cosine|kendall|r2|slope|delta_|_delta|grad|norm|entropy|loss)", re.I)
@@ -806,10 +806,18 @@ def reconcile(con, scope: str | None = None, path: str | None = None, offset: in
     op = "=" if path else "LIKE"
     cells = _cell_stats(con, None)
     docs = []
-    for d in con.execute(f"SELECT DISTINCT l.path FROM lines l JOIN files f ON f.path = l.path WHERE f.role = 'report' AND f.ext IN ('.md', '.markdown', '.tex', '.rst', '.html') AND l.kind = 'numbers' AND l.path {op} ?", (like,)):
+    # fid-based: the `lines` view joins on path strings and scans millions of rows on a large index
+    if path:
+        frows = con.execute("SELECT fid, path FROM files WHERE path = ? AND role = 'report' AND ext IN ('.md', '.markdown', '.tex', '.rst', '.html')", (path,)).fetchall()
+    else:
+        rng = fid_range(con, scope) if scope else (0, 1 << 62)
+        rng = rng or (0, -1)
+        frows = con.execute("SELECT fid, path FROM files WHERE fid BETWEEN ? AND ? AND role = 'report' AND ext IN ('.md', '.markdown', '.tex', '.rst', '.html') "
+                            "AND EXISTS (SELECT 1 FROM lines_t l WHERE l.fid = files.fid AND l.kind = 'numbers')", rng).fetchall()
+    for d in ({"path": r[1], "fid": r[0]} for r in frows):
         nums = []
         area = _area(d["path"])
-        for r in con.execute("SELECT line, text FROM lines WHERE path = ? AND kind = 'numbers' ORDER BY line", (d["path"],)):
+        for r in con.execute("SELECT line, text FROM lines_t WHERE fid = ? AND kind = 'numbers' ORDER BY line", (d["fid"],)):
             text = ISO_TIME.sub(" ", r["text"])
             consumed = set()
             for m in PM.finditer(text):
