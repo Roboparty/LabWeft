@@ -24,9 +24,9 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 
-PROBE_VERSION = "7"
+PROBE_VERSION = "8"
 BULK_MIN_FILES = 5000
-RESUME_COMPATIBLE = {"7"}  # v5 lacks only JSON declared facts; reuse its parse work on huge trees
+RESUME_COMPATIBLE = {"8"}  # v5 lacks only JSON declared facts; reuse its parse work on huge trees
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", ".mypy_cache", ".pytest_cache",
              ".ipynb_checkpoints", "wandb-cache", ".cache", ".research"}
 SENSITIVE = re.compile(r"(^|[._-])(secret|secrets|token|credentials?|password|passwd|id_rsa|id_ed25519|netrc)([._-]|$)|\.env$|\.pem$|\.key$", re.I)
@@ -600,14 +600,20 @@ def analyze(root, rel, size, mtime, max_text, _raw=None, max_archive=128 * 1024 
         facts["title"] = redact(title)
         # Human-written prose (reports, READMEs, notes, launchers) is what the agent must read to name things;
         # keep it (redacted, capped) so reading and phrase search work even when the source mount is sick.
-        if (doc or role in ("launcher", "other_text") or re.search(r"(readme|notes?|handoff|protocol|status|plan)", rel, re.I)) \
-                and len(raw) <= LIMITS["text_bytes"]:
+        if ((doc or role in ("launcher", "other_text") or re.search(r"(readme|notes?|handoff|protocol|status|plan)", rel, re.I))
+                and len(raw) <= LIMITS["text_bytes"]) or (len(raw) <= SMALL_TEXT and ext in SMALL_TEXT_EXT):
+            # small logs, queues, env/requirements files, short JSON/CSV: grep over the index is then exhaustive
             facts["text"] = redact(text)
     except RecursionError:
         rec.update(st="error", r="recursion")
         return rec
     rec.update(st="parsed", role=role, f=facts)
     return rec
+
+
+SMALL_TEXT = 32 * 1024
+SMALL_TEXT_EXT = {".txt", ".log", ".out", ".err", ".md", ".yaml", ".yml", ".sh", ".py", ".cfg", ".ini", ".toml", ".csv", ".tsv",
+                  ".jsonl", ".json", ".sha256", ".md5", ".sum", ".lst", ".list", ".env", ".rst", ".tex"}
 
 
 def walk(root, excludes, deadline):
@@ -645,7 +651,11 @@ def walk(root, excludes, deadline):
             rel = (cur + "/" + e.name) if cur else e.name
             try:
                 if e.is_symlink():
-                    yield ("symlink", rel, None, None)
+                    try:
+                        target = os.readlink(os.path.join(root, rel))
+                    except OSError:
+                        target = None
+                    yield ("symlink", rel, target, None)
                     continue
                 if e.name.startswith(".nfs"):  # NFS silly-rename of a deleted-but-open file; reads can hang
                     yield ("nfs_orphan", rel, None, None)
