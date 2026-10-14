@@ -278,16 +278,40 @@ def grep(workspace: Path, name: str, pattern: str, sub: str = ".", include: list
                 break
             attempts.append(f"{host}: exit {rc}")
     else:
-        cmd = ["grep", "-rIn", flag, "-m", str(max(1, int(per_file)))] + [f"--include={g}" for g in (include or [])] + ["--", pattern, sub]
-        proc = subprocess.run(cmd, cwd=cfg["root"], capture_output=True, timeout=150)
-        out = proc.stdout.decode("utf-8", errors="replace").splitlines()
-        rc, host_used, attempts = proc.returncode, None, []
+        # pure Python: a Windows grep.exe mangles quotes in arguments and can silently report "no match"
+        import fnmatch
+        base = Path(cfg["root"]) / sub
+        files = [base] if base.is_file() else sorted(p for p in base.rglob("*") if p.is_file()) if base.exists() else []
+        rx = re.compile(pattern if regex else re.escape(pattern))
+        out, rc, host_used, attempts = [], (1 if base.exists() else 2), None, []
+        for f in files:
+            if include and not any(fnmatch.fnmatch(f.name, g) for g in include):
+                continue
+            try:
+                data = f.read_bytes()
+            except OSError:
+                continue
+            if b"\0" in data[:8192]:
+                continue
+            n = 0
+            for i, line in enumerate(data.decode("utf-8", errors="replace").splitlines(), 1):
+                if rx.search(line):
+                    out.append(f"./{f.relative_to(Path(cfg['root'])).as_posix()}:{i}:{line}")
+                    n += 1
+                    if n >= per_file:
+                        break
+            if len(out) > limit:
+                break
+        rc = 0 if out else rc
     hits = []
     for line in out[:limit]:
         path, _, rest = line.partition(":")
         num, _, text = rest.partition(":")
         hits.append({"path": path[2:] if path.startswith("./") else path, "line": int(num) if num.isdigit() else None, "text": text[:300]})
     exhaustive = rc in (0, 1)
+    per = {}
+    for h in hits:
+        per[h["path"]] = per.get(h["path"], 0) + 1
     status = "found" if hits else ("not_found" if exhaustive else "unknown")
     lim = [f"at most {per_file} matches per file; 90 s budget per host; binary files skipped"]
     if not exhaustive and not hits:
@@ -296,6 +320,8 @@ def grep(workspace: Path, name: str, pattern: str, sub: str = ".", include: list
         lim.append(f"search did not finish ({why}): absence is unknown; `trace search` covers indexed text instantly")
     return {"status": status, "pattern": pattern, "mode": ("regex (auto-detected)" if auto_regex else "regex" if regex else "literal"),
             "truncated": len(out) > limit, "hits": hits, "host": host_used,
+            "files_matched": len(per), "matching_lines_total": len(hits),
+            "matching_lines_per_file": [{"path": p, "matching_lines": n, "capped": n >= per_file} for p, n in sorted(per.items(), key=lambda x: -x[1])][:30],
             "limitations": lim,
             "_meta": {"untrusted_content": True}}
 
@@ -333,3 +359,63 @@ def fetch(workspace: Path, name: str, paths: list[str], index_sha: dict[str, str
         ok.append(rel)
     return {"mirror": str(mirror), "fetched": len(ok), "missing": missing, "changed_since_probe": changed,
             "next": f"labweft sync {workspace} --source {name}={mirror}"}
+
+
+def archive_listing(workspace: Path, name: str, archive: str, timeout: int = 900) -> dict:
+    """Full member list (name -> size, mtime) of a tar/zip read on the host, cached per archive size+mtime.
+
+    The probe caps member lists and can time out on big tarballs; questions such as "what does the live folder have
+    that the snapshot lacks" need the complete list."""
+    cfg = load(workspace, name)
+    archive = _safe(archive)
+    q = shlex.quote(archive)
+    stat = f"stat -c '%s %Y' -- {q}"
+    if archive.lower().endswith(".zip"):
+        lister = f"timeout {timeout} unzip -Z -T {q} | awk 'NF>=9 {{print $4\"\\t\"$7\"\\t\"$9}}'"
+    else:
+        lister = f"timeout {timeout} tar -tvf {q} --numeric-owner --full-time 2>/dev/null"
+    cmd = f"set -o pipefail; cd {shlex.quote(cfg['root'])} && {stat} && {lister}; echo __RC__$?"
+    cache_dir = trace_dir(workspace, name) / "archives"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache = cache_dir / (re.sub(r"[^A-Za-z0-9._-]+", "_", archive) + ".json")
+    if cfg.get("host"):
+        # cheap stat first: reuse the cached listing when the archive did not change
+        _, st = _remote(cfg, f"cd {shlex.quote(cfg['root'])} && {stat}", 60, "archive stat")
+        key = st.decode().strip()
+        if cache.exists():
+            data = read_json(cache)
+            if data.get("key") == key:
+                return data
+        host, raw = _remote(cfg, cmd, timeout + 60, "archive listing")
+    else:
+        proc = subprocess.run(["bash", "-c", cmd], capture_output=True, timeout=timeout + 60)
+        host, raw = "local", proc.stdout
+    lines = raw.decode("utf-8", errors="replace").splitlines()
+    rc = next((l[6:] for l in reversed(lines) if l.startswith("__RC__")), "?")
+    key = lines[0].strip() if lines else ""
+    members, dirs = {}, 0
+    for l in lines[1:]:
+        if l.startswith("__RC__"):
+            continue
+        if archive.lower().endswith(".zip"):
+            size, when, nm = (l.split("\t") + ["", "", ""])[:3]
+        else:  # -rw-r--r-- 0/0  1234 2026-09-09 21:48:01 ./path
+            parts = l.split(None, 5)
+            if len(parts) < 6:
+                continue
+            size, when, nm = parts[2], parts[3] + " " + parts[4], parts[5]
+            if l.startswith("d"):
+                dirs += 1
+                continue
+            if " -> " in nm and l.startswith("l"):
+                nm = nm.split(" -> ")[0]
+        nm = nm[2:] if nm.startswith("./") else nm
+        if not nm or nm.endswith("/"):
+            continue
+        members[nm] = {"size": int(size) if str(size).isdigit() else None, "mtime": when}
+    newest = max((m["mtime"] for m in members.values() if m["mtime"]), default=None)
+    data = {"archive": archive, "key": key, "host": host, "complete": rc == "0", "entries_files": len(members),
+            "entries_dirs": dirs, "newest_member_mtime": newest, "members": members}
+    if rc == "0":
+        json_write(cache, data)
+    return data

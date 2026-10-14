@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 
 from ..store import HarnessError
-from . import analyze, audit, index, ledger, navigate, source
+from . import analyze, audit, index, ledger, navigate, source, verify
 
 
 class _Con:
@@ -259,34 +259,59 @@ def _t_read(ws, name, path, start=1, lines=None, live=False, limit=None, json_pa
     return source.read(Path(ws), name, path, start=start, lines=lines)
 
 
+TEXT_EXT = (".py", ".md", ".txt", ".json", ".jsonl", ".csv", ".tsv", ".yaml", ".yml", ".log", ".sh", ".toml", ".cfg", ".ini",
+            ".out", ".err", ".rst", ".tex", ".bib", ".html", ".xml", ".ipynb", ".r", ".m", ".c", ".cpp", ".h", ".js", ".ts")
+
+
+def _scope_fids(con, sub):
+    """fid range of a folder, or the single fid of a file path; None = whole source."""
+    if sub in (None, "", "."):
+        return None
+    sub = sub.strip("/")
+    row = con.execute("SELECT fid FROM files WHERE path = ?", (sub,)).fetchone()
+    if row:
+        return (row[0], row[0])
+    return index.fid_range(con, sub) or (0, -1)
+
+
 def _local_grep(con, pattern, sub, include, regex, limit, per_file):
     """grep over the probe's text snapshots: instant, hash-pinned, independent of the source mount's health."""
     import fnmatch
     is_rx = regex or bool(re.search(r"(?<!\\)[|*+?\[\]()^$]|\\[.dws]", pattern))
     rx = re.compile(pattern if is_rx else re.escape(pattern), re.I)
-    like = "%" if sub in (None, "", ".") else sub.strip("/") + "/%"
+    rng = _scope_fids(con, sub)
+    where, args = ("t.fid BETWEEN ? AND ?", list(rng)) if rng else ("1", [])
     literal = None if is_rx else f"%{pattern.lower()}%"
-    q = "SELECT t.path, t.text FROM texts t WHERE t.path LIKE ?" + (" AND lower(t.text) LIKE ?" if literal else "")
-    hits, files = [], 0
-    for r in con.execute(q, (like, literal) if literal else (like,)):
+    q = (f"SELECT f.path AS path, t.text AS text FROM texts_t t JOIN files f ON f.fid = t.fid WHERE {where}"
+         + (" AND lower(t.text) LIKE ?" if literal else ""))
+    hits, counts = [], []
+    for r in con.execute(q, args + ([literal] if literal else [])):
         if include and not any(fnmatch.fnmatch(r["path"].split("/")[-1], g) for g in include):
             continue
         n = 0
         for i, line in enumerate(r["text"].splitlines(), 1):
             if rx.search(line):
-                hits.append({"path": r["path"], "line": i, "text": line.strip()[:300]})
                 n += 1
-                if n >= per_file:
-                    break
-        files += n > 0
-        if len(hits) >= limit:
-            break
-    searched = con.execute("SELECT COUNT(*) FROM texts WHERE path LIKE ?", (like,)).fetchone()[0]
-    return {"status": "found" if hits else "not_found", "pattern": pattern, "mode": "regex" if is_rx else "literal",
-            "where": f"index text snapshots ({searched} prose/launcher/small-JSON files)", "files_matched": files,
-            "truncated": len(hits) >= limit, "hits": hits[:limit],
-            "limitations": ["only files whose text the probe kept (reports, READMEs, notes, launchers, small JSON); "
-                            "add --live to search every text file on the source host (slow, bounded)"]}
+                if n <= per_file and len(hits) < limit:
+                    hits.append({"path": r["path"], "line": i, "text": line.strip()[:300]})
+        if n:
+            counts.append({"path": r["path"], "matching_lines": n})
+    searched = con.execute(f"SELECT COUNT(*) FROM texts_t t WHERE {where}", args).fetchone()[0]
+    # text-like files the probe did not keep text for: only they can hide matches the index cannot see
+    ext_q = " OR ".join("f.ext = ?" for _ in TEXT_EXT)
+    fwhere = where.replace("t.fid", "f.fid")
+    unsnap = con.execute(f"SELECT COUNT(*) FROM files f LEFT JOIN texts_t t ON t.fid = f.fid WHERE {fwhere} AND t.fid IS NULL "
+                         f"AND f.path NOT LIKE '%::%' AND ({ext_q})", args + list(TEXT_EXT)).fetchone()[0]
+    out = {"status": "found" if hits else "not_found", "pattern": pattern, "mode": "regex" if is_rx else "literal",
+           "where": f"index text snapshots ({searched} files)", "files_matched": len(counts),
+           "matching_lines_total": sum(c["matching_lines"] for c in counts),
+           "truncated": len(hits) >= limit or any(c["matching_lines"] > per_file for c in counts), "hits": hits,
+           "unsnapshotted_text_files_in_scope": unsnap,
+           "limitations": ([f"{unsnap} text-like files in scope have no snapshot (large or binary-ish): --live searches them on the host"]
+                           if unsnap else ["every text-like file in scope has a snapshot: absence here is exhaustive for the scan date"])}
+    if len(counts) > 1 or (counts and counts[0]["matching_lines"] > len([h for h in hits if h["path"] == counts[0]["path"]])):
+        out["matching_lines_per_file"] = sorted(counts, key=lambda c: -c["matching_lines"])[:30]
+    return out
 
 
 def t_grep(ws, name, pattern, sub=".", include=None, regex=False, limit=200, per_file=50, path=None, live=False):
@@ -294,11 +319,11 @@ def t_grep(ws, name, pattern, sub=".", include=None, regex=False, limit=200, per
     if not live:
         with _con(ws, name) as con:
             out = _local_grep(con, pattern, sub, include, regex, limit, per_file)
-        if out["hits"]:
+        if out["hits"] or not out["unsnapshotted_text_files_in_scope"]:
             return out
-        # nothing in the snapshots: say so, then try the host so absence is not over-claimed
+        # nothing in the snapshots but some text files were not kept: try the host so absence is not over-claimed
         remote = source.grep(Path(ws), name, pattern, sub=sub, include=include, regex=regex, limit=limit, per_file=per_file)
-        remote["index_search"] = {k: out[k] for k in ("where", "status")}
+        remote["index_search"] = {k: out[k] for k in ("where", "status", "unsnapshotted_text_files_in_scope")}
         return remote
     return source.grep(Path(ws), name, pattern, sub=sub, include=include, regex=regex, limit=limit, per_file=per_file)
 
@@ -352,6 +377,28 @@ def t_obligations(ws, offset=0, limit=50, kinds=None):
     return ledger.obligations(ws, kinds=tuple(kinds or ("claim", "run", "cell")), offset=offset, limit=limit)
 
 
+def t_count(ws, name, path="", name_glob=None, what="files", group_by=None, live=False, include_archives=False, limit=40):
+    if live:
+        return verify.count_live(Path(ws), name, path, name_glob, what)
+    with _con(ws, name) as con:
+        return verify.count(con, path, name_glob, what, group_by, include_archives, limit, ws=ws, source_name=name)
+
+
+def t_checksum(ws, name, path, compute=True):
+    with _con(ws, name) as con:
+        return verify.checksum(con, Path(ws), name, path, compute)
+
+
+def t_compare(ws, name, a, b, limit=40):
+    with _con(ws, name) as con:
+        return verify.compare(con, a, b, limit, ws=ws, source_name=name)
+
+
+def t_git(ws, name, repo=".", ref=None):
+    refs = ref if isinstance(ref, list) else ([ref] if ref else [])
+    return verify.git(Path(ws), name, repo, refs)
+
+
 S = {"type": "string"}
 I = {"type": "integer"}
 NAME = {"workspace": S, "source": S}
@@ -394,6 +441,15 @@ TOOLS = {
                       {**NAME, "study": S, "parent_id": S, "eval_protocol": S, "out": S, "metric": S}, ["workspace", "source", "study"]),
     "trace_audit": (t_audit, "Consistency audit across replicate runs (paths differing only in numbers): byte-identical 'independent' replicates, logs that stop mid-run while siblings finished, launch settings that differ from every sibling.",
                     {**NAME, "scope": S, "offset": I, "limit": I}, ["workspace", "source"]),
+    "trace_count": (t_count, "find|wc -l from the index: files (filter by basename glob, e.g. cell_result.json or '*.json,*.csv') or directories (recursive, direct, empty) under a path; group by child folder or path template. Archive scope `x.tgz::`. --live recounts on the host.",
+                    {**NAME, "path": S, "name_glob": S, "what": {"type": "string", "enum": ["files", "dirs", "both"]}, "group_by": {"type": "string", "enum": ["child", "template"]},
+                     "live": {"type": "boolean"}, "include_archives": {"type": "boolean"}, "limit": I}, ["workspace", "source"]),
+    "trace_checksum": (t_checksum, "sha256 of a file (probe hash or computed on the host) checked against sidecar checksum files next to it (x.sha256, SHA256SUMS): verdict match / mismatch / no_sidecar.",
+                       {**NAME, "path": S, "compute": {"type": "boolean"}}, ["workspace", "source", "path"]),
+    "trace_compare": (t_compare, "diff -r by relative path between two trees: a folder vs another folder or an archive snapshot (`bundle.tgz::` or `bundle.tgz::sub/`): only-in-a, only-in-b, content differs (sha).",
+                      {**NAME, "a": S, "b": S, "limit": I}, ["workspace", "source", "a", "b"]),
+    "trace_git": (t_git, "Read-only git on the host: current HEAD of a checkout and, per commit/branch, whether its object exists in this checkout, its date/subject and containing branches.",
+                  {**NAME, "repo": S, "ref": {"type": "array", "items": S}}, ["workspace", "source"]),
     "trace_obligations": (t_obligations, "Evidence obligation ledger over recorded claims/runs/cells with stable diagnostic codes.",
                           {"workspace": S, "offset": I, "limit": I, "kinds": {"type": "array", "items": S}}, ["workspace"]),
 }

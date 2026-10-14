@@ -351,3 +351,67 @@ class BulkTests(unittest.TestCase):
                 self.assertEqual(kinds.count("file"), 1)
         finally:
             P.BULK_MIN_FILES = old
+
+
+class VerifyTests(unittest.TestCase):
+    """find|wc -l, sha256sum -c, diff -r against an archive snapshot, git object presence."""
+
+    def test_count_checksum_compare_git(self):
+        import hashlib
+        import io as _io
+        import shutil
+        import subprocess
+        import tarfile as _tarfile
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "p"
+            live = src / "study"
+            for i in range(3):
+                (live / "collected" / f"cell{i}").mkdir(parents=True)
+                (live / "collected" / f"cell{i}" / "cell_result.json").write_text(json.dumps({"success": i}))
+            (live / "summary").mkdir()
+            (live / "summary" / "FINAL.md").write_text("# Final\n\nold\n")
+            (live / "empty" / "a" / "b").mkdir(parents=True)
+            with _tarfile.open(src / "study-snapshot.tar.gz", "w:gz") as tf:
+                for p in sorted(live.rglob("*")):
+                    if p.is_file():
+                        tf.add(p, arcname=p.relative_to(live).as_posix())
+            (live / "summary" / "FINAL.md").write_text("# Final\n\nnew section added later\n")
+            (live / "summary" / "SRS.json").write_text("{}")
+            digest = hashlib.sha256((src / "study-snapshot.tar.gz").read_bytes()).hexdigest()
+            (src / "study-snapshot.tar.gz.sha256").write_text(f"{digest}  study-snapshot.tar.gz\n")
+            (src / "queue.jsonl").write_text('{"id": "p1/a"}\n{"id": "p2/b"}\n{"id": "p1/c"}\n')
+            ws = Path(tmp) / "ws"
+            tools.t_collect(str(ws), "p", str(src))
+
+            c = tools.t_count(str(ws), "p", path="study", name_glob="cell_result.json")
+            self.assertEqual(c["files"], 3)
+            d = tools.t_count(str(ws), "p", path="study/empty", what="dirs")
+            self.assertEqual(d["dirs"]["total_recursive"], 2)
+            a = tools.t_count(str(ws), "p", path="study-snapshot.tar.gz::summary")
+            self.assertEqual(a["files"], 1)
+
+            ck = tools.t_checksum(str(ws), "p", "study-snapshot.tar.gz")
+            self.assertEqual(ck["verdict"], "match")
+            (src / "study-snapshot.tar.gz.sha256").write_text("0" * 64 + "  study-snapshot.tar.gz\n")
+            tools.t_collect(str(ws), "p", str(src))
+            self.assertEqual(tools.t_checksum(str(ws), "p", "study-snapshot.tar.gz")["verdict"], "mismatch")
+
+            cmp_ = tools.t_compare(str(ws), "p", "study", "study-snapshot.tar.gz::")
+            self.assertEqual(cmp_["only_in_a"], ["summary/SRS.json"])
+            self.assertEqual(cmp_["content_differs"] + cmp_["size_differs_unhashed"], ["summary/FINAL.md"])
+
+            g = tools.t_grep(str(ws), "p", '"p1/', path="queue.jsonl")
+            self.assertEqual(g["matching_lines_total"], 2)
+
+            if shutil.which("git"):
+                repo = src / "repo"
+                repo.mkdir()
+                run = lambda *args: subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True)
+                run("init", "-q")
+                (repo / "x.txt").write_text("x")
+                run("add", "x.txt")
+                run("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "first")
+                head = run("rev-parse", "HEAD").stdout.strip()
+                out = tools.t_git(str(ws), "p", repo="repo", ref=[head[:7], "deadbee"])
+                self.assertTrue(out["refs"][0]["exists_in_objects"])
+                self.assertFalse(out["refs"][1]["exists_in_objects"])
