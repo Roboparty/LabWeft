@@ -22,6 +22,26 @@ def add_cli(sub) -> None:
     g = ts.add_parser("ingest", help="Rebuild the disposable index from collected parts")
     g.add_argument("workspace")
     g.add_argument("--source", required=True)
+    helps = {
+        "source": "short source name (see `trace sources`)", "path": "path relative to the source root; `x.tgz::inner` for archive members",
+        "scope": "restrict to this folder (relative path)", "query": "repeatable; several literal queries in one call",
+        "pattern": "literal text, or a regex (auto-detected)", "sub": "folder or file to search (relative path)",
+        "include": "repeatable basename glob, e.g. '*.md'", "regex": "treat --pattern as a regular expression",
+        "live": "ask the source host directly instead of the index snapshot (slower, current)",
+        "limit": "page size", "offset": "page start", "per_file": "max matching lines kept per file",
+        "start": "first line to read", "lines": "number of lines", "json_path": "return one branch of a JSON file, e.g. $.tasks.pusht",
+        "context": "lines of context around each hit", "number": "a printed number (or 'mean +/- sd') to trace",
+        "state": "filter: sourced / derived / derived_elsewhere / ambiguous / unsourced / declared_external",
+        "line": "report line number", "study": "study id from `experiments`", "metric": "metric key",
+        "name_glob": "basename glob(s), comma-separated, e.g. 'cell_result.json' or '*.json,*.csv'",
+        "what": "files | dirs | both", "group_by": "child (direct sub-folder) | template (path with digits -> #)",
+        "include_archives": "also count members inside archives", "compute": "compute the hash on the host when the index has none",
+        "a": "first tree: folder, or archive 'x.tgz::' / 'x.tgz::sub/' (pair: a result JSON, `*` allowed)",
+        "b": "second tree (same forms as --a)", "repo": "git checkout folder (relative path)",
+        "ref": "repeatable: commit id, branch or tag", "token": "run id, checkpoint, folder or file name",
+        "all_mentions": "include non-exact (substring) mentions", "roles": "repeatable: report, result, log, config, ...",
+        "depth": "folder depth to summarise", "key": "shared id array key (pair)", "value": "per-item value key (pair)",
+    }
     for name, (_, desc, props, req) in TOOLS.items():
         p = ts.add_parser(name.removeprefix("trace_"), help=desc)
         p.add_argument("workspace")
@@ -31,14 +51,15 @@ def add_cli(sub) -> None:
             if key == "workspace":
                 continue
             flag = "--" + key.replace("_", "-")
+            h = helps.get(key)
             if schema.get("type") == "integer":
-                p.add_argument(flag, type=int, dest=key)
+                p.add_argument(flag, type=int, dest=key, help=h)
             elif schema.get("type") == "boolean":
-                p.add_argument(flag, action="store_true", dest=key)
+                p.add_argument(flag, action="store_true", dest=key, help=h)
             elif schema.get("type") == "array":
-                p.add_argument(flag, action="append", dest=key)
+                p.add_argument(flag, action="append", dest=key, help=h)
             else:
-                p.add_argument(flag, dest=key, required=key in req)
+                p.add_argument(flag, dest=key, required=key in req, help=h, choices=schema.get("enum"))
     m = sub.add_parser("mcp", help="Serve the trace tools over stdio MCP")
     m.add_argument("workspace", nargs="?")
 
