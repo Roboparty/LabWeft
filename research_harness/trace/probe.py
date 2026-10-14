@@ -24,9 +24,9 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 
-PROBE_VERSION = "8"
+PROBE_VERSION = "9"
 BULK_MIN_FILES = 5000
-RESUME_COMPATIBLE = {"8"}  # v5 lacks only JSON declared facts; reuse its parse work on huge trees
+RESUME_COMPATIBLE = {"9"}  # v5 lacks only JSON declared facts; reuse its parse work on huge trees
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", ".mypy_cache", ".pytest_cache",
              ".ipynb_checkpoints", "wandb-cache", ".cache", ".research"}
 SENSITIVE = re.compile(r"(^|[._-])(secret|secrets|token|credentials?|password|passwd|id_rsa|id_ed25519|netrc)([._-]|$)|\.env$|\.pem$|\.key$", re.I)
@@ -119,8 +119,11 @@ def path_config(rel):
     return found
 
 
+AGG_LOC = re.compile(r"(macro|mean|avg|average|std|stdev|_sd\b|\.sd\b|summary|overall|total|final|by_train_seed|by_seed|aggregate)", re.I)
+
+
 def json_facts(rel, data, facts):
-    leaves = flatten(data)
+    leaves = flatten(data, limit=200000)
     metrics, config, strings = [], {}, []
     vectors = []
     declared = {}
@@ -136,7 +139,7 @@ def json_facts(rel, data, facts):
             if SEED_KEY.search(key) or (CONFIG_KEY.search(key) and not METRIC_KEY.search(key)):
                 if len(config) < LIMITS["config"]:
                     config[loc] = val
-            elif len(metrics) < LIMITS["metrics"]:
+            else:
                 metrics.append([loc, key, val])
         elif isinstance(val, str):
             if STATUS_KEY.search(key) and len(val) <= 80 and len(declared) < 60:
@@ -155,6 +158,12 @@ def json_facts(rel, data, facts):
         facts["declared"] = declared
     if vectors:
         facts["vectors"] = vectors
+    if len(metrics) > LIMITS["metrics"]:
+        # big summaries (coverage / results JSON with thousands of cells): keep the aggregates first
+        agg = [m for m in metrics if AGG_LOC.search(m[0])]
+        rest = [m for m in metrics if not AGG_LOC.search(m[0])]
+        facts["metrics_truncated"] = len(metrics)
+        metrics = (agg + rest)[: max(LIMITS["metrics"], min(len(agg), 4000))]
     named_metrics = sum(1 for _, k, _ in metrics if METRIC_KEY.search(k))
     facts["metrics"] = metrics
     facts["config"] = config
@@ -510,7 +519,7 @@ def analyze(root, rel, size, mtime, max_text, _raw=None, max_archive=128 * 1024 
                         return rec
                     rec["st"] = "metadata_only"
                     return rec
-                if size > max_text:
+                if size > max_text and not (ext in (".json", ".csv", ".tsv") and size <= BIG_STRUCTURED):
                     rec.update(st="too_large", r="max_text_bytes")
                     return rec
                 raw = head + fh.read()
@@ -612,6 +621,7 @@ def analyze(root, rel, size, mtime, max_text, _raw=None, max_archive=128 * 1024 
 
 
 SMALL_TEXT = 32 * 1024
+BIG_STRUCTURED = 48 * 1024 * 1024  # coverage / results JSON and CSV tables are worth parsing even when large
 SMALL_TEXT_EXT = {".txt", ".log", ".out", ".err", ".md", ".yaml", ".yml", ".sh", ".py", ".cfg", ".ini", ".toml", ".csv", ".tsv",
                   ".jsonl", ".json", ".sha256", ".md5", ".sum", ".lst", ".list", ".env", ".rst", ".tex"}
 

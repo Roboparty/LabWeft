@@ -14,6 +14,7 @@ import math
 import posixpath
 import re
 import statistics
+import time
 from collections import Counter, defaultdict
 
 from .index import fid_range, meta
@@ -746,14 +747,17 @@ def _area(path, depth=2):
     return "/".join(path.split("/")[:depth])
 
 
-def _sibling_sd(con, a: str, b: str, max_files: int = 300):
+SIB_RX = re.compile(r"^(.*?)(\[\d+\]|\.[^.\[\]]+)$")
+
+
+def _sibling_sd(con, a: str, b: str, max_files: int = 300, budget: float = 4.0):
     """Fallback for a printed `mean ± sd`: find stored values equal to the mean, then, in those files, sibling numbers
     under one parent (a per-seed list or dict such as `macro_by_train_seed`) whose mean and sample/population SD
     reproduce the printed pair. Index-only (value and fid indexes)."""
     da = len(a.split(".")[1]) if "." in a else 0
     db = len(b.split(".")[1]) if "." in b else 0
     x = float(a)
-    ranked = {}
+    ranked, near = {}, {}
     for scale in (1.0, 0.01, 100.0):
         tol = 0.5 * 10 ** (-da) * scale + 1e-12
         rows = con.execute("SELECT fid, locator FROM metrics_t WHERE value BETWEEN ? AND ? LIMIT 5000",
@@ -763,15 +767,25 @@ def _sibling_sd(con, a: str, b: str, max_files: int = 300):
             # a stored aggregate named like a mean is the best place to find its per-unit siblings
             score = 0 if re.search(r"(mean|macro|avg|average)", loc.rsplit(".", 1)[-1], re.I) else 1
             ranked[fid] = min(ranked.get(fid, 9), score)
+            # siblings live near the matched value: look only under its grandparent locator, not the whole file
+            parent = re.sub(r"(\[\d+\]|\.[^.\[\]]+)$", "", loc)
+            near.setdefault(fid, set()).add(re.sub(r"(\[\d+\]|\.[^.\[\]]+)$", "", parent) or parent)
     fids = sorted(ranked, key=lambda f: (ranked[f], f))
     hits = []
+    started = time.time()
     for fid in fids[:max_files]:
+        if time.time() - started > budget:
+            break  # bounded: a lead search must not take minutes on a 500k-file index
         groups = defaultdict(list)
         # keys such as `macro_by_train_seed` are stored as settings (they name a seed), so look in both tables
-        rows = con.execute("SELECT locator, value FROM metrics_t WHERE fid = ?", (fid,)).fetchall() + con.execute(
-            "SELECT locator, num FROM config_t WHERE fid = ? AND num IS NOT NULL", (fid,)).fetchall()
+        rows = []
+        for pre in near.get(fid, {""}):
+            like = pre.replace("%", "\\%").replace("_", "\\_") + "%"
+            rows += con.execute("SELECT locator, value FROM metrics_t WHERE fid = ? AND locator LIKE ? ESCAPE '\\' LIMIT 4000", (fid, like)).fetchall()
+            rows += con.execute("SELECT locator, num FROM config_t WHERE fid = ? AND num IS NOT NULL AND locator LIKE ? ESCAPE '\\' LIMIT 4000",
+                                (fid, like)).fetchall()
         for loc, val in rows:
-            m = re.match(r"^(.*?)(\[\d+\]|\.[^.\[\]]+)$", loc)
+            m = SIB_RX.match(loc)
             if m:
                 groups[m.group(1)].append((loc, val))
         for parent, items in groups.items():
@@ -795,7 +809,8 @@ def _sibling_sd(con, a: str, b: str, max_files: int = 300):
     return hits
 
 
-def reconcile(con, scope: str | None = None, path: str | None = None, offset: int = 0, limit: int = 20, min_decimals: int = 2) -> dict:
+def reconcile(con, scope: str | None = None, path: str | None = None, offset: int = 0, limit: int = 20, min_decimals: int = 2,
+              only: str | None = None) -> dict:
     """Trace every number printed in a report back to stored values, recomputed aggregates or same-line arithmetic.
 
     States: sourced (≤5 raw values in the report's own area print identically), derived (mean±sd of a recovered
@@ -818,6 +833,8 @@ def reconcile(con, scope: str | None = None, path: str | None = None, offset: in
         nums = []
         area = _area(d["path"])
         for r in con.execute("SELECT line, text FROM lines_t WHERE fid = ? AND kind = 'numbers' ORDER BY line", (d["fid"],)):
+            if only and only not in r["text"]:
+                continue  # a single-number lookup: trace only the lines that print it
             text = ISO_TIME.sub(" ", r["text"])
             consumed = set()
             for m in PM.finditer(text):
