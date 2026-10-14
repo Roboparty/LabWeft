@@ -473,3 +473,24 @@ class AuditCrossDocTests(unittest.TestCase):
             self.assertEqual(kinds["cites-flagged-study"]["files"][0], "study/PAPER_TEXT.md")
             self.assertIn("table-row-count-mismatch", kinds)
             self.assertIn("'7'", kinds["table-row-count-mismatch"]["evidence"])
+
+
+class SymlinkTests(unittest.TestCase):
+    def test_ls_and_count_follow_symlinked_folders(self):
+        import os
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "p"
+            real = src / "experiments" / "phase9"
+            real.mkdir(parents=True)
+            (real / "result.json").write_text(json.dumps({"sr": 0.9}))
+            (src / "phases").mkdir()
+            try:
+                os.symlink("../experiments/phase9", src / "phases" / "phase9", target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest("symlinks not permitted on this machine")
+            ws = Path(tmp) / "ws"
+            tools.t_collect(str(ws), "p", str(src))
+            out = tools.t_ls(str(ws), "p", path="phases/phase9")
+            self.assertEqual(out["status"], "found")
+            self.assertTrue(out["followed_symlinks"])
+            self.assertEqual(tools.t_count(str(ws), "p", path="phases/phase9")["files"], 1)

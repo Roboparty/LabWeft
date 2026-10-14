@@ -81,7 +81,7 @@ def dispatch(args):
     _, _, props, _ = TOOLS[tool]
     payload = {k: getattr(args, k) for k in props if getattr(args, k, None) not in (None, False)}
     payload["workspace"] = args.workspace
-    out = call(tool, payload)
+    out = _bounded(tool, payload)
     if getattr(args, "out_format", "json") == "text":
         out = _slim(out)
         hits = out.get("hits") if isinstance(out, dict) else None
@@ -95,6 +95,34 @@ def dispatch(args):
             print(compact(out))
         return None
     return out
+
+
+def _bounded(tool, payload):
+    """Hard wall-clock limit per tool call (LABWEFT_TRACE_TIMEOUT seconds, default 600): a query that runs away on a
+    huge index answers `unknown` instead of holding the index open for hours."""
+    import os
+    import threading
+    limit = float(os.environ.get("LABWEFT_TRACE_TIMEOUT", "600"))
+    box = {}
+
+    def run():
+        try:
+            box["out"] = call(tool, payload)
+        except BaseException as exc:  # re-raised in the caller's thread
+            box["exc"] = exc
+    th = threading.Thread(target=run, daemon=True)
+    th.start()
+    th.join(limit)
+    if th.is_alive():
+        import json
+        import sys
+        print(json.dumps({"status": "unknown", "error": f"{tool} exceeded the {int(limit)} s limit and was stopped",
+                          "hint": "narrow --scope/--path, or raise LABWEFT_TRACE_TIMEOUT"}))
+        sys.stdout.flush()
+        os._exit(3)
+    if "exc" in box:
+        raise box["exc"]
+    return box["out"]
 
 
 def _scalar(v) -> str:

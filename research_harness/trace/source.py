@@ -232,9 +232,10 @@ def read_archive_member(workspace: Path, name: str, member_path: str, start: int
     end = start + lines - 1
     if archive.lower().endswith(".zip"):
         extract = f"timeout 60 unzip -p {shlex.quote(archive)} {shlex.quote(member)}"
-    else:  # members may be stored as ./name or name
-        extract = (f"(timeout 60 tar -xOf {shlex.quote(archive)} {shlex.quote(member)} 2>/dev/null || "
-                   f"timeout 60 tar -xOf {shlex.quote(archive)} {shlex.quote('./' + member)})")
+    else:  # members may be stored as ./name or name; .tar.zst needs an explicit decompressor
+        z = "-I zstd " if archive.lower().endswith((".zst", ".tzst")) else ""
+        extract = (f"(timeout 120 tar {z}-xOf {shlex.quote(archive)} {shlex.quote(member)} 2>/dev/null || "
+                   f"timeout 120 tar {z}-xOf {shlex.quote(archive)} {shlex.quote('./' + member)})")
     cmd = f"cd {shlex.quote(cfg['root'])} && {extract} | sed -n '{int(start)},{int(end)}p'"
     if cfg.get("host"):
         _, raw = _remote(cfg, cmd, 90, "archive member read")
@@ -373,7 +374,8 @@ def archive_listing(workspace: Path, name: str, archive: str, timeout: int = 900
     if archive.lower().endswith(".zip"):
         lister = f"timeout {timeout} unzip -Z -T {q} | awk 'NF>=9 {{print $4\"\\t\"$7\"\\t\"$9}}'"
     else:
-        lister = f"timeout {timeout} tar -tvf {q} --numeric-owner --full-time 2>/dev/null"
+        z = "-I zstd " if archive.lower().endswith((".zst", ".tzst")) else ""
+        lister = f"timeout {timeout} tar {z}-tvf {q} --numeric-owner --full-time 2>/dev/null"
     cmd = f"set -o pipefail; cd {shlex.quote(cfg['root'])} && {stat} && {lister}; echo __RC__$?"
     cache_dir = trace_dir(workspace, name) / "archives"
     cache_dir.mkdir(parents=True, exist_ok=True)
