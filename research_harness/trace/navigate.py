@@ -8,6 +8,7 @@ import re
 from collections import Counter, defaultdict
 
 from .analyze import page, result
+from .index import fid_range
 
 SCRIPT_ROLES = ("train_script", "eval_script", "script", "launcher", "module", "plot_script")
 PATH_FLAG = re.compile(r"(do[_-]?not[_-]?use|donotuse|incomplete|deprecated|obsolete|superseded|invalid|broken|quarantine|"
@@ -52,12 +53,21 @@ def _text_of(con, path):
     return json.loads(row["json"]).get("text")
 
 
+def _exists(con, path: str) -> bool:
+    """File or directory present in the inventory (index range scan; `LIKE` on an OR would scan every row)."""
+    p = path.rstrip("/")
+    if con.execute("SELECT 1 FROM files WHERE path = ?", (p,)).fetchone():
+        return True
+    return con.execute("SELECT 1 FROM files WHERE path >= ? AND path < ? LIMIT 1", (p + "/", p + "0")).fetchone() is not None
+
+
 def validity(con, scope: str | None = None, offset: int = 0, limit: int = 30) -> dict:
     """Areas the authors marked unusable/incomplete/superseded (by name or in text), plus internal contradictions:
     a flagged folder whose own audit says complete, or an audit that claims N cells while few result files exist."""
     like = f"{scope.rstrip('/')}/%" if scope else "%"
     areas: dict[str, dict] = {}
-    for (d,) in con.execute("SELECT DISTINCT dir FROM files WHERE path LIKE ?", (like,)):
+    all_dirs = [d for (d,) in con.execute("SELECT DISTINCT dir FROM files WHERE path LIKE ?", (like,))]
+    for d in all_dirs:
         parts = d.split("/")
         for i, comp in enumerate(parts):
             if PATH_FLAG.search(comp):
@@ -88,12 +98,14 @@ def validity(con, scope: str | None = None, offset: int = 0, limit: int = 30) ->
             seen.add(k)
             uniq.append(m)
     for area, info in areas.items():
-        info["files"] = con.execute("SELECT COUNT(*) FROM files WHERE path LIKE ?", (area + "/%",)).fetchone()[0]
-        info["result_files"] = con.execute("SELECT COUNT(*) FROM files WHERE path LIKE ? AND role IN ('result', 'result_table')",
-                                           (area + "/%",)).fetchone()[0]
+        rng = fid_range(con, area) or (0, -1)
+        info["files"] = rng[1] - rng[0] + 1 if rng[1] >= rng[0] else 0
+        info["result_files"] = con.execute("SELECT COUNT(*) FROM files WHERE fid BETWEEN ? AND ? AND role IN ('result', 'result_table')",
+                                           rng).fetchone()[0]
         info["text_evidence"] = [m for m in uniq if m["path"].startswith(area + "/")][:5]
         # contradictions: own audit/status files that claim completion or a count
-        for r in con.execute("SELECT c.path, c.key, c.value, c.num FROM config c WHERE c.path LIKE ?", (area + "/%",)):
+        for r in con.execute("SELECT f.path, c.key, c.value, c.num FROM config_t c JOIN files f ON f.fid = c.fid "
+                             "WHERE c.fid BETWEEN ? AND ?", rng):
             leaf = r["key"].split(".")[-1]
             if not CLAIM_KEYS.search(leaf):
                 continue
@@ -103,17 +115,20 @@ def validity(con, scope: str | None = None, offset: int = 0, limit: int = 30) ->
             elif r["num"] is not None and r["num"] > max(4, 2 * info["result_files"]) and leaf.lower() in ("n_cells", "cells", "control_cells", "n_jobs", "expected_jobs"):
                 info["contradictions"].append({"kind": "claims-more-results-than-indexed", "path": r["path"], "key": r["key"],
                                                "claimed": r["num"], "result_files_indexed": info["result_files"]})
-        for r in con.execute("SELECT path, json FROM facts WHERE path LIKE ? AND json LIKE '%\"declared\"%'", (area + "/%",)):
+        for r in con.execute("SELECT f.path, x.json FROM facts_t x JOIN files f ON f.fid = x.fid "
+                             "WHERE x.fid BETWEEN ? AND ? AND x.json LIKE '%\"declared\"%'", rng):
             for loc, val in json.loads(r["json"]).get("declared", {}).items():
                 if (isinstance(val, str) and val.lower() in ("complete", "completed", "done", "finished", "success", "ok", "valid", "pass", "passed")) or val is True:
                     info["contradictions"].append({"kind": "flagged-but-declares-complete", "path": r["path"], "key": loc, "value": val})
-        for r in con.execute("SELECT m.path, m.key, m.value FROM metrics m WHERE m.path LIKE ?", (area + "/%",)):
+        for r in con.execute("SELECT f.path, m.key, m.value FROM metrics_t m JOIN files f ON f.fid = m.fid "
+                             "WHERE m.fid BETWEEN ? AND ?", rng):
             leaf = r["key"].split(".")[-1].lower()
             if leaf in ("n_cells", "cells", "control_cells", "probe_cells", "n_jobs", "expected_jobs") and r["value"] > max(4, 2 * info["result_files"]):
                 info["contradictions"].append({"kind": "claims-more-results-than-indexed", "path": r["path"], "key": r["key"],
                                                "claimed": r["value"], "result_files_indexed": info["result_files"]})
         missing = []
-        for r in con.execute("SELECT DISTINCT src, raw FROM refs WHERE src LIKE ? AND mode = 'mention'", (area + "/%",)):
+        for r in con.execute("SELECT DISTINCT f.path AS src, t.raw FROM refs_t t JOIN files f ON f.fid = t.src "
+                             "WHERE t.src BETWEEN ? AND ? AND t.mode = 'mention'", rng):
             raw = r["raw"].strip("`'\" ")
             segs = [x for x in raw.strip("/").split("/") if x]
             if raw.startswith(("/", "http", "~")) or "*" in raw or len(missing) >= 6 or posixpath.basename(r["src"]).startswith("."):
@@ -124,11 +139,12 @@ def validity(con, scope: str | None = None, offset: int = 0, limit: int = 30) ->
                     segs[0].lower() in ("results", "runs", "logs", "cells", "probes", "checkpoints", "ckpt", "outputs", "data", "summary", "evals")):
                 continue
             cand = posixpath.normpath(posixpath.join(posixpath.dirname(r["src"]), raw))
-            if not con.execute("SELECT 1 FROM files WHERE path = ? OR path LIKE ? LIMIT 1", (cand, cand.rstrip("/") + "/%")).fetchone():
+            if not _exists(con, cand):
                 missing.append({"cited_in": r["src"], "path": raw})
         # authors usually write paths in backticks: `results/cells/` — check those relative to the citing document
         try:
-            doc_rows = con.execute("SELECT path, text FROM texts WHERE path LIKE ?", (area + "/%",)).fetchall()
+            doc_rows = con.execute("SELECT f.path, t.text FROM texts_t t JOIN files f ON f.fid = t.fid WHERE t.fid BETWEEN ? AND ?",
+                                   rng).fetchall()
         except Exception:
             doc_rows = []
         for r in doc_rows:
@@ -140,18 +156,75 @@ def validity(con, scope: str | None = None, offset: int = 0, limit: int = 30) ->
                     continue
                 cand = posixpath.normpath(posixpath.join(posixpath.dirname(r["path"]), raw))
                 alt = posixpath.normpath(posixpath.join(area, raw))
-                if not any(con.execute("SELECT 1 FROM files WHERE path = ? OR path LIKE ? LIMIT 1", (c, c.rstrip("/") + "/%")).fetchone()
-                           for c in (cand, alt)):
+                if not any(_exists(con, c) for c in (cand, alt)):
                     item = {"cited_in": r["path"], "path": raw}
                     if item not in missing:
                         missing.append(item)
         if missing:
             info["contradictions"].append({"kind": "referenced-but-missing", "items": missing})
         info["contradictions"] = info["contradictions"][:8]
+    # For each flagged study, the authors' usable alternatives: unflagged sibling studies that share its name stem
+    # (e.g. `mechanism_multitask_..._incomplete_do_not_use` -> `mechanism_rawgoal_7local_5goal_20260911`).
+    for area, info in areas.items():
+        base = posixpath.basename(area)
+        stem = PATH_FLAG.sub("", base)
+        words = {w for w in re.split(r"[_\-.]+", stem.lower()) if len(w) >= 4 and not w.isdigit()}
+        parent = posixpath.dirname(area)
+        alts = []
+        siblings = {(d[len(parent) + 1:] if parent else d).split("/")[0] for d in all_dirs
+                    if (not parent or d.startswith(parent + "/")) and not d.startswith(area)}
+        for name in sorted(siblings):
+            if not name or PATH_FLAG.search(name) or name in [a["study"] for a in alts]:
+                continue
+            shared = words & {w for w in re.split(r"[_\-.]+", name.lower()) if len(w) >= 4}
+            if len(shared) >= max(1, len(words) // 3):
+                full = (parent + "/" + name) if parent else name
+                rng2 = fid_range(con, full) or (0, -1)
+                n_res = con.execute("SELECT COUNT(*) FROM files WHERE fid BETWEEN ? AND ? AND role IN ('result', 'result_table')",
+                                    rng2).fetchone()[0]
+                alts.append({"study": name, "path": full, "shared_terms": sorted(shared), "result_files": n_res})
+        alts.sort(key=lambda a: (-len(a["shared_terms"]), -a["result_files"]))
+        if alts:
+            info["unflagged_alternatives"] = alts[:4]
     items = sorted(areas.values(), key=lambda a: (-len(a["contradictions"]), a["area"]))
     loose = [m for m in uniq if not any(m["path"].startswith(a + "/") for a in areas)]
-    return result("found" if items or loose else "not_found", con, flagged_areas=page(items, offset, limit),
-                  report_statements=page(loose, 0, 40),
+    # Divergent copies: the same document (same file name and title) saved in several places with different content.
+    # One of them is stale; a reader citing the wrong copy cites a superseded number.
+    by_doc = defaultdict(list)
+    for r in con.execute("SELECT path, sha, size, mtime, title FROM files WHERE role = 'report' AND path LIKE ? AND title IS NOT NULL", (like,)):
+        base = posixpath.basename(r["path"].split("::")[-1])
+        if KEY_DOC.search(base) and not base.startswith(".") and (r["title"] or "").strip():
+            by_doc[(base, r["title"].strip().lower())].append(dict(r))
+    divergent = []
+    for (base, _), copies in by_doc.items():
+        shas = {c["sha"] for c in copies if c["sha"]}
+        if len(shas) > 1 and len(copies) <= 12:
+            copies.sort(key=lambda c: -(c["mtime"] or 0))
+            divergent.append({"document": base, "versions": len(shas),
+                              "copies": [{"path": c["path"], "size": c["size"], "mtime": c["mtime"],
+                                          "newest": i == 0} for i, c in enumerate(copies[:6])]})
+    divergent.sort(key=lambda g: (-g["versions"], g["document"]))
+    # Key documents (README/FINAL/STATUS/...) citing files that are not in the folder at all.
+    missing_cited = []
+    docs = con.execute("SELECT t.path, t.text FROM texts t JOIN files f ON f.path = t.path WHERE f.role = 'report' AND t.path LIKE ? "
+                       "AND t.path NOT LIKE '%::%'", (like,)).fetchall()
+    for r in sorted(docs, key=lambda r: r["path"].count("/")):
+        base = posixpath.basename(r["path"])
+        if not KEY_DOC.search(base) or base.startswith(".") or len(missing_cited) >= 25:
+            continue
+        for raw in dict.fromkeys(re.findall(r"`([^`\s]+\.(?:csv|json|jsonl|md|pt|npz|txt|yaml|tar\.gz|tgz|py))`", r["text"] or "")):
+            if raw.startswith(("/", "http", "~")) or any(ch in raw for ch in "*{<>$"):
+                continue  # absolute paths, globs and templates such as evaluations/<run>/ are not citations of one file
+            here = posixpath.normpath(posixpath.join(posixpath.dirname(r["path"]), raw))
+            if _exists(con, here) or _exists(con, raw):
+                continue
+            # bare file names may legitimately live anywhere in the project
+            if "/" not in raw and con.execute("SELECT 1 FROM files WHERE path LIKE ? LIMIT 1", ("%/" + raw,)).fetchone():
+                continue
+            missing_cited.append({"cited_in": r["path"], "path": raw})
+    return result("found" if items or loose or divergent or missing_cited else "not_found", con, flagged_areas=page(items, offset, limit),
+                  report_statements=page(loose, 0, 40), divergent_copies=page(divergent, 0, 15),
+                  cited_but_missing=page(missing_cited, 0, 25),
                   limitations=["markers are words chosen by the authors; read the cited line before treating a study as invalid",
                                "a flagged name without a written reason is a warning, not a verdict"])
 
@@ -364,6 +437,11 @@ def find(con, queries: list[str], context: int = 3, per_query: int = 4, scope: s
             windows.append((score, {"path": r["path"], "role": r["role"], "line": i + 1,
                                     "window": [f"{j + 1}: {lines[j][:300]}" for j in range(max(0, i - context), min(len(lines), i + context + 1))]}))
         windows.sort(key=lambda w: w[0], reverse=True)
+        # Folder/file names are part of what authors wrote (`..._incomplete_do_not_use`): report them too.
+        path_hits = [r[0] for r in con.execute("SELECT DISTINCT dir FROM files WHERE path LIKE ? AND lower(dir) LIKE ? LIMIT 400",
+                                                (like, f"%{q.lower()}%"))]
+        roots = sorted({p[: p.lower().index(q.lower()) + len(q)] + p[p.lower().index(q.lower()) + len(q):].split("/")[0]
+                        for p in path_hits})[:6]
         if not windows:
             # IDs and names often live only in structured files (job queues, manifests, tables): look in extracted facts.
             for r in con.execute("SELECT x.path, x.json, f.role FROM facts x JOIN files f ON f.path = x.path WHERE x.path LIKE ? "
@@ -373,8 +451,11 @@ def find(con, queries: list[str], context: int = 3, per_query: int = 4, scope: s
                 snippet = rows_hit[:2] or [v for v in (facts.get("refs", []) + facts.get("ids", [])) if q.lower() in str(v).lower()][:3]
                 windows.append(((True, True, False, 0), {"path": r["path"], "role": r["role"], "in": "structured facts", "matches": snippet}))
             mode = mode + "+facts" if windows else mode
-        out.append({"query": q, "match": mode, "files_matched": len(rows) or len(windows), "hits": [w for _, w in windows[:per_query]]})
-    return result("found" if any(o["hits"] for o in out) else "not_found", con, results=out,
+        item = {"query": q, "match": mode, "files_matched": len(rows) or len(windows), "hits": [w for _, w in windows[:per_query]]}
+        if roots:
+            item["in_paths"] = roots
+        out.append(item)
+    return result("found" if any(o["hits"] or o.get("in_paths") for o in out) else "not_found", con, results=out,
                   limitations=["searches text snapshots (reports, READMEs, notes, launchers, small JSON); use grep for other files",
                                "all terms of one query must occur in the same file"])
 

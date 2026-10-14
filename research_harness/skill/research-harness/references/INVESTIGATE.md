@@ -112,3 +112,20 @@ while required questions remain open.
 `trace_outline`, `trace_experiments`, `trace_reconcile`, `trace_provenance`,
 `trace_xrefs`, `trace_search`, `trace_grep`, `trace_read`, `trace_fetch`,
 `trace_propose`, `trace_obligations`, `trace_sources`).
+
+## Round-6 notes (what the tools now tell you directly)
+
+- `reconcile --number X` names the replicates behind a recomputed `mean ± SD` (`replicate_unit`: e.g. spread across
+  train_seed 3072/3073/3074, averaged within eval_seed, macro over task) and the condition (`levels`). Quote them.
+  If no recovered cell fits, it looks for per-seed sibling values stored next to an aggregate
+  (`macro_by_train_seed`, per-seed dicts/lists) and reports their values and the SD convention.
+  `derived_elsewhere` = the only match is in another part of the project — a lead, not a source.
+  A report mixing sample-SD and population-SD rows carries `mixed_sd_conventions`.
+- `validity` lists, besides flagged studies, `unflagged_alternatives` (sibling studies on the same topic that are
+  not flagged — usually what the authors want you to use instead), `divergent_copies` (one document saved in
+  several places with different content; the newest is marked) and `cited_but_missing` (files a key document
+  cites that are not in the folder).
+- `grep` searches the index text snapshots first (instant, regex auto-detected) and only falls back to the source
+  host when the snapshots have no hit; `--live` forces the host. `find` also reports folder names that contain
+  the phrase (`in_paths`).
+- `--format text` prints one coverage line when coverage is complete; `read --pattern` marks matching lines `>`.

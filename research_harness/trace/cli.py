@@ -62,6 +62,7 @@ def dispatch(args):
     payload["workspace"] = args.workspace
     out = call(tool, payload)
     if getattr(args, "out_format", "json") == "text":
+        out = _slim(out)
         hits = out.get("hits") if isinstance(out, dict) else None
         if isinstance(hits, list) and hits and all(isinstance(h, dict) and "path" in h for h in hits):
             # grep-style: one line per hit, so it can be piped into further filters
@@ -84,13 +85,31 @@ def _scalar(v) -> str:
     return "null" if v is None else str(v)
 
 
+def _slim(out):
+    """Text mode is for reading: a complete coverage block collapses to one line, boilerplate limitations to one line."""
+    if not isinstance(out, dict):
+        return out
+    out = dict(out)
+    cov = out.get("coverage")
+    if isinstance(cov, dict):
+        if cov.get("status") == "complete" and not any("timeout" in l or "error" in l for l in cov.get("limitations", [])):
+            out["coverage"] = f"complete ({cov.get('inventory')} files)"
+        else:
+            out["coverage"] = f"{cov.get('status')} ({cov.get('inventory')} files): " + "; ".join(cov.get("limitations", []))
+    lim = out.get("limitations")
+    if isinstance(lim, list) and lim:
+        out["limitations"] = " | ".join(lim)
+    return out
+
+
 def compact(obj, indent: int = 0) -> str:
     """Indented outline: dict keys as `key:`, short scalar lists inline, list items as `-` blocks. No data dropped
     beyond long strings (pagination already bounds lists)."""
     pad = "  " * indent
     lines = []
-    if isinstance(obj, list) and obj and all(isinstance(x, dict) and set(x) == {"n", "text"} for x in obj):
-        return "\n".join(f"{pad}{x['n']:>5}: {x['text']}" for x in obj)  # file lines read like a listing
+    if isinstance(obj, list) and obj and all(isinstance(x, dict) and set(x) in ({"n", "text"}, {"n", "text", "hit"}) for x in obj):
+        # file lines read like a listing; `>` marks a line that matched --pattern, plain lines are context
+        return "\n".join(f"{pad}{'>' if x.get('hit') else ' '}{x['n']:>5}: {x['text']}" for x in obj)
     if isinstance(obj, dict):
         for k, v in obj.items():
             if k == "_meta":

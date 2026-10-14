@@ -36,6 +36,7 @@ CREATE INDEX metrics_key ON metrics_t(key);
 CREATE INDEX metrics_value ON metrics_t(value);
 CREATE INDEX metrics_fid ON metrics_t(fid);
 CREATE INDEX config_fid ON config_t(fid);
+CREATE INDEX config_num ON config_t(num);
 CREATE INDEX tokens_token ON tokens_t(token);
 CREATE INDEX refs_target ON refs_t(target);
 CREATE INDEX refs_src ON refs_t(src);
@@ -260,7 +261,20 @@ def connect(workspace: Path, name: str) -> sqlite3.Connection:
         raise FileNotFoundError(f"No trace index for {name!r}; run `labweft trace collect` or `trace ingest` first")
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     con.row_factory = sqlite3.Row
+    try:  # big sorts spill to disk: keep them next to the index, not on a (possibly full) system drive
+        con.execute(f"PRAGMA temp_store_directory = '{str(db.parent).replace(chr(39), chr(39) * 2)}'")
+    except sqlite3.Error:
+        pass
     return con
+
+
+def fid_range(con: sqlite3.Connection, prefix: str) -> tuple[int, int] | None:
+    """File ids are assigned in sorted-path order, so everything under `prefix/` is one contiguous id range.
+    Child tables (metrics_t, config_t, refs_t, lines_t, texts_t) are indexed by fid: query them by range, never by
+    a LIKE on the joined path (a full scan of millions of rows)."""
+    p = prefix.strip("/") + "/"
+    row = con.execute("SELECT MIN(fid), MAX(fid) FROM files WHERE path >= ? AND path < ?", (p, p[:-1] + "0")).fetchone()
+    return (row[0], row[1]) if row and row[0] is not None else None
 
 
 def meta(con: sqlite3.Connection) -> dict:
