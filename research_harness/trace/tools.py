@@ -116,9 +116,28 @@ def t_find(ws, name, query, context=3, per_query=4, scope=None):
         return navigate.find(con, queries, context=context, per_query=per_query, scope=scope)
 
 
+def _root(ws, name):
+    try:
+        return source.load(Path(ws), name).get("root")
+    except Exception:
+        return None
+
+
+def _follow(con, ws, name, path):
+    """Resolve symlinked folders before an index lookup (the index stores the link, not a second copy)."""
+    if not path or "::" in path or navigate._exists(con, path.strip("/")) and not con.execute(
+            "SELECT 1 FROM skips WHERE kind = 'symlink' AND path = ?", (path.strip("/"),)).fetchone():
+        return path, []
+    return navigate.resolve_links(con, path, _root(ws, name))
+
+
 def t_ls(ws, name, path="", offset=0, limit=60):
     with _con(ws, name) as con:
-        return navigate.ls(con, path, offset=offset, limit=limit)
+        real, hops = _follow(con, ws, name, path)
+        out = navigate.ls(con, real, offset=offset, limit=limit)
+        if hops:
+            out["followed_symlinks"] = hops
+        return out
 
 
 def t_validity(ws, name, scope=None, offset=0, limit=30):
@@ -410,7 +429,11 @@ def t_count(ws, name, path="", name_glob=None, what="files", group_by=None, live
     if live:
         return verify.count_live(Path(ws), name, path, name_glob, what)
     with _con(ws, name) as con:
-        return verify.count(con, path, name_glob, what, group_by, include_archives, limit, ws=ws, source_name=name)
+        real, hops = _follow(con, ws, name, path)
+        out = verify.count(con, real, name_glob, what, group_by, include_archives, limit, ws=ws, source_name=name)
+        if hops:
+            out["followed_symlinks"] = hops
+        return out
 
 
 def t_checksum(ws, name, path, compute=True):
@@ -420,7 +443,12 @@ def t_checksum(ws, name, path, compute=True):
 
 def t_compare(ws, name, a, b, limit=40):
     with _con(ws, name) as con:
-        return verify.compare(con, a, b, limit, ws=ws, source_name=name)
+        ra, ha = _follow(con, ws, name, a)
+        rb, hb = _follow(con, ws, name, b)
+        out = verify.compare(con, ra, rb, limit, ws=ws, source_name=name)
+        if ha or hb:
+            out["followed_symlinks"] = ha + hb
+        return out
 
 
 def t_git(ws, name, repo=".", ref=None):

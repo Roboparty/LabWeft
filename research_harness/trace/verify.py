@@ -237,6 +237,27 @@ def verify_list(con, ws: Path, name: str, path: str, compute: bool = True, limit
                 resolved[n] = cand
                 shas[cand] = row[0]
                 break
+    unresolved = [n for n, _ in entries if n not in resolved]
+    if unresolved:
+        # lists written elsewhere (`cd run && sha256sum ... > ../FILES.sha256`, or names relative to a parent):
+        # find one entry by suffix near the list, take its base folder and re-resolve every entry from there
+        top = path.split("/")[0]
+        rng = fid_range(con, top) if "/" in path else None
+        for n in unresolved[:5]:
+            q = "SELECT path FROM files WHERE path LIKE ? " + ("AND fid BETWEEN ? AND ? " if rng else "") + "LIMIT 3"
+            hits = [r[0] for r in con.execute(q, (f"%/{n}",) + (tuple(rng) if rng else ()))]
+            if len(hits) == 1:
+                newbase = hits[0][: -len(n)].rstrip("/")
+                for m, _ in entries:
+                    if m in resolved:
+                        continue
+                    cand = posixpath.normpath(posixpath.join(newbase, m))
+                    row = con.execute("SELECT sha FROM files WHERE path = ?", (cand,)).fetchone()
+                    if row is not None:
+                        resolved[m] = cand
+                        shas[cand] = row[0]
+                base = newbase
+                break
     todo = [p for p in resolved.values() if not shas.get(p)]
     origin = "index hashes"
     if todo and compute:
@@ -274,7 +295,9 @@ def verify_list(con, ws: Path, name: str, path: str, compute: bool = True, limit
             "unlisted_files_in_covered_folders": extra[:limit], "unlisted_total": len(extra),
             "entries_sharing_a_hash": same_hash[:10], "origin": origin,
             "verdict": "all_match" if len(ok) == len(entries) else "problems",
-            "status": "found", "limitations": ["names are resolved relative to the list's folder, then the source root"]}
+            "names_resolved_from": base or ".",
+            "status": "found", "limitations": ["names are resolved relative to the list's folder, the source root, or the folder "
+                                               "where one listed name is found by suffix (reported as names_resolved_from)"]}
 
 
 def checksum(con, ws: Path, name: str, path: str, compute: bool = True) -> dict:

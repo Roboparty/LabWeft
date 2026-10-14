@@ -20,6 +20,41 @@ TEXT_FLAG = re.compile(r"(do not use|don't use|must not be (?:used|cited)|not be
 CLAIM_KEYS = re.compile(r"(^|[_.])(status|state|complete|completed|n_cells|cells|control_cells|n_jobs|jobs|expected_jobs|total)$", re.I)
 
 
+def resolve_links(con, path: str, root: str | None = None) -> tuple[str, list[str]]:
+    """Follow recorded symlinks inside the source: `phases/phase999/x` -> `experiments/phase999/x` when `phases/phase999`
+    is a link (probe v8+ records targets). Links that leave the source stay as they are. Returns (path, hops)."""
+    p = (path or "").strip("/")
+    hops = []
+    for _ in range(8):
+        parts = p.split("/") if p else []
+        changed = False
+        for i in range(1, len(parts) + 1):
+            prefix = "/".join(parts[:i])
+            try:
+                row = con.execute("SELECT reason FROM skips WHERE kind = 'symlink' AND path = ? AND reason IS NOT NULL "
+                                  "AND reason != 'None' ORDER BY rowid DESC LIMIT 1", (prefix,)).fetchone()
+            except Exception:
+                return p, hops
+            if not row:
+                continue
+            target = row[0]
+            if target.startswith("/"):
+                if not root or not (target + "/").startswith(root.rstrip("/") + "/"):
+                    return p, hops + [f"{prefix} -> {target} (outside the source)"]
+                new = target[len(root.rstrip("/")):].strip("/")
+            else:
+                new = posixpath.normpath(posixpath.join(posixpath.dirname(prefix), target))
+                if new.startswith(".."):
+                    return p, hops + [f"{prefix} -> {target} (outside the source)"]
+            hops.append(f"{prefix} -> {new}")
+            p = "/".join([new] + parts[i:]).strip("/")
+            changed = True
+            break
+        if not changed:
+            break
+    return p, hops
+
+
 def ls(con, path: str = "", offset: int = 0, limit: int = 60) -> dict:
     """Immediate children of a directory in the index: sub-folders with file counts by role, then files."""
     base = path.strip("/")
