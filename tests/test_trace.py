@@ -415,3 +415,25 @@ class VerifyTests(unittest.TestCase):
                 out = tools.t_git(str(ws), "p", repo="repo", ref=[head[:7], "deadbee"])
                 self.assertTrue(out["refs"][0]["exists_in_objects"])
                 self.assertFalse(out["refs"][1]["exists_in_objects"])
+
+
+class ReconcileRoundingTests(unittest.TestCase):
+    def test_sd_of_rounded_seed_means_is_derived(self):
+        # per-eval rows: seed means 88.00/88.67/88.00 -> exact sample SD 0.3849 (prints 0.38); authors printed 0.39
+        rows = ["task,mode,train_seed,eval_seed,sr_pct"]
+        for seed, vals in ((3072, (90, 91, 83)), (3073, (90, 89, 87)), (3074, (91, 88, 85))):
+            for ev, v in zip((0, 1, 42), vals):
+                rows.append(f"pusht,direct,{seed},{ev},{v}")
+                rows.append(f"pusht,cem,{seed},{ev},{v - 3}")
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "p"
+            (src / "analysis").mkdir(parents=True)
+            (src / "analysis" / "PER_EVAL.csv").write_text("\n".join(rows) + "\n")
+            (src / "analysis" / "REPORT.md").write_text("# Result\n\n| method | SR |\n|---|---|\n| Direct | 88.22 +/- 0.39 |\n", encoding="utf-8")
+            ws = Path(tmp) / "ws"
+            tools.t_collect(str(ws), "p", str(src))
+            out = tools.t_reconcile(str(ws), "p", number="88.22")
+            item = out["occurrences"]["items"][0]
+            self.assertEqual(item["state"], "derived")
+            self.assertEqual(item["sources"][0]["sd"], "sample")
+            self.assertIn("sd_rounding", item["sources"][0])
