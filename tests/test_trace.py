@@ -396,8 +396,14 @@ class VerifyTests(unittest.TestCase):
             tools.t_collect(str(ws), "p", str(src))
             self.assertEqual(tools.t_checksum(str(ws), "p", "study-snapshot.tar.gz")["verdict"], "mismatch")
 
+            (src / "study" / "summary" / "SHA256SUMS").write_text(
+                f"{hashlib.sha256((live / 'summary' / 'SRS.json').read_bytes()).hexdigest()}  SRS.json\n" + "0" * 64 + "  FINAL.md\n" + "1" * 64 + "  GONE.md\n")
+            tools.t_collect(str(ws), "p", str(src))
+            vl = tools.t_checksum(str(ws), "p", "study/summary/SHA256SUMS")
+            self.assertEqual((vl["ok"], vl["mismatch_total"], vl["missing_files"]), (1, 1, ["GONE.md"]))
+
             cmp_ = tools.t_compare(str(ws), "p", "study", "study-snapshot.tar.gz::")
-            self.assertEqual(cmp_["only_in_a"], ["summary/SRS.json"])
+            self.assertEqual(cmp_["only_in_a"], ["summary/SHA256SUMS", "summary/SRS.json"])
             self.assertEqual(cmp_["content_differs"] + cmp_["size_differs_unhashed"], ["summary/FINAL.md"])
 
             g = tools.t_grep(str(ws), "p", '"p1/', path="queue.jsonl")

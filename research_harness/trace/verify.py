@@ -212,10 +212,78 @@ def _text(con, ws, name, path) -> str | None:
         return row[0] if row else None
 
 
+LIST_LINE = re.compile(r"^\s*([0-9a-fA-F]{64})\s+\*?(\S.*?)\s*$|^\s*(\S.*?)\s+([0-9a-fA-F]{64})\s*$")
+
+
+def verify_list(con, ws: Path, name: str, path: str, compute: bool = True, limit: int = 40) -> dict:
+    """`sha256sum -c` for a checksum list (SHA256SUMS, CODE_SHA256SUMS.txt, ...): every entry checked against the
+    file it names (index hash, else computed on the host), plus files next to the list that it does not cover."""
+    text = _text(con, ws, name, path) or ""
+    entries = []
+    for line in text.splitlines():
+        m = LIST_LINE.match(line)
+        if m:
+            h, n = (m.group(1), m.group(2)) if m.group(1) else (m.group(4), m.group(3))
+            entries.append((n.strip().lstrip("./"), h.lower()))
+    if not entries:
+        raise HarnessError(f"{path} has no `<sha256>  <name>` lines")
+    base = posixpath.dirname(path)
+    shas = {}
+    resolved = {}
+    for n, _ in entries:
+        for cand in (posixpath.normpath(posixpath.join(base, n)), n.lstrip("/")):
+            row = con.execute("SELECT sha FROM files WHERE path = ?", (cand,)).fetchone()
+            if row is not None:
+                resolved[n] = cand
+                shas[cand] = row[0]
+                break
+    todo = [p for p in resolved.values() if not shas.get(p)]
+    origin = "index hashes"
+    if todo and compute:
+        cfg = source.load(ws, name)
+        listing = "\n".join(todo[:3000]).encode()
+        cmd = f"cd {shlex.quote(cfg['root'])} && tr '\\n' '\\0' | timeout 900 xargs -0 sha256sum 2>/dev/null; true"
+        if cfg.get("host"):
+            _, raw = source._remote(cfg, cmd, 960, "checksum list", stdin=listing)
+        else:
+            raw = subprocess.run(["bash", "-c", cmd], input=listing, capture_output=True, timeout=960).stdout
+        for line in raw.decode(errors="replace").splitlines():
+            parts = line.split(None, 1)
+            if len(parts) == 2 and len(parts[0]) == 64:
+                shas[parts[1].strip().lstrip("*")] = parts[0]
+        origin += f" + {len(todo)} computed on the host"
+    ok, bad, missing, unknown = [], [], [], []
+    for n, h in entries:
+        p = resolved.get(n)
+        if p is None:
+            missing.append(n)
+        elif not shas.get(p):
+            unknown.append(n)
+        elif shas[p] == h:
+            ok.append(n)
+        else:
+            bad.append({"file": p, "listed": h[:16], "actual": shas[p][:16]})
+    listed = set(resolved.values())
+    covered_dirs = {posixpath.dirname(p) for p in listed}
+    extra = sorted(r[0] for d in covered_dirs for r in con.execute("SELECT path FROM files WHERE dir = ?", (d,))
+                   if r[0] not in listed and r[0] != path and not r[0].lower().endswith((".sha256", "sums.txt", ".md5")))
+    dup = Counter(h for _, h in entries)
+    same_hash = [[n for n, h in entries if h == x] for x, c in dup.items() if c > 1]
+    return {"list": path, "entries": len(entries), "ok": len(ok), "mismatch": bad[:limit], "mismatch_total": len(bad),
+            "missing_files": missing[:limit], "missing_total": len(missing), "not_hashed": unknown[:limit],
+            "unlisted_files_in_covered_folders": extra[:limit], "unlisted_total": len(extra),
+            "entries_sharing_a_hash": same_hash[:10], "origin": origin,
+            "verdict": "all_match" if len(ok) == len(entries) else "problems",
+            "status": "found", "limitations": ["names are resolved relative to the list's folder, then the source root"]}
+
+
 def checksum(con, ws: Path, name: str, path: str, compute: bool = True) -> dict:
     """sha256 of a file (index hash when the probe computed it, else `sha256sum` on the host) compared with every
     sidecar checksum file next to it (x.tar.gz.sha256, SHA256SUMS, ...)."""
     path = source._safe(path)
+    txt = con.execute("SELECT text FROM texts WHERE path = ?", (path,)).fetchone()
+    if txt and sum(1 for line in (txt[0] or "").splitlines()[:50] if LIST_LINE.match(line)) >= 2:
+        return verify_list(con, ws, name, path, compute)  # the path is itself a checksum list
     row = con.execute("SELECT sha, size FROM files WHERE path = ?", (path,)).fetchone()
     if row is None:
         raise HarnessError(f"{path} is not in the index; use the path printed by trace ls")
