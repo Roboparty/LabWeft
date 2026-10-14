@@ -23,6 +23,15 @@ DONE = re.compile(r"(model saved|saved (?:checkpoint|model)|max_epochs?\S*\s*(?:
                    r"trainer\.fit\(\) returned|finished training|\bfinished\b|\bcompleted?\b|exit(?:ed)? (?:with )?(?:code|status) 0|\bdone\b)", re.I)
 STEP = re.compile(r"(?:step|iter(?:ation)?)\s*[:=]?\s*(\d+)\s*/\s*(\d+)", re.I)
 EPOCH = re.compile(r"epoch\s*[:=\[]?\s*(\d+)\s*/\s*(\d+)", re.I)
+KILLED = re.compile(r"(SIGTERM|SIGKILL|death signal|\bKilled\b|Terminated|CUDA out of memory|OutOfMemoryError|Traceback \(most recent call last\)|"
+                    r"Segmentation fault|core dumped|exitcode\s*:\s*-?[1-9]|DUE TO TIME LIMIT|CANCELLED)", re.I)
+SEED_LINE = re.compile(r"(?<![_\w])(?:global[ _])?seed(?: set to|\s*[:=])\s*(\d+)", re.I)
+PATH_SEED = re.compile(r"(?:^|[_/.-])(?:s|seed|train|train_seed|rs)(\d{1,6})(?=$|[_/.-])", re.I)
+INPUT_LIKE = re.compile(r"(normali[sz]|norm_stats|statistic|stats|mean_std|vocab|split|config|hparams|args|params|meta|schema|requirements|env|"
+                        r"manifest|subset|dataset|index|episodes?_ids?)", re.I)
+PCT_COL = re.compile(r"(sr|success|rate|acc|accuracy|score|pct|percent|macro|mean|avg|average|top\d)", re.I)
+COUNT_COL = re.compile(r"(^n_|_n$|count|num_|^num|only_|both|neither|episode|_id$|^id$|row|index|step|epoch|seed|size|seconds|time)", re.I)
+REPLICATE_SEG = re.compile(r"(?:^|[_.-])(?:s|seed|train|eval|rep|run|trial|fold|r)\d+(?=$|[_.-])", re.I)
 SEEDISH = re.compile(r"(^|[._-])(seed|train_seed|eval_seed|run|name|id|output|out|dir|path|log|save|ckpt|checkpoint|resume|wandb|tag|host|gpu|port|rank|time|date)", re.I)
 
 
@@ -47,7 +56,10 @@ def _end_state(facts: dict) -> dict:
     for m in EPOCH.finditer(tail):
         epoch = (int(m.group(1)), int(m.group(2)))
     stopped = (step and step[0] < step[1]) or False
-    return {"done_marker": done, "last_step": step, "last_epoch": epoch, "stopped_mid_progress": bool(stopped) and not done,
+    killed = KILLED.search(tail)
+    return {"done_marker": done, "last_step": step, "last_epoch": epoch,
+            "stopped_mid_progress": (bool(stopped) or bool(killed)) and not done,
+            "killed_by": killed.group(0) if killed and not done else None,
             "tail": (facts.get("progress") or {}).get("tail", [])[-2:]}
 
 
@@ -59,12 +71,20 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
     for tpl, members in _groups(con, like, ("result", "result_table", "data", "other_text")).items():
         if len(members) < 3:
             continue
+        if INPUT_LIKE.search(posixpath.basename(tpl)):
+            continue  # dataset statistics / configs are legitimately identical across seeds
         by_sha = defaultdict(list)
         for m in members:
             if m["sha"] and (m["size"] or 0) >= 200:
                 by_sha[m["sha"]].append(m["path"])
         for sha, paths in by_sha.items():
             if 1 < len(paths) < len(members):  # some replicates share bytes, others do not: a copy, not a constant file
+                # mirrors of one run kept on two hosts (H20-1 vs H20-2) are copies by design: the paths must differ in a
+                # replicate segment (seed / train / eval / run number) for identical bytes to be suspicious
+                segs = [p.split("/") for p in paths]
+                diff = {i for i in range(min(map(len, segs))) if len({sg[i] for sg in segs}) > 1}
+                if not any(REPLICATE_SEG.search(sg[i]) for sg in segs for i in diff):
+                    continue
                 findings.append({"kind": "identical-replicate-content", "files": sorted(paths), "group": tpl,
                                  "evidence": f"{len(paths)} of {len(members)} files that should be independent replicates are byte-identical "
                                              f"(sha256 {sha[:12]}…)", "confidence": "high"})
@@ -80,10 +100,31 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
             finished = [p for p, e in ends.items() if e["done_marker"] or (e["last_step"] and e["last_step"][0] == e["last_step"][1])]
             for p, e in ends.items():
                 if e["stopped_mid_progress"] and len(finished) >= max(1, (len(ends) - 1) // 2):
+                    where = 'step %d/%d' % e['last_step'] if e['last_step'] else 'mid-run'
+                    why = f" after `{e['killed_by']}`" if e.get("killed_by") else ""
                     findings.append({"kind": "truncated-run", "files": [p], "group": tpl,
-                                     "evidence": f"log ends at {'step %d/%d' % e['last_step'] if e['last_step'] else 'mid-run'} with no completion "
+                                     "evidence": f"log ends at {where}{why} with no completion "
                                                  f"marker, while {len(finished)} of {len(ends) - 1} sibling logs finished",
                                      "tail": e["tail"], "siblings_finished": finished[:3], "confidence": "high"})
+        # the seed a run really used (echoed by the framework) vs the seed its folder/name claims
+        recorded = {}
+        for p, f in facts.items():
+            text = "\n".join((f.get("head") or []) + ((f.get("progress") or {}).get("tail") or []))
+            got = {int(x) for x in SEED_LINE.findall(text)}
+            claim = [int(x) for x in PATH_SEED.findall(posixpath.dirname(p))]
+            if got and claim:
+                # every number in the run's folder names counts (train AND eval seeds are both legitimate)
+                nums = {int(x) for x in DIGITS.findall("/".join(posixpath.dirname(p).split("/")[-3:]))}
+                recorded[p] = (claim[-1], got, nums)
+        agree = [p for p, (c, g, n) in recorded.items() if g & n]
+        claimed = {c for c, _, _ in recorded.values()}
+        if len(agree) >= 2:
+            for p, (c, g, n) in recorded.items():
+                if not (g & n) and (g & claimed):
+                    findings.append({"kind": "seed-mismatch", "files": [p], "group": tpl,
+                                     "evidence": f"the run is labelled seed {c} (path) but its log records seed {sorted(g)}, the seed of a "
+                                                 f"sibling run; {len(agree)} sibling runs record the seed their label claims",
+                                     "confidence": "high"})
         args = {p: f.get("launch_args") or {} for p, f in facts.items() if f.get("launch_args")}
         if len(args) >= 3:
             keys = Counter(k for a in args.values() for k in a)
@@ -191,10 +232,11 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
         if len(nums) < 4:
             continue
         med = sorted(abs(v) for v in nums)[len(nums) // 2]
-        if med < 5:
+        # only percentage-like metric columns: success/accuracy/score/macro/mean values in 0..100
+        if med < 5 or max(nums) > 100.0001 or min(nums) < 0 or not PCT_COL.search(key[6:]) or COUNT_COL.search(key[6:]):
             continue
         for loc, v in vals:
-            if v and abs(v) * 50 < med and abs(v * 100 - med) < 0.6 * med:
+            if v and 0 < v <= 1 and abs(v) * 50 < med and abs(v * 100 - med) < 0.6 * med:
                 findings.append({"kind": "scale-outlier", "files": [path], "locator": loc,
                                  "evidence": f"{key[6:]} = {v:.4g} while the column's median is {med:.4g} (looks like a fraction among percentages)",
                                  "confidence": "high"})
@@ -209,12 +251,15 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
                 findings.append({"kind": "mixed-sd-convention", "files": [d["report"]],
                                  "evidence": "; ".join(f"{k}: {', '.join(v)}" for k, v in d["mixed_sd_conventions"].items()),
                                  "confidence": "medium"})
+    findings += _value_outliers(con, like)
+    findings += _checksum_lists(con, rng)
     # 8./9. mean ± SD pairs printed in reports, compared across documents
     findings += _report_pairs(con, rng)
     findings += _row_counts(con, rng)
     order = {"identical-replicate-content": 0, "truncated-run": 1, "setting-outlier": 2, "aggregate-mismatch": 3,
              "scale-outlier": 4, "mixed-sd-convention": 5, "referenced-file-missing": 6, "report-number-disagrees": 7,
-             "cites-flagged-study": 8, "table-row-count-mismatch": 9}
+             "cites-flagged-study": 8, "table-row-count-mismatch": 9, "seed-mismatch": 1, "result-setting-outlier": 2,
+             "duplicate-checksum": 3}
     findings.sort(key=lambda f: (order.get(f["kind"], 9), f["files"][0]))
     return result("found" if findings else "not_found", con, scope=scope, by_kind=dict(Counter(f["kind"] for f in findings)),
                   findings=page(findings, offset, limit),
@@ -352,4 +397,95 @@ def _row_counts(con, rng) -> list[dict]:
                                     break
                     out.append({"kind": "table-row-count-mismatch", "files": [p, j], "evidence": ev, "confidence": "high"})
                     break
+    return out
+
+
+DATEISH = re.compile(r"20\d\d[-_]?\d\d[-_]?\d\d|\d\d:\d\d")
+
+
+def _value_outliers(con, like) -> list[dict]:
+    """Result files of replicate runs record their settings (checkpoint, policy, protocol). A string setting whose
+    shape (digits ignored) differs from the one every sibling shares is a lead: e.g. one evaluation loaded
+    `.../run_s3074/weights.pt` while all others loaded `.../run_s#_pbn16384/weights.pt`."""
+    out = []
+    for tpl, members in _groups(con, like, ("result",)).items():
+        if len(members) < 4 or len(members) > 400:
+            continue
+        vals = defaultdict(dict)
+        for m in members:
+            for k, v in con.execute("SELECT c.key, c.value FROM config_t c JOIN files f ON f.fid = c.fid WHERE f.path = ? AND c.num IS NULL",
+                                    (m["path"],)):
+                if SEEDISH.search(k.rsplit(".", 1)[-1]) and not re.search(r"(checkpoint|ckpt|policy|model|weights)", k, re.I):
+                    continue
+                if not isinstance(v, str) or len(v) > 300 or re.search(r"(time|date|_at$|host|node|pid|uuid|hash|sha)", k, re.I):
+                    continue
+                vals[k][m["path"]] = DIGITS.sub("#", v)
+        # paths a result file names (checkpoint, policy dir): same comparison on their digit-free shape
+        refs = {}
+        for m in members:
+            refs[m["path"]] = {DIGITS.sub("#", r[0]): r[0] for r in con.execute(
+                "SELECT t.raw FROM refs_t t JOIN files f ON f.fid = t.src WHERE f.path = ?", (m["path"],)) if "/" in r[0]}
+        have = [p for p, r in refs.items() if r]
+        if len(have) >= 4:
+            count = Counter(t for p in have for t in refs[p])
+            for p in have:
+                missing = [t for t, n in count.items() if n == len(have) - 1 and t not in refs[p]]
+                unique = [t for t in refs[p] if count[t] == 1]
+                if missing and unique:
+                    sib = next(q for q in have if missing[0] in refs[q])
+                    out.append({"kind": "result-setting-outlier", "files": [p], "group": tpl, "setting": "referenced path",
+                                "evidence": f"names {refs[p][unique[0]][-160:]} where all {len(have) - 1} siblings name the shape "
+                                            f"{refs[sib][missing[0]][-160:]}", "siblings": [sib], "confidence": "medium"})
+        for k, per in vals.items():
+            if len(per) < 4:
+                continue
+            shapes = Counter(per.values())
+            if len(shapes) != 2:
+                continue
+            (major, mc), (minor, nc) = shapes.most_common()
+            if nc == 1 and mc >= 3:
+                odd = next(p for p, v in per.items() if v == minor)
+                raw = con.execute("SELECT c.value FROM config_t c JOIN files f ON f.fid = c.fid WHERE f.path = ? AND c.key = ?", (odd, k)).fetchone()[0]
+                sib = next(p for p, v in per.items() if v == major)
+                sraw = con.execute("SELECT c.value FROM config_t c JOIN files f ON f.fid = c.fid WHERE f.path = ? AND c.key = ?", (sib, k)).fetchone()[0]
+                out.append({"kind": "result-setting-outlier", "files": [odd], "group": tpl, "setting": k,
+                            "evidence": f"{k} = {raw[:160]} here, while {mc} sibling results record the shape {sraw[:160]}",
+                            "siblings": [sib], "confidence": "medium"})
+    return out
+
+
+SUM_LINE = re.compile(r"^\s*(?:([0-9a-fA-F]{64})\s+\*?(\S.*?)|(\S.*?)\s+([0-9a-fA-F]{64}))\s*$")
+
+
+def _checksum_lists(con, rng) -> list[dict]:
+    """A checksum list (SHA256SUMS, *_sha.txt) giving two replicates (names differing only in digits) the same hash:
+    either one entry was copied over the other or two 'independent' seeds are one file. Cross-checked against
+    checksums recorded elsewhere (result files that store `checkpoint_sha256`)."""
+    out = []
+    for path, text in con.execute("SELECT f.path, t.text FROM texts_t t JOIN files f ON f.fid = t.fid WHERE t.fid BETWEEN ? AND ? "
+                                  "AND (lower(f.path) LIKE '%sha%' OR lower(f.path) LIKE '%sum%' OR lower(f.path) LIKE '%checksum%')", rng):
+        by_hash = defaultdict(list)
+        for line in (text or "").splitlines():
+            m = SUM_LINE.match(line)
+            if m:
+                h, name = (m.group(1), m.group(2)) if m.group(1) else (m.group(4), m.group(3))
+                by_hash[h.lower()].append(name.strip())
+        for h, names in by_hash.items():
+            names = sorted(set(names))
+            if len(names) < 2:
+                continue
+            tpls = {DIGITS.sub("#", n) for n in names}
+            if len(tpls) == 1:
+                other = []
+                for n in names:
+                    stem = posixpath.basename(n.rstrip("/"))
+                    for (v,) in con.execute("SELECT c.value FROM config_t c JOIN tokens_t t ON t.fid = c.fid WHERE t.token = ? "
+                                            "AND c.key LIKE '%sha256%' LIMIT 20", (stem,)):
+                        vv = str(v).strip('"').lower()
+                        if len(vv) == 64 and vv != h:
+                            other.append(f"{stem}: {vv[:12]}…")
+                out.append({"kind": "duplicate-checksum", "files": [path],
+                            "evidence": f"{len(names)} replicate entries share sha256 {h[:12]}…: {', '.join(names[:4])}"
+                                        + (f"; other files record a different hash for {', '.join(sorted(set(other))[:3])}" if other else ""),
+                            "confidence": "high" if other else "medium"})
     return out

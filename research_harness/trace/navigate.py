@@ -37,17 +37,26 @@ def ls(con, path: str = "", offset: int = 0, limit: int = 60) -> dict:
         else:
             files.append({"name": rest, "role": r["role"] or r["kind"], "size": r["size"], "status": r["status"],
                           "title": (r["title"] or "")[:100] or None})
-    empty = []
-    try:  # folders that exist but hold no file (recorded by probe v7)
-        for (p,) in con.execute("SELECT path FROM skips WHERE kind = 'empty_dir' AND path LIKE ?", (prefix + "%",)):
+    empty, special = [], []
+    try:  # folders that exist but hold no file (probe v7), symlinks, skipped cache folders: present, not indexed
+        for p, kind, reason in con.execute("SELECT DISTINCT path, kind, reason FROM skips WHERE path LIKE ?", (prefix + "%",)):
             rest = p[len(prefix):]
-            if rest and "/" not in rest:
+            if not rest:
+                continue
+            if "/" in rest:
+                if rest.split("/", 1)[0] not in dirs:
+                    dirs.setdefault(rest.split("/", 1)[0], Counter())  # a tree holding only empty/skipped entries
+            elif kind == "empty_dir":
                 empty.append(rest)
-            elif rest and rest.split("/", 1)[0] not in dirs:
-                dirs.setdefault(rest.split("/", 1)[0], Counter())  # a tree of only empty folders
+            elif kind in ("symlink", "skip_dir", "nfs_orphan", "bulk"):
+                entry = {"name": rest, "kind": kind}
+                if kind == "symlink":
+                    entry["target"] = reason if reason and reason != "None" else "not recorded (probe < v8): `read --live` or ssh readlink"
+                    entry["note"] = "symbolic link: present in the folder, its target is not scanned"
+                special.append(entry)
     except Exception:
         pass
-    if not dirs and not files and not empty:
+    if not dirs and not files and not empty and not special:
         is_empty = con.execute("SELECT 1 FROM skips WHERE kind = 'empty_dir' AND path = ?", (base,)).fetchone() if base else None
         if is_empty:
             return result("found", con, path=prefix, entries=page([], 0, limit), note="folder exists and is empty")
@@ -56,7 +65,7 @@ def ls(con, path: str = "", offset: int = 0, limit: int = 60) -> dict:
     entries = [{"dir": name + "/", "files": sum(c.values()), "roles": dict(c.most_common(5)),
                 "flag": bool(PATH_FLAG.search(name)), **({"empty_tree": True} if not c else {})} for name, c in sorted(dirs.items())]
     entries += [{"dir": name + "/", "files": 0, "empty": True} for name in sorted(empty) if name not in dirs]
-    entries += sorted(files, key=lambda f: f["name"])
+    entries += sorted(files + [e for e in special if e["name"] not in dirs], key=lambda f: f["name"])
     return result("found", con, path=prefix or "/", entries=page(entries, offset, limit))
 
 
@@ -72,7 +81,12 @@ def _exists(con, path: str) -> bool:
     p = path.rstrip("/")
     if con.execute("SELECT 1 FROM files WHERE path = ?", (p,)).fetchone():
         return True
-    return con.execute("SELECT 1 FROM files WHERE path >= ? AND path < ? LIMIT 1", (p + "/", p + "0")).fetchone() is not None
+    if con.execute("SELECT 1 FROM files WHERE path >= ? AND path < ? LIMIT 1", (p + "/", p + "0")).fetchone() is not None:
+        return True
+    try:  # symlinks, empty and skipped folders are present too
+        return con.execute("SELECT 1 FROM skips WHERE path = ? OR (path >= ? AND path < ?) LIMIT 1", (p, p + "/", p + "0")).fetchone() is not None
+    except Exception:
+        return False
 
 
 def validity(con, scope: str | None = None, offset: int = 0, limit: int = 30) -> dict:

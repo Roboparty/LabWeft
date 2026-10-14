@@ -332,7 +332,9 @@ def _local_grep(con, pattern, sub, include, regex, limit, per_file):
            "matching_lines_total": sum(c["matching_lines"] for c in counts),
            "truncated": len(hits) >= limit or any(c["matching_lines"] > per_file for c in counts), "hits": hits,
            "unsnapshotted_text_files_in_scope": unsnap,
-           "limitations": ([f"{unsnap} text-like files in scope have no snapshot (large or binary-ish): --live searches them on the host"]
+           "exhaustive": not unsnap,
+           "limitations": ([f"NOT exhaustive: {unsnap} text-like files in scope have no snapshot (large, or indexed by an older probe); "
+                            "hits there are missing — repeat with --live (or a narrower --path) before claiming 'only these files'"]
                            if unsnap else ["every text-like file in scope has a snapshot: absence here is exhaustive for the scan date"])}
     if len(counts) > 1 or (counts and counts[0]["matching_lines"] > len([h for h in hits if h["path"] == counts[0]["path"]])):
         out["matching_lines_per_file"] = sorted(counts, key=lambda c: -c["matching_lines"])[:30]
