@@ -183,3 +183,14 @@ while required questions remain open.
   checkpoint/config of a different shape than all its siblings) and `duplicate-checksum` (two replicates share
   one hash in a checksum list). It does not check time ordering (a summary generated before a result it
   includes): compare `generated_at` / `updated_at` fields with `find` when a summary claims completeness.
+
+## Round-10 notes
+
+- `audit` also reports `duplicated-table-row` (two rows of one markdown table with different labels and identical
+  numbers), `declared-checksum-mismatch` (a document or manifest states a sha256 for a file that now hashes
+  differently), `summary-predates-run` (a summary stamped `generated_at T` names runs whose results finished after
+  T), and verbatim categorical outliers among sibling result files (e.g. one evaluation with `benchmark_version` v0.7
+  while all others record v0.8).
+- `count` includes files inside skipped cache/.git folders as `files_including_skipped_folders` (the `find | wc -l`
+  answer); `ls`/`count`/`compare` follow symlinked folders inside the source and report `followed_symlinks`.
+- Every CLI call has a hard limit (LABWEFT_TRACE_TIMEOUT, default 600 s) and answers `unknown` when it is hit.

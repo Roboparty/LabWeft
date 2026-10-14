@@ -499,3 +499,28 @@ class SymlinkTests(unittest.TestCase):
             self.assertEqual(out["status"], "found")
             self.assertTrue(out["followed_symlinks"])
             self.assertEqual(tools.t_count(str(ws), "p", path="phases/phase9")["files"], 1)
+
+
+class AuditRound10Tests(unittest.TestCase):
+    def test_duplicate_row_declared_hash_and_version_drift(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "p"
+            rep = src / "study" / "report"
+            rep.mkdir(parents=True)
+            (rep / "REPORT.md").write_text("# R\n\n| arm | a | b | c |\n|---|---|---|---|\n| VIS (1.5) | 71.33 ± 8.19 | 21.11 ± 2.83 | 82.78 |\n"
+                                           "| VIS (4.5) | 71.33 ± 8.19 | 21.11 ± 2.83 | 82.78 |\n| QQ | 37.67 ± 3.4 | 18.89 ± 5.9 | 58.11 |\n", encoding="utf-8")
+            res = src / "study" / "results"
+            res.mkdir()
+            (res / "COMPLETION.json").write_text('{"done": 504, "failed": 0}\n')
+            (res / "AUDIT.md").write_text("# Audit\n\n- COMPLETION.json sha256 " + "a" * 64 + "\n", encoding="utf-8")
+            for i in range(6):
+                d = res / "eval" / f"run_s{i}"
+                d.mkdir(parents=True)
+                (d / "seed_0.json").write_text(json.dumps({"benchmark_version": "v0.7" if i == 3 else "v0.8", "success": 70 + i}))
+            ws = Path(tmp) / "ws"
+            tools.t_collect(str(ws), "p", str(src))
+            kinds = {f["kind"] for f in tools.t_audit(str(ws), "p")["findings"]["items"]}
+            self.assertIn("duplicated-table-row", kinds)
+            self.assertIn("declared-checksum-mismatch", kinds)
+            self.assertIn("result-setting-outlier", kinds)

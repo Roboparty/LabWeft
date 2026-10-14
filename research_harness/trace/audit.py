@@ -252,6 +252,8 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
                                  "evidence": "; ".join(f"{k}: {', '.join(v)}" for k, v in d["mixed_sd_conventions"].items()),
                                  "confidence": "medium"})
     findings += _stale_summaries(con, rng)
+    findings += _duplicate_rows(con, rng)
+    findings += _declared_hashes(con, rng)
     findings += _summary_before_runs(con, rng)
     findings += _value_outliers(con, like)
     findings += _checksum_lists(con, rng)
@@ -261,7 +263,7 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
     order = {"identical-replicate-content": 0, "truncated-run": 1, "setting-outlier": 2, "aggregate-mismatch": 3,
              "scale-outlier": 4, "mixed-sd-convention": 5, "referenced-file-missing": 6, "report-number-disagrees": 7,
              "cites-flagged-study": 8, "table-row-count-mismatch": 9, "seed-mismatch": 1, "result-setting-outlier": 2,
-             "duplicate-checksum": 3, "summary-older-than-inputs": 4, "summary-predates-run": 4}
+             "duplicate-checksum": 3, "summary-older-than-inputs": 4, "summary-predates-run": 4, "duplicated-table-row": 3, "declared-checksum-mismatch": 2}
     findings.sort(key=lambda f: (order.get(f["kind"], 9), f["files"][0]))
     return result("found" if findings else "not_found", con, scope=scope, by_kind=dict(Counter(f["kind"] for f in findings)),
                   findings=page(findings, offset, limit),
@@ -410,10 +412,15 @@ def _value_outliers(con, like) -> list[dict]:
     shape (digits ignored) differs from the one every sibling shares is a lead: e.g. one evaluation loaded
     `.../run_s3074/weights.pt` while all others loaded `.../run_s#_pbn16384/weights.pt`."""
     out = []
-    for tpl, members in _groups(con, like, ("result",)).items():
-        if len(members) < 4 or len(members) > 400:
+    for tpl, members in _groups(con, like, ("result", "config")).items():
+        # evaluation wrappers are sometimes classed as config; real configs (yaml, hydra dumps) vary by design
+        members = [m for m in members if "::" not in m["path"] and (m["role"] == "result" or m["path"].endswith(".json"))
+                   and "/.hydra/" not in m["path"]]
+        if len(members) < 4 or len(members) > 3000:
             continue
         vals = defaultdict(dict)
+        raw_vals = defaultdict(dict)
+        shape_reported = set()
         for m in members:
             for k, v in con.execute("SELECT c.key, c.value FROM config_t c JOIN files f ON f.fid = c.fid WHERE f.path = ? AND c.num IS NULL",
                                     (m["path"],)):
@@ -422,10 +429,18 @@ def _value_outliers(con, like) -> list[dict]:
                 if not isinstance(v, str) or len(v) > 300 or re.search(r"(time|date|_at$|host|node|pid|uuid|hash|sha)", k, re.I):
                     continue
                 vals[k][m["path"]] = DIGITS.sub("#", v)
+                if len(v) <= 40 and "/" not in v:
+                    raw_vals[k][m["path"]] = v
+            # version/protocol strings are often not kept as settings: read them from the JSON text
+            t = con.execute("SELECT t.text FROM texts_t t JOIN files f ON f.fid = t.fid WHERE f.path = ?", (m["path"],)).fetchone()
+            if t and t[0] and t[0].lstrip().startswith("{"):
+                for vk, vv in VERSION_FIELD.findall(t[0][:20000]):
+                    raw_vals["text:" + vk][m["path"]] = vv
         # paths a result file names (checkpoint, policy dir): same comparison on their digit-free shape
         refs = {}
         for m in members:
-            refs[m["path"]] = {DIGITS.sub("#", r[0]): r[0] for r in con.execute(
+            # shape of the last three components only: the same checkpoint relayed via /data vs /data2 is not an outlier
+            refs[m["path"]] = {DIGITS.sub("#", "/".join(r[0].split("/")[-3:])): r[0] for r in con.execute(
                 "SELECT t.raw FROM refs_t t JOIN files f ON f.fid = t.src WHERE f.path = ?", (m["path"],)) if "/" in r[0]}
         have = [p for p, r in refs.items() if r]
         if len(have) >= 4:
@@ -438,8 +453,20 @@ def _value_outliers(con, like) -> list[dict]:
                     out.append({"kind": "result-setting-outlier", "files": [p], "group": tpl, "setting": "referenced path",
                                 "evidence": f"names {refs[p][unique[0]][-160:]} where all {len(have) - 1} siblings name the shape "
                                             f"{refs[sib][missing[0]][-160:]}", "siblings": [sib], "confidence": "medium"})
+        for k, per in raw_vals.items():
+            # short categorical settings (benchmark version, protocol, scorer) compared verbatim
+            if len(per) < 4 or k in shape_reported:
+                continue
+            c = Counter(per.values())
+            if len(c) == 2:
+                (major, mc), (minor, nc) = c.most_common()
+                if nc == 1 and mc >= 3:
+                    odd = next(p for p, v in per.items() if v == minor)
+                    shape_reported.add(k.removeprefix("text:"))
+                    out.append({"kind": "result-setting-outlier", "files": [odd], "group": tpl, "setting": k,
+                                "evidence": f"{k} = {minor} here, while all {mc} sibling results record {major}", "confidence": "high"})
         for k, per in vals.items():
-            if len(per) < 4:
+            if len(per) < 4 or k in shape_reported:
                 continue
             shapes = Counter(per.values())
             if len(shapes) != 2:
@@ -456,6 +483,7 @@ def _value_outliers(con, like) -> list[dict]:
     return out
 
 
+VERSION_FIELD = re.compile(r'"([\w.]*(?:version|protocol|scorer|benchmark|evaluator|manifest_version)[\w.]*)"\s*:\s*"([^"/]{1,40})"', re.I)
 SUM_LINE = re.compile(r"^\s*(?:([0-9a-fA-F]{64})\s+\*?(\S.*?)|(\S.*?)\s+([0-9a-fA-F]{64}))\s*$")
 
 
@@ -603,4 +631,82 @@ def _summary_before_runs(con, rng) -> list[dict]:
             out.append({"kind": "summary-predates-run", "files": [path] + [p for p, _ in late[:3]],
                         "evidence": f"stamped {fmt(gen)}, but {len(late)} result file(s) of runs it names finished later "
                                     f"(latest {late[0][0]} at {fmt(late[0][1])})", "confidence": "medium"})
+    return out
+
+
+ROW_NUM = re.compile(r"[-+]?\d+\.\d+")
+
+
+def _duplicate_rows(con, rng) -> list[dict]:
+    """Two rows of one markdown table with different labels but identical numbers (>= 3 decimals each): the classic
+    copy-paste error when a table is edited by hand."""
+    out = []
+    for path, text in con.execute("SELECT f.path, t.text FROM texts_t t JOIN files f ON f.fid = t.fid WHERE t.fid BETWEEN ? AND ? "
+                                  "AND f.role = 'report' AND f.ext IN ('.md', '.markdown')", rng):
+        block = []
+        for n, line in enumerate((text or "").splitlines() + [""], 1):
+            if line.strip().startswith("|"):
+                block.append((n, line))
+                continue
+            if len(block) >= 3:
+                seen = {}
+                for ln, row in block:
+                    cells = [c.strip(" *`") for c in row.strip().strip("|").split("|")]
+                    # the first cell is the row label even when it holds a number ("VISReg-z (4.5)")
+                    nums = tuple(x for c in cells[1:] for x in ROW_NUM.findall(c))
+                    label = " | ".join([cells[0]] + [c for c in cells[1:] if c and not ROW_NUM.search(c)])[:80]
+                    informative = [x for x in nums if float(x) not in (0.0, 1.0, 100.0)]
+                    if len(nums) >= 4 and len(set(informative)) >= 3:
+                        if nums in seen and seen[nums][1] != label:
+                            if abs(ln - seen[nums][0]) > 40:
+                                continue  # far apart: probably two tables quoting the same result
+                            out.append({"kind": "duplicated-table-row", "files": [path], "locator": f"lines {seen[nums][0]} and {ln}",
+                                        "evidence": f"rows '{seen[nums][1]}' and '{label}' carry identical numbers ({', '.join(nums[:5])}...)",
+                                        "confidence": "high" if len(nums) >= 5 else "medium"})
+                        seen.setdefault(nums, (ln, label))
+            block = []
+    return out
+
+
+HASH64 = re.compile(r"\b[0-9a-f]{64}\b")
+FNAME = re.compile(r"[\w./-]+\.(?:json|csv|md|txt|yaml|yml|py|log|tsv|jsonl)\b")
+
+
+def _declared_hashes(con, rng) -> list[dict]:
+    """A document or manifest states `<file> ... <sha256>`; the indexed file has a different sha256 (edited after the
+    audit, or the audit was copied from elsewhere). Only files the probe hashed are compared."""
+    out, seen, bad = [], set(), {}
+    for path, text in con.execute("SELECT f.path, t.text FROM texts_t t JOIN files f ON f.fid = t.fid WHERE t.fid BETWEEN ? AND ? "
+                                  "AND f.role IN ('report', 'manifest', 'result', 'other_text')", rng):
+        if not text or "sha" not in text.lower():
+            continue
+        base = posixpath.dirname(path)
+        lines = text.splitlines()
+        for i, line in enumerate(lines):
+            hs = HASH64.findall(line.lower())
+            if len(hs) != 1:
+                continue
+            names = FNAME.findall(line) or (FNAME.findall(lines[i - 1]) if i else [])
+            for nm in names[:2]:
+                nm = nm.strip("./") if not nm.startswith("../") else nm
+                cands = [posixpath.normpath(posixpath.join(base, nm)), posixpath.normpath(posixpath.join(posixpath.dirname(base), nm)), nm]
+                row = None
+                for c in cands:
+                    row = con.execute("SELECT path, sha FROM files WHERE path = ?", (c,)).fetchone()
+                    if row:
+                        break
+                if not row or not row[1] or row[0] == path:
+                    continue
+                key = (row[0], hs[0])
+                if key in seen:
+                    continue
+                seen.add(key)
+                if row[1] != hs[0]:
+                    bad.setdefault(path, []).append((i + 1, row[0], hs[0], row[1]))
+    for path, items in bad.items():
+        ln, f, h, a = items[0]
+        out.append({"kind": "declared-checksum-mismatch", "files": [f, path], "locator": f"{path} line {ln}",
+                    "evidence": f"{path} declares sha256 {h[:12]}… for {f}, the file's sha256 is {a[:12]}…"
+                                + (f"; {len(items) - 1} more listed file(s) differ ({', '.join(x[1] for x in items[1:4])})" if len(items) > 1 else ""),
+                    "confidence": "high" if len(items) <= 3 else "medium"})
     return out
