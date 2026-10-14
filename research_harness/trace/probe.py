@@ -24,9 +24,9 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 
-PROBE_VERSION = "6"
+PROBE_VERSION = "7"
 BULK_MIN_FILES = 5000
-RESUME_COMPATIBLE = {"5", "6"}  # v5 lacks only JSON declared facts; reuse its parse work on huge trees
+RESUME_COMPATIBLE = {"7"}  # v5 lacks only JSON declared facts; reuse its parse work on huge trees
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", ".mypy_cache", ".pytest_cache",
              ".ipynb_checkpoints", "wandb-cache", ".cache", ".research"}
 SENSITIVE = re.compile(r"(^|[._-])(secret|secrets|token|credentials?|password|passwd|id_rsa|id_ed25519|netrc)([._-]|$)|\.env$|\.pem$|\.key$", re.I)
@@ -327,6 +327,26 @@ def py_facts(text, facts):
     return ("script" if is_entry else "module"), " ".join(literals)
 
 
+HYDRA_KV = re.compile(r"(?:^|\s)(\+{0,2}[A-Za-z_][\w.\-]{0,60})=([^\s\"']{1,120})")
+FLAG_KV = re.compile(r"(?:^|\s)--([A-Za-z][\w\-]{0,60})(?:=|\s+)([^\s\-][^\s]{0,119})")
+
+
+def launch_args(text):
+    """Settings stated on a command line: Hydra overrides and --flags. Only lines that look like a command."""
+    out = {}
+    for line in text.splitlines():
+        if not re.search(r"(\.py\b|python|torchrun|accelerate|deepspeed|\bcmd\b|command|\bargs?\b)", line, re.I):
+            continue
+        for k, v in HYDRA_KV.findall(line):
+            k = k.lstrip("+")
+            if len(out) < 120 and not SECRET_VALUE.search(f"{k}={v}"):
+                out.setdefault(k, v)
+        for k, v in FLAG_KV.findall(line):
+            if len(out) < 120 and not SECRET_VALUE.search(f"{k}={v}"):
+                out.setdefault("--" + k, v)
+    return out
+
+
 def line_facts(text, facts, doc):
     lines = text.splitlines()
     cmds, numbers, outline, kv, errors = [], [], [], {}, 0
@@ -436,7 +456,8 @@ def peek_archive(path, rel, mtime, max_text, max_members=5000, max_read=64 * 102
                 data = tf.extractfile(info).read() if take else None
                 read_total += len(data or b"")
                 members.append(member(info.name, info.size, data))
-    return members, {"members_listed": listed, "bytes_read": read_total, "complete": listed < max_members}
+    return members, {"members_listed": listed, "bytes_read": read_total, "complete": listed < max_members,
+                     "truncated": listed >= max_members, "note": "member list capped" if listed >= max_members else None}
 
 
 def analyze(root, rel, size, mtime, max_text, _raw=None, max_archive=128 * 1024 * 1024):
@@ -459,8 +480,25 @@ def analyze(root, rel, size, mtime, max_text, _raw=None, max_archive=128 * 1024 
                 kind = sniff_kind(rel, ext, head)
                 rec["k"] = kind
                 if kind != "text":
+                    if kind in ("archive", "binary") and size <= max_archive:
+                        # declared checksums (*.sha256, manifests) of bundles and tarballs must be checkable
+                        h = hashlib.sha256(head)
+                        for chunk in iter(lambda: fh.read(1 << 20), b""):
+                            h.update(chunk)
+                        rec["h"] = h.hexdigest()
                     if kind == "archive" and ARCHIVE_RE.search(rel):
                         if size > max_archive:
+                            if rel.lower().endswith(".tar"):
+                                # an uncompressed tar can be listed by seeking from header to header: names and sizes
+                                # without reading payloads, so its contents are still discoverable
+                                try:
+                                    members, info = peek_archive(path, rel, mtime, 0, max_read=0)
+                                    rec.update(st="parsed", role="archive", r="archive_listed_only",
+                                               f={"archive": dict(info, contents="names only; read members live"),
+                                                  "title": os.path.basename(rel)}, members=members)
+                                    return rec
+                                except Exception:
+                                    pass
                             rec.update(st="metadata_only", r="archive_too_large")
                             return rec
                         try:
@@ -533,6 +571,15 @@ def analyze(root, rel, size, mtime, max_text, _raw=None, max_archive=128 * 1024 
         doc = role in ("report", "page", "notebook", "bib")
         if role not in ("result", "result_table", "config", "manifest", "data", "broken_json"):
             line_facts(text, facts, doc)
+        if role in ("launcher", "log", "other_text"):
+            # The first lines of a log usually echo the launch command (Hydra `a.b=c` overrides, `--flag value`):
+            # the effective settings of this run, which an auditor compares across replicate runs.
+            head = [l.strip()[:400] for l in text.splitlines()[:40] if l.strip()][:8]
+            if head:
+                facts["head"] = [redact(h) for h in head[:5]]
+            args = launch_args("\n".join(head + [c[1] for c in facts.get("cmds", [])][:5]))
+            if args:
+                facts["launch_args"] = args
         if role == "launcher" or role == "log":
             joined = "\n".join(c[1] for c in facts.get("cmds", []))
             facts["writes"] = sorted(set(WRITE_FLAG.findall(joined)))[:60]
@@ -576,6 +623,10 @@ def walk(root, excludes, deadline):
             yield ("dir_error", cur, type(exc).__name__, None)
             continue
         entries.sort(key=lambda e: e.name)
+        if not entries and cur:
+            # "the folder is there but empty" is itself evidence (a study that was planned, cleaned or never synced)
+            yield ("empty_dir", cur, None, None)
+            continue
         subdirs = []
         # A person glances at a 200k-image dataset folder and moves on: summarize bulk binary directories
         # (many files, sample all non-text) instead of stat-ing every file. Sub-directories are still walked.
@@ -598,6 +649,21 @@ def walk(root, excludes, deadline):
                     continue
                 if e.name.startswith(".nfs"):  # NFS silly-rename of a deleted-but-open file; reads can hang
                     yield ("nfs_orphan", rel, None, None)
+                    continue
+                if e.is_dir() and e.name == ".git":
+                    # which commit a checkout is really at: a few tiny ref files, never objects or config (may hold tokens)
+                    for sub in (".git/HEAD", ".git/ORIG_HEAD", ".git/FETCH_HEAD", ".git/packed-refs", ".git/logs/HEAD"):
+                        fp = os.path.join(root, cur, sub) if cur else os.path.join(root, sub)
+                        if os.path.isfile(fp):
+                            st2 = os.stat(fp)
+                            yield ("file", (cur + "/" + sub) if cur else sub, st2.st_size, st2.st_mtime)
+                    for base, _, names in os.walk(os.path.join(root, cur, ".git", "refs") if cur else os.path.join(root, ".git", "refs")):
+                        for nm in names[:200]:
+                            fp = os.path.join(base, nm)
+                            relp = os.path.relpath(fp, root).replace(os.sep, "/")
+                            st2 = os.stat(fp)
+                            yield ("file", relp, st2.st_size, st2.st_mtime)
+                    yield ("skip_dir", rel, "git objects not read", None)
                     continue
                 if e.is_dir():
                     if e.name in SKIP_DIRS or any(re.search(x, rel) for x in excludes):
