@@ -158,6 +158,32 @@ class TraceTests(unittest.TestCase):
         alts = [a["study"] for a in flagged[0].get("unflagged_alternatives", [])]
         self.assertIn("mechanism_goal_7local_rawgoal", alts)
 
+    def test_round7_audit_finds_planted_inconsistencies(self):
+        import shutil
+        base = self.src / "study"
+        for seed, lr in ((1, "5e-4"), (2, "5e-4"), (3, "1e-3")):
+            run = base / f"train{seed}"
+            run.mkdir(parents=True)
+            steps = "\n".join(f"[Epoch 0/1] step {i}/500" for i in range(100, 501 if seed != 2 else 301, 100))
+            done = "\nModel saved to weights_epoch_1.pt" if seed != 2 else ""
+            (run / "train.log").write_text(f"python train.py optimizer.lr={lr} seed={seed}\n{steps}{done}\n", encoding="utf-8")
+            (run / "result.json").write_text(json.dumps({"seed": seed, "successes": 80 + seed, "episode_successes": [1, 0] * 60,
+                                                         "note": "x" * 200}), encoding="utf-8")
+        shutil.copy(base / "train1" / "result.json", base / "train3" / "result.json")  # a copied replicate
+        (base / "summary.json").write_text(json.dumps({"cells": [{"macro": [95.0], "tasks": {"a": 90.0, "b": 92.0}}]}), encoding="utf-8")
+        (base / "table.csv").write_text("task,epoch,sr\na,1,80.5\na,2,85.1\na,3,0.871\na,4,88.2\na,5,89.0\n", encoding="utf-8")
+        ws2 = self.ws.parent / "ws-audit"
+        tools.t_collect(str(ws2), "proj", str(self.src))
+        out = tools.t_audit(str(ws2), "proj", scope="study")
+        kinds = out["by_kind"]
+        self.assertEqual(kinds.get("identical-replicate-content"), 1, out)
+        self.assertEqual(kinds.get("truncated-run"), 1, out)
+        self.assertEqual(kinds.get("setting-outlier"), 1, out)
+        self.assertEqual(kinds.get("aggregate-mismatch"), 1, out)
+        self.assertEqual(kinds.get("scale-outlier"), 1, out)
+        trunc = next(f for f in out["findings"]["items"] if f["kind"] == "truncated-run")
+        self.assertTrue(trunc["files"][0].endswith("train2/train.log"))
+
     def test_provenance_and_xrefs(self):
         out = analyze.provenance(self.con, "results/sweep/aw0.1_lw0.1_rh1_s7/result.json")
         self.assertEqual(out["status"], "found")
