@@ -214,9 +214,16 @@ def validity(con, scope: str | None = None, offset: int = 0, limit: int = 30) ->
         shas = {c["sha"] for c in copies if c["sha"]}
         if len(shas) > 1 and len(copies) <= 12:
             copies.sort(key=lambda c: -(c["mtime"] or 0))
+            # label each distinct content (A = newest) so identical copies read as one version, not as a conflict
+            labels = {}
+            for c in copies:
+                if c["sha"] and c["sha"] not in labels:
+                    labels[c["sha"]] = chr(ord("A") + len(labels))
             divergent.append({"document": base, "versions": len(shas),
                               "copies": [{"path": c["path"], "size": c["size"], "mtime": c["mtime"],
-                                          "newest": i == 0} for i, c in enumerate(copies[:6])]})
+                                          "version": labels.get(c["sha"], "?"), "sha256": (c["sha"] or "")[:12],
+                                          "newest": i == 0} for i, c in enumerate(copies[:8])],
+                              "note": "same version letter = byte-identical copies; A is the newest content"})
     divergent.sort(key=lambda g: (-g["versions"], g["document"]))
     # Key documents (README/FINAL/STATUS/...) citing files that are not in the folder at all.
     missing_cited = []

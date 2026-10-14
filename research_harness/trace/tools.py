@@ -221,15 +221,22 @@ def t_read(ws, name, path, start=1, lines=None, live=False, limit=None, json_pat
     if pattern:
         full = t_read(ws, name, path, start=1, lines=800, live=live)
         rx = re.compile(pattern, re.I) if re.search(r"[|.*\\\[]", pattern) else re.compile(re.escape(pattern), re.I)
-        rows = full.get("lines", [])
+        rows = list(full.get("lines", []))
+        pages = 1
+        while full.get("next_start") and pages < 25:  # search the whole file, not just the first page (20k lines cap)
+            full = t_read(ws, name, path, start=full["next_start"], lines=800, live=live)
+            rows += full.get("lines", [])
+            pages += 1
         keep = set()
         for i, row in enumerate(rows):
             if rx.search(row["text"]):
                 keep.update(range(max(0, i - context), min(len(rows), i + context + 1)))
         hits = {i for i, row in enumerate(rows) if rx.search(row["text"])}
-        return {**{k: v for k, v in full.items() if k != "lines"}, "pattern": pattern,
-                "lines": [dict(rows[i], hit=i in hits) for i in sorted(keep)],
-                "matched": sum(1 for row in rows if rx.search(row["text"])), "searched_lines": len(rows)}
+        shown = sorted(keep)[:400]
+        return {**{k: v for k, v in full.items() if k not in ("lines", "start", "next_start", "truncated")}, "pattern": pattern,
+                "lines": [dict(rows[i], hit=i in hits) for i in shown], "lines_shown_truncated": len(keep) > len(shown),
+                "matched": len(hits), "searched_lines": len(rows),
+                "searched_whole_file": not full.get("next_start")}
     return _t_read(ws, name, path, start=start, lines=lines, live=live, limit=limit, json_path=json_path)
 
 
