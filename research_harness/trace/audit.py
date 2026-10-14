@@ -209,11 +209,147 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
                 findings.append({"kind": "mixed-sd-convention", "files": [d["report"]],
                                  "evidence": "; ".join(f"{k}: {', '.join(v)}" for k, v in d["mixed_sd_conventions"].items()),
                                  "confidence": "medium"})
+    # 8./9. mean ± SD pairs printed in reports, compared across documents
+    findings += _report_pairs(con, rng)
+    findings += _row_counts(con, rng)
     order = {"identical-replicate-content": 0, "truncated-run": 1, "setting-outlier": 2, "aggregate-mismatch": 3,
-             "scale-outlier": 4, "mixed-sd-convention": 5, "referenced-file-missing": 6}
+             "scale-outlier": 4, "mixed-sd-convention": 5, "referenced-file-missing": 6, "report-number-disagrees": 7,
+             "cites-flagged-study": 8, "table-row-count-mismatch": 9}
     findings.sort(key=lambda f: (order.get(f["kind"], 9), f["files"][0]))
     return result("found" if findings else "not_found", con, scope=scope, by_kind=dict(Counter(f["kind"] for f in findings)),
                   findings=page(findings, offset, limit),
                   limitations=["replicates are recognised by paths that differ only in numbers; differently named variants are not compared",
                                "launch settings come from command lines echoed in logs/launch scripts (probe v7); older indexes have none",
                                "a lead, not a verdict: read the cited files (and the authors' notes) before reporting"])
+
+
+def _report_pairs(con, rng) -> list[dict]:
+    """8. cites-flagged-study: a report outside any flagged folder prints mean ± SD pairs that exist only in a folder
+    the authors flagged (incomplete / do_not_use / superseded).
+    9. report-number-disagrees: a report prints `x ± s` where a sibling document in the same folder prints `y ± s`
+    for (evidently) the same quantity, y is backed by stored data and x is backed by nothing."""
+    from .analyze import ISO_TIME, PM
+    from .navigate import PATH_FLAG, TEXT_FLAG
+    if not rng:
+        return []
+    occ = defaultdict(list)  # "x±s" -> [(path, line, text)]
+    by_sd = defaultdict(list)  # (dir, s) -> [(x, path, line, text)]
+    rows = con.execute("SELECT f.path, l.line, l.text FROM lines_t l JOIN files f ON f.fid = l.fid WHERE l.fid BETWEEN ? AND ? "
+                       "AND l.kind = 'numbers' AND f.role = 'report'", rng).fetchall()
+    for path, line, text in rows:
+        text = ISO_TIME.sub(" ", text)
+        for m in PM.finditer(text):
+            a, b = m.group(1), m.group(2)
+            if "." not in a or "." not in b:
+                continue
+            occ[f"{a}±{b}"].append((path, line, text))
+            by_sd[(posixpath.dirname(path), b)].append((a, path, line, text))
+    flagged = lambda p: any(PATH_FLAG.search(c) for c in p.split("/")[:-1])
+    out = []
+    # 8: flagged folders may print the pair as `x ± s` or as two adjacent table cells `| x | s |`
+    from .analyze import NUM_TOKEN
+    flagged_pairs = defaultdict(set)
+    clean_pairs = defaultdict(set)
+    for path, line, text in rows:
+        toks = NUM_TOKEN.findall(ISO_TIME.sub(" ", text))
+        target = flagged_pairs if flagged(path) else clean_pairs
+        for i in range(len(toks) - 1):
+            target[f"{toks[i]}±{toks[i + 1]}"].add(path)
+    cited = defaultdict(list)
+    for key, places in occ.items():
+        for path, line, text in places:
+            if flagged(path) or key not in flagged_pairs:
+                continue
+            if clean_pairs.get(key, set()) - {path}:
+                continue  # also printed by another unflagged document: not uniquely from the flagged study
+            if TEXT_FLAG.search(text) or PATH_FLAG.search(text):
+                continue  # the line itself says the value is from the flagged study: a documented caveat
+            cited[path].append({"line": line, "pair": key, "flagged_source": sorted(flagged_pairs[key])[0]})
+    for path, items in cited.items():
+        lines = sorted({i["line"] for i in items})
+        out.append({"kind": "cites-flagged-study", "files": [path, items[0]["flagged_source"]],
+                    "locator": f"line{'s' if len(lines) > 1 else ''} {', '.join(map(str, lines[:8]))}",
+                    "evidence": f"{len(items)} mean ± SD value(s) ({', '.join(i['pair'] for i in items[:4])}) appear elsewhere only under the "
+                                f"flagged folder {posixpath.dirname(items[0]['flagged_source'])}",
+                    "confidence": "high" if len(items) >= 2 else "medium"})
+
+    # 9
+    def backed(x: float, dec: int, path: str) -> bool:
+        # stored data in the report's own study (top two folders): a match anywhere in a big tree is a coincidence
+        area = fid_range(con, "/".join(path.split("/")[:2])) if path.count("/") >= 2 else fid_range(con, path.split("/")[0])
+        area = area or rng
+        tol = 0.5 * 10 ** (-dec) + 1e-9
+        for scale in (1.0, 0.01):
+            if con.execute("SELECT 1 FROM metrics_t WHERE fid BETWEEN ? AND ? AND value BETWEEN ? AND ? LIMIT 1",
+                           (area[0], area[1], x * scale - tol * scale, x * scale + tol * scale)).fetchone():
+                return True
+        return False
+    seen = set()
+    for (d, sd), items in by_sd.items():
+        means = {a for a, *_ in items}
+        if len(means) < 2 or len(items) > 12:
+            continue
+        for a, path, line, text in items:
+            if len(occ[f"{a}±{sd}"]) > 1 or flagged(path):
+                continue  # printed identically elsewhere: not an isolated edit
+            dec = len(a.split(".")[1])
+            others = [(b, p, l) for b, p, l, _ in items if b != a and p != path and len(occ[f"{b}±{sd}"]) >= 1
+                      and abs(float(b) - float(a)) <= 0.25 * max(abs(float(a)), abs(float(b)), 1e-9)]
+            if not others or backed(float(a), dec, path):
+                continue
+            good = [(b, p, l) for b, p, l in others if backed(float(b), dec, p)]
+            if not good:
+                continue
+            b, p, l = good[0]
+            if (path, line) in seen:
+                continue
+            seen.add((path, line))
+            out.append({"kind": "report-number-disagrees", "files": [path, p], "locator": f"line {line}",
+                        "evidence": f"prints {a} ± {sd}; {p}:{l} prints {b} ± {sd} (same SD) and {b} is in stored data, {a} is not",
+                        "context": text.strip()[:200], "confidence": "high"})
+    return out
+
+
+def _row_counts(con, rng) -> list[dict]:
+    """10. table-row-count-mismatch: a points/rows table holds fewer rows than the summary JSON it belongs to says it
+    pooled (`alignment_x_points.csv` 10 rows vs `ALIGNMENT_X.json` pooled.n = 15); seed levels are compared with a
+    sibling table of the same kind to name what is missing."""
+    if not rng:
+        return []
+    tables = {}
+    for path, js in con.execute("SELECT f.path, t.json FROM facts_t t JOIN files f ON f.fid = t.fid WHERE t.fid BETWEEN ? AND ? "
+                                "AND f.ext IN ('.csv', '.tsv') AND f.path NOT LIKE '%::%'", rng):
+        t = (json.loads(js) or {}).get("table") or {}
+        if t.get("n_rows"):
+            tables[path] = t
+    by_dir = defaultdict(list)
+    for p in tables:
+        by_dir[posixpath.dirname(p)].append(p)
+    out = []
+    for d, paths in by_dir.items():
+        jsons = [r[0] for r in con.execute("SELECT path FROM files WHERE dir = ? AND ext = '.json'", (d,))]
+        for p in paths:
+            stem = posixpath.splitext(posixpath.basename(p))[0].lower()
+            owners = [j for j in jsons if len(posixpath.splitext(posixpath.basename(j))[0]) >= 6
+                      and stem.startswith(posixpath.splitext(posixpath.basename(j))[0].lower()) and stem != posixpath.splitext(posixpath.basename(j))[0].lower()]
+            n_rows = tables[p]["n_rows"]
+            for j in owners:
+                ns = [v for (v,) in con.execute("SELECT m.value FROM metrics_t m JOIN files f ON f.fid = m.fid WHERE f.path = ? "
+                                                "AND (m.key LIKE '%.n' OR m.key = 'n' OR m.key LIKE '%n_points' OR m.key LIKE '%.n_rows')", (j,))]
+                if not ns:
+                    continue
+                n, cnt = Counter(ns).most_common(1)[0]
+                if n > n_rows and cnt >= 2:
+                    ev = f"{p} has {n_rows} rows, while {j} reports n = {int(n)} ({cnt} statistics)"
+                    seed_cols = tables[p].get("seed_cols") or []
+                    for sc in seed_cols[:1]:
+                        mine = {r.get(sc) for r in tables[p].get("rows", [])}
+                        for q in paths:
+                            if q != p and sc in (tables[q].get("seed_cols") or []) and tables[q]["n_rows"] == int(n):
+                                theirs = {r.get(sc) for r in tables[q].get("rows", [])}
+                                if mine < theirs:
+                                    ev += f"; {q} ({int(n)} rows) has {sc} {sorted(theirs)}, this table only {sorted(mine)}"
+                                    break
+                    out.append({"kind": "table-row-count-mismatch", "files": [p, j], "evidence": ev, "confidence": "high"})
+                    break
+    return out

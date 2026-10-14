@@ -464,7 +464,7 @@ TOOLS = {
                     {**NAME, "paths": {"type": "array", "items": S}, "study": S, "sync": {"type": "boolean"}}, ["workspace", "source"]),
     "trace_propose": (t_propose, "Draft (not applied) Cell/Run patch for a recovered study with evidence locators filled in.",
                       {**NAME, "study": S, "parent_id": S, "eval_protocol": S, "out": S, "metric": S}, ["workspace", "source", "study"]),
-    "trace_audit": (t_audit, "Consistency audit across replicate runs (paths differing only in numbers): byte-identical 'independent' replicates, logs that stop mid-run while siblings finished, launch settings that differ from every sibling.",
+    "trace_audit": (t_audit, "One-call integrity audit: byte-identical 'independent' replicates, truncated logs, launch-setting outliers, missing files a table cites, aggregates that are not the mean of their parts, unit/scale outliers, mixed SD conventions, report numbers that disagree with a sibling document and the data, values cited from flagged (do_not_use) studies, points tables shorter than their summary's n.",
                     {**NAME, "scope": S, "offset": I, "limit": I}, ["workspace", "source"]),
     "trace_count": (t_count, "find|wc -l from the index: files (filter by basename glob, e.g. cell_result.json or '*.json,*.csv') or directories (recursive, direct, empty) under a path; group by child folder or path template. Archive scope `x.tgz::`. --live recounts on the host.",
                     {**NAME, "path": S, "name_glob": S, "what": {"type": "string", "enum": ["files", "dirs", "both"]}, "group_by": {"type": "string", "enum": ["child", "template"]},
