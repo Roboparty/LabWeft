@@ -143,3 +143,26 @@ while required questions remain open.
 - `.git/HEAD`, `refs/`, `packed-refs` and `logs/HEAD` of checkouts are indexed (never objects or config), so the
   commit a checkout is really at can be read.
 
+
+## Round-8 notes (counting and verification)
+
+- `count --path DIR [--name-glob 'cell_result.json'] [--what dirs|both] [--group-by child|template]` is `find | wc -l`
+  from the index: files by basename glob, folders (recursive, direct, empty). `--path 'x.tar.gz::'` counts archive
+  members; when the probe capped or timed out on the archive, the full member list is read once on the host and
+  cached. `--live` recounts on the host.
+- `checksum --path FILE` gives the sha256 (probe hash or computed on the host) and checks every sidecar next to it
+  (`x.sha256`, `SHA256SUMS`): verdict `match` / `mismatch` / `no_sidecar`.
+- `compare --a LIVE_DIR --b 'snapshot.tar.gz::'` is `diff -r` by relative path: what the live folder has that the
+  snapshot lacks (rolled up by folder), files whose content or size differs, and the archive's newest member time.
+- `git --repo PATH --ref SHA --ref main` answers whether a commit exists in a checkout's object store, where HEAD and
+  each branch point, and which branches contain it (read-only, on the host).
+- `grep` now reports `matching_lines_per_file` (how many queue lines name p1 jobs, ...) and says whether absence is
+  exhaustive; `read --pattern` scans the whole file, not its first page.
+- `reconcile --number 88.22` (no `--path`) looks the number up in every report at once. An SD printed one unit off
+  in the last digit is matched with `sd_rounding` (the authors took the SD of already-rounded seed means).
+- `audit` also compares documents: `report-number-disagrees` (a report prints `x ± s`, a sibling document prints
+  `y ± s` for the same row, and only `y` is in the stored data), `cites-flagged-study` (values that exist elsewhere
+  only in a folder flagged incomplete / do_not_use), `table-row-count-mismatch` (a points table with fewer rows than
+  the summary JSON's `n`, naming the missing seed). Protocol statements that contradict each other across README /
+  FINAL / PROVENANCE are not detected automatically: `find` the protocol keywords (padding, history, normalisation,
+  episodes, seeds) across key documents and compare the windows.

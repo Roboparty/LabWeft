@@ -437,3 +437,33 @@ class ReconcileRoundingTests(unittest.TestCase):
             self.assertEqual(item["state"], "derived")
             self.assertEqual(item["sources"][0]["sd"], "sample")
             self.assertIn("sd_rounding", item["sources"][0])
+
+
+class AuditCrossDocTests(unittest.TestCase):
+    def test_disagreeing_number_flagged_citation_and_short_points_table(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "p"
+            res = src / "study" / "results"
+            res.mkdir(parents=True)
+            (res / "summary.csv").write_text("method,mean\ncem,26.333\ndirect,9.222\n")
+            (res / "SWEEP.md").write_text("# Sweep\n\n| m | SR |\n|---|---|\n| cem | 26.33 +/- 1.20 |\n| direct | 9.22 +/- 2.91 |\n", encoding="utf-8")
+            (res / "ANALYSIS.md").write_text("# Analysis\n\n| m | SR |\n|---|---|\n| cem | 24.33 +/- 1.20 |\n| direct | 9.22 +/- 2.91 |\n", encoding="utf-8")
+            bad = src / "study" / "other_e5.incomplete_do_not_use"
+            bad.mkdir()
+            (bad / "RESULTS.md").write_text("# E5\n\n| v | mean | sd |\n|---|---|---|\n| a | 57.22 | 3.86 |\n| b | 60.56 | 1.84 |\n", encoding="utf-8")
+            (src / "study" / "PAPER_TEXT.md").write_text("# Paper\n\nShared encoder: a `57.22 +/- 3.86`, b `60.56 +/- 1.84`.\n", encoding="utf-8")
+            summ = src / "study" / "summary"
+            summ.mkdir()
+            (summ / "ALIGN_X.json").write_text(json.dumps({"r2": {"pooled": {"n": 6, "r": 0.9}, "demeaned": {"n": 6, "r": 0.8}}}))
+            (summ / "align_x_points.csv").write_text("train_seed,epoch,sr\n0,1,80\n0,2,82\n42,1,79\n42,2,81\n")
+            (summ / "OTHER_POINTS.csv").write_text("train_seed,epoch,srs\n0,1,1\n0,2,2\n42,1,3\n42,2,4\n7,1,5\n7,2,6\n")
+            ws = Path(tmp) / "ws"
+            tools.t_collect(str(ws), "p", str(src))
+            out = tools.t_audit(str(ws), "p")
+            kinds = {f["kind"]: f for f in out["findings"]["items"]}
+            self.assertIn("report-number-disagrees", kinds)
+            self.assertIn("24.33", kinds["report-number-disagrees"]["evidence"])
+            self.assertIn("cites-flagged-study", kinds)
+            self.assertEqual(kinds["cites-flagged-study"]["files"][0], "study/PAPER_TEXT.md")
+            self.assertIn("table-row-count-mismatch", kinds)
+            self.assertIn("'7'", kinds["table-row-count-mismatch"]["evidence"])
