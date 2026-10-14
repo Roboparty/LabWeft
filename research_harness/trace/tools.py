@@ -176,7 +176,8 @@ def _pair_one(ws, name, a, b, key=None, value=None):
 def t_reconcile(ws, name, scope=None, path=None, offset=0, limit=None, number=None, state=None, line=None):
     if path and (number or state or line):
         with _con(ws, name) as con:
-            full = analyze.reconcile(con, path=path, limit=100000)
+            full = analyze.reconcile(con, path=path, limit=100000,
+                                     only=str(number).split("+")[0].split("±")[0].strip() if number and not (state or line) else None)
         if full["status"] != "found":
             return full
         items = full["numbers"]["items"]
@@ -198,8 +199,9 @@ def t_reconcile(ws, name, scope=None, path=None, offset=0, limit=None, number=No
                 f"SELECT DISTINCT f.path FROM lines_t t JOIN files f ON f.fid = t.fid WHERE {where} AND t.kind = 'numbers' "
                 "AND f.role = 'report' AND t.text LIKE ?", args + [f"%{number.split('+')[0].split('±')[0].strip()}%"])][:25]
             out = []
+            key = number.split("+")[0].split("±")[0].strip()
             for p in paths:
-                rep = analyze.reconcile(con, path=p, limit=100000)
+                rep = analyze.reconcile(con, path=p, limit=100000, only=key)
                 if rep["status"] != "found":
                     continue
                 for n in rep["numbers"]["items"]:
