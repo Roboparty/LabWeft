@@ -251,6 +251,8 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
                 findings.append({"kind": "mixed-sd-convention", "files": [d["report"]],
                                  "evidence": "; ".join(f"{k}: {', '.join(v)}" for k, v in d["mixed_sd_conventions"].items()),
                                  "confidence": "medium"})
+    findings += _stale_summaries(con, rng)
+    findings += _summary_before_runs(con, rng)
     findings += _value_outliers(con, like)
     findings += _checksum_lists(con, rng)
     # 8./9. mean ± SD pairs printed in reports, compared across documents
@@ -259,7 +261,7 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
     order = {"identical-replicate-content": 0, "truncated-run": 1, "setting-outlier": 2, "aggregate-mismatch": 3,
              "scale-outlier": 4, "mixed-sd-convention": 5, "referenced-file-missing": 6, "report-number-disagrees": 7,
              "cites-flagged-study": 8, "table-row-count-mismatch": 9, "seed-mismatch": 1, "result-setting-outlier": 2,
-             "duplicate-checksum": 3}
+             "duplicate-checksum": 3, "summary-older-than-inputs": 4, "summary-predates-run": 4}
     findings.sort(key=lambda f: (order.get(f["kind"], 9), f["files"][0]))
     return result("found" if findings else "not_found", con, scope=scope, by_kind=dict(Counter(f["kind"] for f in findings)),
                   findings=page(findings, offset, limit),
@@ -488,4 +490,117 @@ def _checksum_lists(con, rng) -> list[dict]:
                             "evidence": f"{len(names)} replicate entries share sha256 {h[:12]}…: {', '.join(names[:4])}"
                                         + (f"; other files record a different hash for {', '.join(sorted(set(other))[:3])}" if other else ""),
                             "confidence": "high" if other else "medium"})
+    return out
+
+
+SUMMARY_NAME = re.compile(r"(final|summary|results?|report|status|aggregate|table|overview|live)", re.I)
+GEN_KEY = re.compile(r"(generated|created|written|built|updated)(_at|_time|_on)?$", re.I)
+TS = re.compile(r"(20\d\d)-(\d\d)-(\d\d)[T ](\d\d):(\d\d)(?::(\d\d))?")
+
+
+def _ts(value) -> float | None:
+    import calendar
+    m = TS.search(str(value))
+    if not m:
+        return None
+    y, mo, d, h, mi, se = (int(x or 0) for x in m.groups())
+    return calendar.timegm((y, mo, d, h, mi, se, 0, 0, 0))
+
+
+def _stale_summaries(con, rng) -> list[dict]:
+    """A summary/report that names its input files but was generated before some of them were last written: the
+    numbers it prints may not include the final inputs (or the inputs were rewritten after the fact).
+    Uses the summary's own `generated_at`-style field when present, else its file time; inputs use file times."""
+    out = []
+    rows = con.execute("SELECT DISTINCT r.src FROM refs_t r WHERE r.src BETWEEN ? AND ? AND r.target IS NOT NULL", rng).fetchall()
+    for (src,) in rows:
+        f = con.execute("SELECT path, mtime, role FROM files WHERE fid = ?", (src,)).fetchone()
+        if not f or f["role"] not in ("report", "result", "result_table") or not SUMMARY_NAME.search(posixpath.basename(f["path"])):
+            continue
+        gen = None
+        for k, v in con.execute("SELECT key, value FROM config_t WHERE fid = ?", (src,)):
+            if GEN_KEY.search(k.rsplit(".", 1)[-1]):
+                gen = _ts(v)
+                if gen:
+                    break
+        if gen is None:
+            row = con.execute("SELECT json FROM facts_t WHERE fid = ?", (src,)).fetchone()
+            text = (json.loads(row[0]) or {}).get("text") if row else None
+            m = re.search(r"(?:generated|created|updated)[^\n]{0,20}?(20\d\d-\d\d-\d\d[T ]\d\d:\d\d(?::\d\d)?)", text or "", re.I)
+            gen = _ts(m.group(1)) - 8 * 3600 if m else None  # report times are local (UTC+8 here); file times are UTC
+        if not gen:
+            continue  # file times alone are too noisy (copies, re-syncs); require the summary's own generation stamp
+        when = gen
+        late = []
+        for (tpath, tm) in con.execute("SELECT f2.path, f2.mtime FROM refs_t r JOIN files f2 ON f2.path = r.target "
+                                        "WHERE r.src = ? AND f2.role IN ('result', 'result_table', 'log')", (src,)):
+            if tm and tm - when > 30 * 60:
+                late.append((tpath, tm))
+        if late and len(late) <= 20:
+            import datetime
+            fmt = lambda t: datetime.datetime.utcfromtimestamp(t).strftime("%Y-%m-%d %H:%M UTC")
+            out.append({"kind": "summary-older-than-inputs", "files": [f["path"]] + [p for p, _ in late[:3]],
+                        "evidence": f"{'generated' if gen else 'last written'} {fmt(when)}, but {len(late)} file(s) it names were written "
+                                    f"later (e.g. {late[0][0]} at {fmt(late[0][1])})",
+                        "confidence": "medium" if gen else "low"})
+    return out
+
+
+STAMP_IN_TEXT = re.compile(r'"?(?:generated(?:_at)?|created_at|updated_at|finished_at|completed_at|end(?:ed)?_at|end_time)"?\s*[:=]?\s*"?'
+                           r'(20\d\d-\d\d-\d\d[T ]\d\d:\d\d(?::\d\d)?(?:\.\d+)?(?:[+-]\d\d:?\d\d|Z)?)', re.I)
+RUN_TOKEN = re.compile(r"^[a-z0-9]+(?:_[a-z0-9.]+){2,}$", re.I)
+
+
+def _stamp(text: str, first: bool = True):
+    import datetime
+    vals = []
+    for m in STAMP_IN_TEXT.finditer(text or ""):
+        raw = m.group(1).replace(" ", "T").replace("Z", "+00:00")
+        try:
+            d = datetime.datetime.fromisoformat(raw)
+        except ValueError:
+            continue
+        vals.append(d.timestamp() if d.tzinfo else d.replace(tzinfo=datetime.timezone(datetime.timedelta(hours=8))).timestamp())
+        if first:
+            break
+    return (vals[0] if first else max(vals)) if vals else None
+
+
+def _summary_before_runs(con, rng) -> list[dict]:
+    """A summary stamped `generated_at T` that names runs (by id) whose own results were finished after T: either the
+    summary was regenerated without updating its stamp, or it reports numbers that did not exist yet."""
+    out = []
+    for fid, path, text in con.execute("SELECT f.fid, f.path, t.text FROM texts_t t JOIN files f ON f.fid = t.fid WHERE t.fid BETWEEN ? AND ? "
+                                       "AND f.role IN ('result', 'result_table', 'report')", rng):
+        if not SUMMARY_NAME.search(posixpath.basename(path)) or re.search(r"(preview|draft|interim|partial|wip|tmp)", path, re.I):
+            continue  # an interim summary is expected to predate later runs
+        m = re.search(r'(generated(?:_at)?|Generated)\W{0,4}(20\d\d-\d\d-\d\d[T ]\d\d:\d\d)', text or "")
+        if not m:
+            continue
+        gen = _stamp(m.group(0))
+        if not gen:
+            continue
+        study = "/".join(path.split("/")[:2])
+        srng = fid_range(con, study)
+        if not srng:
+            continue
+        own = set(path.lower().split("/"))
+        runs = {t for (t,) in con.execute("SELECT token FROM tokens_t WHERE fid = ?", (fid,))
+                if RUN_TOKEN.match(t) and any(ch.isdigit() for ch in t) and t.lower() not in own}
+        late = []
+        for run in list(runs)[:300]:
+            for rpath, rtext in con.execute("SELECT f.path, t.text FROM texts_t t JOIN files f ON f.fid = t.fid WHERE t.fid BETWEEN ? AND ? "
+                                            "AND f.role = 'result' AND f.path LIKE ?", (srng[0], srng[1], f"%/{run}/%")):
+                if run not in rpath.split("/")[-4:-1]:
+                    continue  # the run's own folder, not a study-level file that merely sits below a matching name
+                done = _stamp(rtext, first=False)
+                if done and done - gen > 10 * 60:
+                    late.append((rpath, done))
+        if late:
+            import datetime
+            fmt = lambda t: datetime.datetime.fromtimestamp(t, datetime.timezone(datetime.timedelta(hours=8))).strftime("%Y-%m-%d %H:%M (+08)")
+            late.sort(key=lambda x: -x[1])
+            out.append({"kind": "summary-predates-run", "files": [path] + [p for p, _ in late[:3]],
+                        "evidence": f"stamped {fmt(gen)}, but {len(late)} result file(s) of runs it names finished later "
+                                    f"(latest {late[0][0]} at {fmt(late[0][1])})", "confidence": "medium"})
     return out

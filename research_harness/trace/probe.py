@@ -24,9 +24,9 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 
-PROBE_VERSION = "9"
+PROBE_VERSION = "11"
 BULK_MIN_FILES = 5000
-RESUME_COMPATIBLE = {"9"}  # v5 lacks only JSON declared facts; reuse its parse work on huge trees
+RESUME_COMPATIBLE = {"11"}  # v5 lacks only JSON declared facts; reuse its parse work on huge trees
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", ".mypy_cache", ".pytest_cache",
              ".ipynb_checkpoints", "wandb-cache", ".cache", ".research"}
 SENSITIVE = re.compile(r"(^|[._-])(secret|secrets|token|credentials?|password|passwd|id_rsa|id_ed25519|netrc)([._-]|$)|\.env$|\.pem$|\.key$", re.I)
@@ -609,7 +609,7 @@ def analyze(root, rel, size, mtime, max_text, _raw=None, max_archive=128 * 1024 
         facts["title"] = redact(title)
         # Human-written prose (reports, READMEs, notes, launchers) is what the agent must read to name things;
         # keep it (redacted, capped) so reading and phrase search work even when the source mount is sick.
-        if ((doc or role in ("launcher", "other_text") or re.search(r"(readme|notes?|handoff|protocol|status|plan)", rel, re.I))
+        if ((doc or role in ("launcher", "other_text") or re.search(r"(readme|notes?|handoff|protocol|status|plan|final|summary|results|live|aggregate|coverage|manifest)", os.path.basename(rel), re.I))
                 and len(raw) <= LIMITS["text_bytes"]) or (len(raw) <= SMALL_TEXT and ext in SMALL_TEXT_EXT):
             # small logs, queues, env/requirements files, short JSON/CSV: grep over the index is then exhaustive
             facts["text"] = redact(text)
@@ -620,10 +620,26 @@ def analyze(root, rel, size, mtime, max_text, _raw=None, max_archive=128 * 1024 
     return rec
 
 
-SMALL_TEXT = 32 * 1024
+SMALL_TEXT = 64 * 1024
 BIG_STRUCTURED = 48 * 1024 * 1024  # coverage / results JSON and CSV tables are worth parsing even when large
 SMALL_TEXT_EXT = {".txt", ".log", ".out", ".err", ".md", ".yaml", ".yml", ".sh", ".py", ".cfg", ".ini", ".toml", ".csv", ".tsv",
                   ".jsonl", ".json", ".sha256", ".md5", ".sum", ".lst", ".list", ".env", ".rst", ".tex"}
+
+
+def _tally(path, cap=20000, seconds=10.0):
+    """File count and bytes under a skipped folder (bounded: huge caches report a lower bound)."""
+    n = b = 0
+    t0 = time.time()
+    for base, dirs, names in os.walk(path):
+        for nm in names:
+            n += 1
+            try:
+                b += os.lstat(os.path.join(base, nm)).st_size
+            except OSError:
+                pass
+        if n >= cap or time.time() - t0 > seconds:
+            return {"files": n, "bytes": b, "complete": False}
+    return {"files": n, "bytes": b, "complete": True}
 
 
 def walk(root, excludes, deadline):
@@ -683,11 +699,12 @@ def walk(root, excludes, deadline):
                             relp = os.path.relpath(fp, root).replace(os.sep, "/")
                             st2 = os.stat(fp)
                             yield ("file", relp, st2.st_size, st2.st_mtime)
-                    yield ("skip_dir", rel, "git objects not read", None)
+                    yield ("skip_dir", rel, json.dumps({**_tally(os.path.join(root, rel)), "note": "git objects not read"}), None)
                     continue
                 if e.is_dir():
                     if e.name in SKIP_DIRS or any(re.search(x, rel) for x in excludes):
-                        yield ("skip_dir", rel, None, None)
+                        # not read, but counted: "how many files are in X" must stay answerable
+                        yield ("skip_dir", rel, json.dumps(_tally(os.path.join(root, rel))), None)
                     else:
                         subdirs.append(rel)
                     continue
