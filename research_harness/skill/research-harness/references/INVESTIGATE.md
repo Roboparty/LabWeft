@@ -129,3 +129,17 @@ while required questions remain open.
   host when the snapshots have no hit; `--live` forces the host. `find` also reports folder names that contain
   the phrase (`in_paths`).
 - `--format text` prints one coverage line when coverage is complete; `read --pattern` marks matching lines `>`.
+
+## Round-7 notes
+
+- `rh trace audit WS --source NAME [--scope DIR]` cross-checks replicate runs (paths that differ only in numbers):
+  byte-identical "independent" replicates, logs that stop mid-run while their siblings finished, and launch settings
+  (Hydra overrides / --flags echoed in logs) that differ from the value every sibling used. Run it early in any
+  audit and read each cited file before reporting.
+- Archive members (`bundle.tgz::inner/path`, also members of large uncompressed .tar files, which are listed by name)
+  can be read with `trace read`; when no snapshot exists the member is extracted live on the host (`tar -xOf`).
+- Archives and unknown binaries up to 128 MB carry a sha256 (`provenance`/`ls`), so declared checksums can be checked.
+- Empty folders are recorded: `ls` shows `empty: true` instead of `not_found` for a folder that exists but holds nothing.
+- `.git/HEAD`, `refs/`, `packed-refs` and `logs/HEAD` of checkouts are indexed (never objects or config), so the
+  commit a checkout is really at can be read.
+

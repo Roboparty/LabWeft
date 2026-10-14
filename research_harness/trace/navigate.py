@@ -37,11 +37,25 @@ def ls(con, path: str = "", offset: int = 0, limit: int = 60) -> dict:
         else:
             files.append({"name": rest, "role": r["role"] or r["kind"], "size": r["size"], "status": r["status"],
                           "title": (r["title"] or "")[:100] or None})
-    if not dirs and not files:
+    empty = []
+    try:  # folders that exist but hold no file (recorded by probe v7)
+        for (p,) in con.execute("SELECT path FROM skips WHERE kind = 'empty_dir' AND path LIKE ?", (prefix + "%",)):
+            rest = p[len(prefix):]
+            if rest and "/" not in rest:
+                empty.append(rest)
+            elif rest and rest.split("/", 1)[0] not in dirs:
+                dirs.setdefault(rest.split("/", 1)[0], Counter())  # a tree of only empty folders
+    except Exception:
+        pass
+    if not dirs and not files and not empty:
+        is_empty = con.execute("SELECT 1 FROM skips WHERE kind = 'empty_dir' AND path = ?", (base,)).fetchone() if base else None
+        if is_empty:
+            return result("found", con, path=prefix, entries=page([], 0, limit), note="folder exists and is empty")
         near = [r[0] for r in con.execute("SELECT DISTINCT dir FROM files WHERE dir LIKE ? LIMIT 10", (f"%{base.split('/')[-1]}%",))]
         return result("not_found", con, path=path, did_you_mean=near)
     entries = [{"dir": name + "/", "files": sum(c.values()), "roles": dict(c.most_common(5)),
-                "flag": bool(PATH_FLAG.search(name))} for name, c in sorted(dirs.items())]
+                "flag": bool(PATH_FLAG.search(name)), **({"empty_tree": True} if not c else {})} for name, c in sorted(dirs.items())]
+    entries += [{"dir": name + "/", "files": 0, "empty": True} for name in sorted(empty) if name not in dirs]
     entries += sorted(files, key=lambda f: f["name"])
     return result("found", con, path=prefix or "/", entries=page(entries, offset, limit))
 
@@ -215,8 +229,17 @@ def validity(con, scope: str | None = None, offset: int = 0, limit: int = 30) ->
         for raw in dict.fromkeys(re.findall(r"`([^`\s]+\.(?:csv|json|jsonl|md|pt|npz|txt|yaml|tar\.gz|tgz|py))`", r["text"] or "")):
             if raw.startswith(("/", "http", "~")) or any(ch in raw for ch in "*{<>$"):
                 continue  # absolute paths, globs and templates such as evaluations/<run>/ are not citations of one file
-            here = posixpath.normpath(posixpath.join(posixpath.dirname(r["path"]), raw))
-            if _exists(con, here) or _exists(con, raw):
+            # authors write paths relative to the citing file, to the study root or to the project root:
+            # try the citing folder and every ancestor before calling a citation missing
+            d0, found = posixpath.dirname(r["path"]), False
+            while True:
+                if _exists(con, posixpath.normpath(posixpath.join(d0, raw)) if d0 else raw):
+                    found = True
+                    break
+                if not d0:
+                    break
+                d0 = posixpath.dirname(d0)
+            if found:
                 continue
             # bare file names may legitimately live anywhere in the project
             if "/" not in raw and con.execute("SELECT 1 FROM files WHERE path LIKE ? LIMIT 1", ("%/" + raw,)).fetchone():
