@@ -67,6 +67,22 @@ Then ask your coding agent to read the project and use the Skill, for example:
 
 The scanner collects facts; **the host agent supplies research interpretation**. LabWeft does not infer a scientific map from directory names alone. The [bundled Skill protocol](research_harness/skill/research-harness/references/PROTOCOL.md) specifies how to record that interpretation. Fresh-chat automatic Skill discovery and every client/platform combination have not yet been certified.
 
+## Reverse-engineer a large or remote project (trace)
+
+Reading a research folder is reverse engineering: the tree records where files were saved, not what was studied. Inspired by [REA](https://github.com/morluto/rea), `trace` runs a read-only probe next to the data (stdlib only, Python 3.8+, over SSH on the host that mounts your NAS) and gives the agent coverage-aware, three-valued (found / not_found / unknown) investigation tools:
+
+```sh
+python labweft.py trace collect ./ws --source PROJ --root /mnt/nas/PROJ --host my-server --remote-dir /data/scratch
+python labweft.py trace outline ./ws --source PROJ --format text      # experiments grouped by what was varied x measured, across folders
+python labweft.py trace reconcile ./ws --source PROJ --path REPORT.md  # every printed number -> raw value / mean±SD (with SD convention) / same-line difference
+python labweft.py trace fetch ./ws --source PROJ --study STUDY --sync  # mirror only the cited files, hash-checked
+python labweft.py trace propose ./ws --source PROJ --study STUDY --out draft.json   # draft Cells/Runs with locators filled in
+python labweft.py trace obligations ./ws                               # evidence-obligation ledger for claims and runs
+python labweft.py mcp ./ws                                             # the same tools as a stdio MCP server
+```
+
+Files are classified by content, not name; controlled factors, replicate seeds and one-factor comparisons are recovered from configs, table columns and hyperparameters encoded in run names (e.g. `aw0.1_lw0.1_rh1_s7`); one experiment spread over summary tables, raw results, figure data and legacy copies is one experiment with several evidence locations; text inside tar/zip bundles is parsed. See [the investigation guide](research_harness/skill/research-harness/references/TRACE.md).
+
 ## Keep it local, share deliberately
 
 ```sh

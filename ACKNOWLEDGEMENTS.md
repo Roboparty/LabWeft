@@ -44,3 +44,15 @@ and native result schema. No Shinka source, prompts or assets are copied into
 this repository. The earlier no-runtime-dependency statement describes the core;
 it does not apply when this optional extra is explicitly installed. Retain and
 review upstream license/notice material if distributing its dependency artifacts.
+
+## Design influence: REA (2026-10-14)
+
+The `trace` investigation toolkit borrows design ideas from
+[morluto/rea](https://github.com/morluto/rea) (Reverse Engineer Anything, MIT,
+reviewed at commit `9630c8ff46533fe63ec0e06212d01545070d17f0`): summary-first
+tools, three-valued results where absence is only claimed for exhaustive
+coverage, explicit authority/confidence on recovered facts, reconciliation of
+declared versus observed facts, an evidence-obligation ledger with stable
+diagnostic codes, and unpacking of bundled artifacts. No REA source code,
+prompts or assets are copied; LabWeft's implementation is independently written
+in Python for research projects rather than binaries.

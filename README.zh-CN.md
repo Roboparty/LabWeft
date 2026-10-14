@@ -67,6 +67,22 @@ Bootstrap 安装一个控制工作流程的 Skill，并完成初步事实扫描�
 
 扫描器采集事实，**研究语义由当前 agent 理解后写入**。LabWeft 不会仅靠文件夹名称推断科学地图。[随包 Skill 协议](research_harness/skill/research-harness/references/PROTOCOL.md) 规定了这种理解的记录方式。新聊天自动发现 Skill、所有客户端及平台组合仍未逐一验证。
 
+## 逆向拆解大型或远程项目（trace）
+
+读一个科研文件夹本质上是逆向工程：目录记录的是文件存在哪，而不是研究了什么。受 [REA](https://github.com/morluto/rea) 启发，`trace` 在数据旁边运行一个只读探针（仅标准库，Python 3.8+，可通过 SSH 跑在挂载 NAS 的服务器上），再在本地给 agent 提供一组带覆盖率、三值结果（found / not_found / unknown）的调查工具：
+
+```sh
+python labweft.py trace collect ./ws --source PROJ --root /mnt/nas/PROJ --host my-server --remote-dir /data/scratch
+python labweft.py trace outline ./ws --source PROJ --format text      # 按“改了什么 × 测了什么”跨文件夹归并实验
+python labweft.py trace reconcile ./ws --source PROJ --path REPORT.md  # 报告里每个数字追到原始值 / 均值±SD（含口径）/ 同行差值
+python labweft.py trace fetch ./ws --source PROJ --study STUDY --sync  # 只拉取被引用的文件并校验哈希
+python labweft.py trace propose ./ws --source PROJ --study STUDY --out draft.json   # 自动填好定位符的 Cell/Run 草案
+python labweft.py trace obligations ./ws                               # 每条结论 / Run 的证据义务账本
+python labweft.py mcp ./ws                                             # 同一套工具的 stdio MCP 服务
+```
+
+它按内容（而不是文件名）判断配置、结果表、日志、启动脚本、报告；从配置、表格列和编码在 run 名里的超参（如 `aw0.1_lw0.1_rh1_s7`）恢复受控因子、重复 seed 与一因子对照；同一实验散落在汇总表、原始结果、画图数据、历史副本中时归为一个实验的多个证据位置；压缩包内的文本也会被解析。详见 [调查流程](research_harness/skill/research-harness/references/TRACE.md)。
+
 ## 本地使用，按需分享
 
 ```sh
