@@ -27,11 +27,13 @@ KILLED = re.compile(r"(SIGTERM|SIGKILL|death signal|\bKilled\b|Terminated|CUDA o
                     r"Segmentation fault|core dumped|exitcode\s*:\s*-?[1-9]|DUE TO TIME LIMIT|CANCELLED)", re.I)
 SEED_LINE = re.compile(r"(?<![_\w])(?:global[ _])?seed(?: set to|\s*[:=])\s*(\d+)", re.I)
 PATH_SEED = re.compile(r"(?:^|[_/.-])(?:s|seed|train|train_seed|rs)(\d{1,6})(?=$|[_/.-])", re.I)
+INFRA_KEY = re.compile(r"(workers|prefetch|pin_memory|num_threads|nproc|master|port|device|cuda_visible|world_size|local_rank|"
+                       r"interval|log_every|print_freq|save_every|wandb|progress|cache|mmap|compile|tmp|scratch|root)", re.I)
 INPUT_LIKE = re.compile(r"(normali[sz]|norm_stats|statistic|stats|mean_std|vocab|split|config|hparams|args|params|meta|schema|requirements|env|"
                         r"manifest|subset|dataset|index|episodes?_ids?)", re.I)
 PCT_COL = re.compile(r"(sr|success|rate|acc|accuracy|score|pct|percent|macro|mean|avg|average|top\d)", re.I)
 COUNT_COL = re.compile(r"(^n_|_n$|count|num_|^num|only_|both|neither|episode|_id$|^id$|row|index|step|epoch|seed|size|seconds|time)", re.I)
-REPLICATE_SEG = re.compile(r"(?:^|[_.-])(?:s|seed|train|eval|rep|run|trial|fold|r)\d+(?=$|[_.-])", re.I)
+REPLICATE_SEG = re.compile(r"(?:^|[_.-])(?:s|seed|train|eval|rep|run|trial|fold|r)[_-]?\d+(?=$|[_.-])", re.I)
 SEEDISH = re.compile(r"(^|[._-])(seed|train_seed|eval_seed|run|name|id|output|out|dir|path|log|save|ckpt|checkpoint|resume|wandb|tag|host|gpu|port|rank|time|date)", re.I)
 
 
@@ -68,7 +70,8 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
     findings = []
 
     # 1. identical content across replicates
-    for tpl, members in _groups(con, like, ("result", "result_table", "data", "other_text")).items():
+    for tpl, members in _groups(con, like, ("result", "result_table", "data", "other_text", "config")).items():
+        members = [m for m in members if m["role"] != "config" or m["path"].endswith(".json")]
         if len(members) < 3:
             continue
         if INPUT_LIKE.search(posixpath.basename(tpl)):
@@ -129,7 +132,7 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
         if len(args) >= 3:
             keys = Counter(k for a in args.values() for k in a)
             for k, n in keys.items():
-                if n < 3 or SEEDISH.search(k):
+                if n < 3 or SEEDISH.search(k) or INFRA_KEY.search(k):
                     continue
                 vals = Counter(a[k] for a in args.values() if k in a)
                 if len(vals) != 2:
@@ -252,6 +255,8 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
                                  "evidence": "; ".join(f"{k}: {', '.join(v)}" for k, v in d["mixed_sd_conventions"].items()),
                                  "confidence": "medium"})
     findings += _stale_summaries(con, rng)
+    findings += _checkpoint_consistency(con, rng)
+    findings += _future_stamps(con, rng)
     findings += _duplicate_rows(con, rng)
     findings += _declared_hashes(con, rng)
     findings += _summary_before_runs(con, rng)
@@ -263,7 +268,8 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
     order = {"identical-replicate-content": 0, "truncated-run": 1, "setting-outlier": 2, "aggregate-mismatch": 3,
              "scale-outlier": 4, "mixed-sd-convention": 5, "referenced-file-missing": 6, "report-number-disagrees": 7,
              "cites-flagged-study": 8, "table-row-count-mismatch": 9, "seed-mismatch": 1, "result-setting-outlier": 2,
-             "duplicate-checksum": 3, "summary-older-than-inputs": 4, "summary-predates-run": 4, "duplicated-table-row": 3, "declared-checksum-mismatch": 2}
+             "duplicate-checksum": 3, "summary-older-than-inputs": 4, "summary-predates-run": 4, "duplicated-table-row": 3, "declared-checksum-mismatch": 2,
+             "checkpoint-mismatch": 2, "stamp-after-write": 4}
     findings.sort(key=lambda f: (order.get(f["kind"], 9), f["files"][0]))
     return result("found" if findings else "not_found", con, scope=scope, by_kind=dict(Counter(f["kind"] for f in findings)),
                   findings=page(findings, offset, limit),
@@ -709,4 +715,65 @@ def _declared_hashes(con, rng) -> list[dict]:
                     "evidence": f"{path} declares sha256 {h[:12]}… for {f}, the file's sha256 is {a[:12]}…"
                                 + (f"; {len(items) - 1} more listed file(s) differ ({', '.join(x[1] for x in items[1:4])})" if len(items) > 1 else ""),
                     "confidence": "high" if len(items) <= 3 else "medium"})
+    return out
+
+
+CKPT_SHA = re.compile(r'"(?:checkpoint_sha256|ckpt_sha256|weights_sha256|model_sha256)"\s*:\s*"([0-9a-f]{64})"', re.I)
+CKPT_EPOCH = re.compile(r"(?:weights|checkpoint|ckpt|model)[_-]?(?:epoch|ep|e)[_-]?(\d+)\.(?:pt|pth|ckpt|safetensors|bin)", re.I)
+PATH_EPOCH = re.compile(r"(?:^|/)epoch[_-]?(\d{1,4})(?=/)", re.I)
+
+
+def _checkpoint_consistency(con, rng) -> list[dict]:
+    """Evaluations of one checkpoint (sibling files differing only in the eval seed) must record the same checkpoint
+    hash, and an evaluation filed under `epoch_N/` must load `..._epoch_N.pt`."""
+    out = []
+    groups = defaultdict(list)
+    for path, text in con.execute("SELECT f.path, t.text FROM texts_t t JOIN files f ON f.fid = t.fid WHERE t.fid BETWEEN ? AND ? "
+                                  "AND f.ext = '.json' AND f.path NOT LIKE '%::%'", rng):
+        if not text or "checkpoint" not in text and "weights" not in text:
+            continue
+        sha = CKPT_SHA.search(text)
+        eps = {int(x) for x in CKPT_EPOCH.findall(text)}
+        pe = PATH_EPOCH.findall(path)
+        if pe and eps and int(pe[-1]) not in eps and len(eps) == 1:
+            out.append({"kind": "checkpoint-mismatch", "files": [path],
+                        "evidence": f"filed under epoch {pe[-1]} but loads checkpoint(s) of epoch {sorted(eps)}", "confidence": "high"})
+        if sha:
+            d, b = posixpath.split(path)
+            groups[(d, DIGITS.sub("#", b))].append((path, sha.group(1)))
+    for (d, _), items in groups.items():
+        c = Counter(h for _, h in items)
+        if len(items) >= 3 and len(c) == 2:
+            (major, mc), (minor, nc) = c.most_common()
+            if nc == 1:
+                odd = next(p for p, h in items if h == minor)
+                out.append({"kind": "checkpoint-mismatch", "files": [odd],
+                            "evidence": f"records checkpoint sha256 {minor[:12]}… while its {mc} sibling evaluations in {d} record {major[:12]}…",
+                            "confidence": "high"})
+    return out
+
+
+EVENT_STAMP = re.compile(r"(?:completed|finished|ended|done|collected|end)(?:_at|_time)?\s*[=:]\s*\"?(20\d\d-\d\d-\d\dT\d\d:\d\d(?::\d\d)?(?:\.\d+)?(?:[+-]\d\d:?\d\d|Z))", re.I)
+
+
+def _future_stamps(con, rng) -> list[dict]:
+    """A file states that something completed at time T, but the file itself was last written well before T: the
+    stamp was edited (or the record was written before the event it reports)."""
+    import datetime
+    out = []
+    for path, text, mtime in con.execute("SELECT f.path, t.text, f.mtime FROM texts_t t JOIN files f ON f.fid = t.fid WHERE t.fid BETWEEN ? AND ? "
+                                         "AND f.mtime IS NOT NULL AND f.path NOT LIKE '%::%'", rng):
+        if not text or len(text) > 200000:
+            continue
+        for m in EVENT_STAMP.finditer(text):
+            try:
+                t = datetime.datetime.fromisoformat(m.group(1).replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                continue
+            if t - mtime > 30 * 60:
+                when = datetime.datetime.fromtimestamp(mtime, datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+                out.append({"kind": "stamp-after-write", "files": [path],
+                            "evidence": f"records `{m.group(0)[:60]}`, {int((t - mtime) / 60)} min after the file was last written ({when})",
+                            "confidence": "medium"})
+                break
     return out
