@@ -166,3 +166,20 @@ while required questions remain open.
   the summary JSON's `n`, naming the missing seed). Protocol statements that contradict each other across README /
   FINAL / PROVENANCE are not detected automatically: `find` the protocol keywords (padding, history, normalisation,
   episodes, seeds) across key documents and compare the windows.
+
+## Round-9 notes
+
+- Prefer the tool over ad-hoc ssh: one `count`, `compare`, `checksum`, `git` or `audit` call replaces a
+  find/sha256sum/diff pipeline, and it says whether its answer is exhaustive. Use ssh only for what the tool
+  cannot do (running a script, hashing a file larger than the probe hashes when `checksum` times out).
+- `checksum --path SHA256SUMS` (any `<sha256>  <name>` list) runs `sha256sum -c` over every entry, lists files in
+  the covered folders that the list omits, and entries that share one hash.
+- `ls` shows symlinks (with their target from probe v8), empty folders and skipped cache folders. "Not in the
+  index" is never the same as "does not exist": check `ls` of the parent.
+- `grep` returns `exhaustive: false` when some text files in scope have no snapshot; repeat with `--live` before
+  saying "only these files mention X". Probe v8 snapshots every small text file (<= 32 KB).
+- `audit` also reports `seed-mismatch` (a log records another sibling's seed), runs killed by a signal
+  (SIGTERM/OOM/Traceback) that are counted as complete, `result-setting-outlier` (one evaluation loaded a
+  checkpoint/config of a different shape than all its siblings) and `duplicate-checksum` (two replicates share
+  one hash in a checksum list). It does not check time ordering (a summary generated before a result it
+  includes): compare `generated_at` / `updated_at` fields with `find` when a summary claims completeness.

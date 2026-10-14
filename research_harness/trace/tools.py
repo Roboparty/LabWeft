@@ -471,7 +471,7 @@ TOOLS = {
     "trace_count": (t_count, "find|wc -l from the index: files (filter by basename glob, e.g. cell_result.json or '*.json,*.csv') or directories (recursive, direct, empty) under a path; group by child folder or path template. Archive scope `x.tgz::`. --live recounts on the host.",
                     {**NAME, "path": S, "name_glob": S, "what": {"type": "string", "enum": ["files", "dirs", "both"]}, "group_by": {"type": "string", "enum": ["child", "template"]},
                      "live": {"type": "boolean"}, "include_archives": {"type": "boolean"}, "limit": I}, ["workspace", "source"]),
-    "trace_checksum": (t_checksum, "sha256 of a file (probe hash or computed on the host) checked against sidecar checksum files next to it (x.sha256, SHA256SUMS): verdict match / mismatch / no_sidecar.",
+    "trace_checksum": (t_checksum, "sha256 of a file checked against sidecar checksum files next to it (x.sha256, SHA256SUMS): match / mismatch / no_sidecar. Given a checksum LIST itself (SHA256SUMS, CODE_SHA256SUMS.txt) it runs `sha256sum -c` over every entry and also lists files in the covered folders that the list omits.",
                        {**NAME, "path": S, "compute": {"type": "boolean"}}, ["workspace", "source", "path"]),
     "trace_compare": (t_compare, "diff -r by relative path between two trees: a folder vs another folder or an archive snapshot (`bundle.tgz::` or `bundle.tgz::sub/`): only-in-a, only-in-b, content differs (sha).",
                       {**NAME, "a": S, "b": S, "limit": I}, ["workspace", "source", "a", "b"]),
