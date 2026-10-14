@@ -117,12 +117,22 @@ def count(con, scope: str = "", name: str | None = None, what: str = "files", gr
     empty, policy_skipped = [], 0
     if "::" not in scope:
         like = (scope + "/%") if scope else "%"
-        for (p, k) in con.execute("SELECT DISTINCT path, kind FROM skips WHERE kind IN ('empty_dir', 'skip_dir') AND path LIKE ?", (like,)):
+        skipped_files, tallied = 0, True
+        for (p, k, reason) in con.execute("SELECT DISTINCT path, kind, reason FROM skips WHERE kind IN ('empty_dir', 'skip_dir') AND path LIKE ?", (like,)):
             rel = _rel(p, scope)
             if k == "empty_dir":
                 empty.append(rel)
             else:
                 policy_skipped += 1
+                try:
+                    t = json.loads(reason) if reason and reason.startswith("{") else None
+                except ValueError:
+                    t = None
+                if t and "files" in t:
+                    skipped_files += t["files"]
+                    tallied = tallied and t.get("complete", False)
+                else:
+                    tallied = False
             d = rel
             while d:
                 dirs.add(d)
@@ -152,8 +162,14 @@ def count(con, scope: str = "", name: str | None = None, what: str = "files", gr
     notes = [l for l in arch_lim if l not in lim]
     if skipped:
         lim.append(f"{skipped} paths under this scope were skipped by the probe (unreadable/excluded): use --live for an exact count")
-    if policy_skipped:
-        notes.append(f"{policy_skipped} cache/vendor folders (e.g. __pycache__, .pytest_cache) are counted as folders but their contents were not listed")
+    if policy_skipped and "::" not in scope:
+        if tallied and not pats:
+            out["files_including_skipped_folders"] = out.get("files", 0) + skipped_files
+            notes.append(f"{policy_skipped} cache/vendor folders (__pycache__, .git, ...) hold {skipped_files} more files (counted, not read): "
+                         "`files_including_skipped_folders` is the find | wc -l answer")
+        else:
+            lim.append(f"{policy_skipped} cache/vendor folders (__pycache__, .git, ...) were not listed by this index: their files are "
+                       "missing from the count -- use --live for find | wc -l")
     out["status"] = "found" if (files or dirs) else "not_found"
     out["exhaustive"] = not lim
     out["limitations"] = lim or notes or ["counts come from the index snapshot; files created after the scan are not included"]

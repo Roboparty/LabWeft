@@ -385,6 +385,11 @@ class VerifyTests(unittest.TestCase):
 
             c = tools.t_count(str(ws), "p", path="study", name_glob="cell_result.json")
             self.assertEqual(c["files"], 3)
+            (live / "collected" / "__pycache__").mkdir()
+            (live / "collected" / "__pycache__" / "x.pyc").write_bytes(b"\0" * 10)
+            tools.t_collect(str(ws), "p", str(src))
+            c2 = tools.t_count(str(ws), "p", path="study/collected")
+            self.assertEqual((c2["files"], c2["files_including_skipped_folders"]), (3, 4))
             d = tools.t_count(str(ws), "p", path="study/empty", what="dirs")
             self.assertEqual(d["dirs"]["total_recursive"], 2)
             a = tools.t_count(str(ws), "p", path="study-snapshot.tar.gz::summary")
