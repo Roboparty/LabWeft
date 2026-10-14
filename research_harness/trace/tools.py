@@ -195,8 +195,8 @@ def t_reconcile(ws, name, scope=None, path=None, offset=0, limit=None, number=No
             rng = index.fid_range(con, scope) if scope else None
             where, args = ("t.fid BETWEEN ? AND ?", list(rng)) if rng else ("1", [])
             paths = [r[0] for r in con.execute(
-                f"SELECT f.path FROM texts_t t JOIN files f ON f.fid = t.fid WHERE {where} AND f.role = 'report' AND t.text LIKE ?",
-                args + [f"%{number}%"])][:25]
+                f"SELECT DISTINCT f.path FROM lines_t t JOIN files f ON f.fid = t.fid WHERE {where} AND t.kind = 'numbers' "
+                "AND f.role = 'report' AND t.text LIKE ?", args + [f"%{number.split('+')[0].split('±')[0].strip()}%"])][:25]
             out = []
             for p in paths:
                 rep = analyze.reconcile(con, path=p, limit=100000)
