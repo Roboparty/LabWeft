@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from research_harness.store import Store
-from research_harness.trace import analyze, index, ledger, mcp, probe, tools
+from research_harness.trace import analyze, index, ledger, mcp, navigate, probe, tools
 from research_harness.trace.analyze import name_tokens, split_kv_list
 
 
@@ -121,6 +121,42 @@ class TraceTests(unittest.TestCase):
         self.assertEqual(pm[1]["sd_conventions"], ["population"])
         stray = next(n for n in items if n["number"] == "12.345")
         self.assertEqual(stray["state"], "unsourced")
+
+    def test_round6_reconcile_names_replicates_and_flags_mixed_sd(self):
+        out = analyze.reconcile(self.con, path="REPORT.md", limit=50)
+        self.assertIn("mixed_sd_conventions", out["report"])
+        pm = [n for n in out["numbers"]["items"] if n["kind"] == "mean±sd"]
+        unit = pm[0]["sources"][0].get("replicate_unit") or {}
+        self.assertEqual(sorted(map(str, unit.get("pooled", {}).get("seed", []))), ["7", "8", "9"])
+        self.assertIn("rh", pm[0]["sources"][0].get("levels", {}))
+
+    def test_round6_local_grep_and_pattern_hits(self):
+        out = tools.t_grep(str(self.ws), "proj", "Main result|Sweep report")
+        self.assertEqual(out["mode"], "regex")
+        self.assertTrue(any(h["path"] == "REPORT.md" for h in out["hits"]))
+        read = tools.t_read(str(self.ws), "proj", "REPORT.md", pattern="unrelated number")
+        hits = [l for l in read["lines"] if l.get("hit")]
+        self.assertEqual(len(hits), 1)
+        self.assertGreater(len(read["lines"]), 1)  # context lines are kept but not marked
+
+    def test_round6_validity_offers_unflagged_alternative(self):
+        import shutil
+        base = self.src / "supplement"
+        for name in ("mechanism_goal_7local_e5.incomplete_do_not_use", "mechanism_goal_7local_rawgoal"):
+            (base / name).mkdir(parents=True)
+            (base / name / "README.md").write_text("# study\n", encoding="utf-8")
+            (base / name / "result.json").write_text('{"success_rate": 0.5}', encoding="utf-8")
+        ws2 = self.ws.parent / "ws2"
+        tools.t_collect(str(ws2), "proj", str(self.src))
+        con = index.connect(ws2, "proj")
+        try:
+            v = navigate.validity(con)
+        finally:
+            con.close()
+        flagged = [a for a in v["flagged_areas"]["items"] if a["area"].endswith("incomplete_do_not_use")]
+        self.assertTrue(flagged)
+        alts = [a["study"] for a in flagged[0].get("unflagged_alternatives", [])]
+        self.assertIn("mechanism_goal_7local_rawgoal", alts)
 
     def test_provenance_and_xrefs(self):
         out = analyze.provenance(self.con, "results/sweep/aw0.1_lw0.1_rh1_s7/result.json")

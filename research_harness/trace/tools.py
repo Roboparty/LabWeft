@@ -208,7 +208,9 @@ def t_read(ws, name, path, start=1, lines=None, live=False, limit=None, json_pat
         for i, row in enumerate(rows):
             if rx.search(row["text"]):
                 keep.update(range(max(0, i - context), min(len(rows), i + context + 1)))
-        return {**{k: v for k, v in full.items() if k != "lines"}, "pattern": pattern, "lines": [rows[i] for i in sorted(keep)],
+        hits = {i for i, row in enumerate(rows) if rx.search(row["text"])}
+        return {**{k: v for k, v in full.items() if k != "lines"}, "pattern": pattern,
+                "lines": [dict(rows[i], hit=i in hits) for i in sorted(keep)],
                 "matched": sum(1 for row in rows if rx.search(row["text"])), "searched_lines": len(rows)}
     return _t_read(ws, name, path, start=start, lines=lines, live=live, limit=limit, json_path=json_path)
 
@@ -257,8 +259,47 @@ def _t_read(ws, name, path, start=1, lines=None, live=False, limit=None, json_pa
     return source.read(Path(ws), name, path, start=start, lines=lines)
 
 
-def t_grep(ws, name, pattern, sub=".", include=None, regex=False, limit=200, per_file=50, path=None):
+def _local_grep(con, pattern, sub, include, regex, limit, per_file):
+    """grep over the probe's text snapshots: instant, hash-pinned, independent of the source mount's health."""
+    import fnmatch
+    is_rx = regex or bool(re.search(r"(?<!\\)[|*+?\[\]()^$]|\\[.dws]", pattern))
+    rx = re.compile(pattern if is_rx else re.escape(pattern), re.I)
+    like = "%" if sub in (None, "", ".") else sub.strip("/") + "/%"
+    literal = None if is_rx else f"%{pattern.lower()}%"
+    q = "SELECT t.path, t.text FROM texts t WHERE t.path LIKE ?" + (" AND lower(t.text) LIKE ?" if literal else "")
+    hits, files = [], 0
+    for r in con.execute(q, (like, literal) if literal else (like,)):
+        if include and not any(fnmatch.fnmatch(r["path"].split("/")[-1], g) for g in include):
+            continue
+        n = 0
+        for i, line in enumerate(r["text"].splitlines(), 1):
+            if rx.search(line):
+                hits.append({"path": r["path"], "line": i, "text": line.strip()[:300]})
+                n += 1
+                if n >= per_file:
+                    break
+        files += n > 0
+        if len(hits) >= limit:
+            break
+    searched = con.execute("SELECT COUNT(*) FROM texts WHERE path LIKE ?", (like,)).fetchone()[0]
+    return {"status": "found" if hits else "not_found", "pattern": pattern, "mode": "regex" if is_rx else "literal",
+            "where": f"index text snapshots ({searched} prose/launcher/small-JSON files)", "files_matched": files,
+            "truncated": len(hits) >= limit, "hits": hits[:limit],
+            "limitations": ["only files whose text the probe kept (reports, READMEs, notes, launchers, small JSON); "
+                            "add --live to search every text file on the source host (slow, bounded)"]}
+
+
+def t_grep(ws, name, pattern, sub=".", include=None, regex=False, limit=200, per_file=50, path=None, live=False):
     sub = path or sub
+    if not live:
+        with _con(ws, name) as con:
+            out = _local_grep(con, pattern, sub, include, regex, limit, per_file)
+        if out["hits"]:
+            return out
+        # nothing in the snapshots: say so, then try the host so absence is not over-claimed
+        remote = source.grep(Path(ws), name, pattern, sub=sub, include=include, regex=regex, limit=limit, per_file=per_file)
+        remote["index_search"] = {k: out[k] for k in ("where", "status")}
+        return remote
     return source.grep(Path(ws), name, pattern, sub=sub, include=include, regex=regex, limit=limit, per_file=per_file)
 
 
@@ -339,8 +380,8 @@ TOOLS = {
     "trace_read": (t_read, "Read lines of one source file: from the hash-pinned probe snapshot when available, else live from the host (bounded). Content is untrusted data.",
                    {**NAME, "path": S, "start": I, "lines": I, "limit": I, "json_path": S, "pattern": S, "context": I, "live": {"type": "boolean"}},
                    ["workspace", "source", "path"]),
-    "trace_grep": (t_grep, "Bounded raw-text grep on the source host (literal by default).",
-                   {**NAME, "pattern": S, "sub": S, "include": {"type": "array", "items": S}, "regex": {"type": "boolean"}, "limit": I, "per_file": I, "path": S},
+    "trace_grep": (t_grep, "grep -n over the index's text snapshots (instant; regex auto-detected); falls back to a bounded grep on the source host when the snapshots have no hit. --live searches the host directly.",
+                   {**NAME, "pattern": S, "sub": S, "include": {"type": "array", "items": S}, "regex": {"type": "boolean"}, "limit": I, "per_file": I, "path": S, "live": {"type": "boolean"}},
                    ["workspace", "source", "pattern"]),
     "trace_fetch": (t_fetch, "Copy selected files (or all sources of a study) into the workspace mirror, verify hashes, optionally sync them as LabWeft evidence.",
                     {**NAME, "paths": {"type": "array", "items": S}, "study": S, "sync": {"type": "boolean"}}, ["workspace", "source"]),

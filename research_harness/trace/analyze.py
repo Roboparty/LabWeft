@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import math
 import posixpath
 import re
@@ -598,21 +599,76 @@ DECLARED_EXTERNAL = re.compile(r"(retained|reported in|from the paper|paper valu
 ISO_TIME = re.compile(r"\d{4}-\d{2}-\d{2}[T ][\d:.]+(?:[+-]\d{2}:?\d{2}|Z)?|\b\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?\b")
 
 
+def _cell_stats_cache_path(con, scope):
+    try:
+        db = next(r[2] for r in con.execute("PRAGMA database_list") if r[1] == "main")
+        st = os.stat(db)
+    except (StopIteration, OSError):
+        return None
+    tag = hashlib.sha256(f"{st.st_size}:{int(st.st_mtime)}:{scope}:{CELL_STATS_VERSION}".encode()).hexdigest()[:16]
+    return os.path.join(os.path.dirname(db), f"cell_stats-{tag}.json")
+
+
+CELL_STATS_VERSION = "6"
+
+
 def _cell_stats(con, scope):
+    """All recoverable cell aggregates; minutes on a 500k-file index, so cached on disk next to the index and
+    invalidated whenever the index file changes."""
     cache = getattr(con, "_lw_cells", None)
     if cache is not None and cache[0] == scope:
         return cache[1]
+    cpath = _cell_stats_cache_path(con, scope)
+    if cpath and os.path.exists(cpath):
+        try:
+            with open(cpath, encoding="utf-8") as fh:
+                out = [tuple(x) for x in json.load(fh)]
+            try:
+                con._lw_cells = (scope, out)
+            except AttributeError:
+                pass
+            return out
+        except (OSError, ValueError):
+            pass
+    out = _cell_stats_compute(con, scope)
+    if cpath:
+        try:
+            tmp = cpath + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(out, fh, ensure_ascii=False, default=str)
+            os.replace(tmp, cpath)
+        except OSError:
+            pass  # read-only workspace: just recompute next time
+    return out
+
+
+def _cell_stats_compute(con, scope):
     out = []
     ex = experiments(con, scope=scope, limit=100000, _keep_cells=True)
-    def add(vals, sid, cid, src, run, how):
+    def add(vals, sid, cid, src, run, how, unit=None, levels=None):
         st = _stats(vals)
         if st and st["n"] > 1:
-            out.append((st["mean"], st.get("sd_sample"), st.get("sd_population"), st["n"], sid, cid + how, src, run["source"], run["locator"]))
+            # `unit` names what the n replicates are (e.g. train_seed 3072/3073/3074) so an answer can state it
+            out.append((st["mean"], st.get("sd_sample"), st.get("sd_population"), st["n"], sid, cid + how, src, run["source"],
+                        run["locator"], {"replicate_unit": unit, "levels": levels}))
+
+    def ids(values):
+        out = set()
+        for v in values:
+            try:
+                v = json.loads(v) if isinstance(v, str) else v
+            except ValueError:
+                pass
+            if v is not None and not isinstance(v, (dict, list)):
+                out.add(v)
+        return sorted(out, key=lambda x: (str(type(x)), x))
 
     for s in ex["studies"]["items"]:
         cells = s.get("_cells", [])
         for c in cells:
-            add([r["value"] for r in c["runs"]], s["id"], c["id"], s["source"], c["runs"][0], "")
+            flat_unit = {k: ids(json.dumps(r["seed"].get(k), default=str) for r in c["runs"]) for k in s["replicate_keys"]}
+            add([r["value"] for r in c["runs"]], s["id"], c["id"], s["source"], c["runs"][0], "",
+                {"pooled": flat_unit} if flat_unit else None, c["levels"])
             # Hierarchical: average within one replicate key (e.g. eval seeds), then spread across the other (train seeds).
             for k in s["replicate_keys"]:
                 groups = defaultdict(list)
@@ -620,7 +676,9 @@ def _cell_stats(con, scope):
                     if r["value"] is not None:
                         groups[json.dumps(r["seed"].get(k), default=str)].append(r["value"])
                 if 1 < len(groups) < len(c["runs"]):
-                    add([statistics.fmean(v) for v in groups.values()], s["id"], c["id"], s["source"], c["runs"][0], f"|mean-of-{k}")
+                    add([statistics.fmean(v) for v in groups.values()], s["id"], c["id"], s["source"], c["runs"][0], f"|mean-of-{k}",
+                        {"spread_across": k, "values": ids(groups), "averaged_within": [x for x in s["replicate_keys"] if x != k]},
+                        c["levels"])
         # Marginal: pool cells that differ only in one factor (a report row that averages over tasks or variants).
         for f in s["factors"]:
             pooled = defaultdict(list)
@@ -630,7 +688,9 @@ def _cell_stats(con, scope):
             for key, group in pooled.items():
                 if len(group) > 1:
                     per_cell = [c["stats"]["mean"] for c in group if c["stats"]]
-                    add(per_cell, s["id"], group[0]["id"], s["source"], group[0]["runs"][0], f"|macro-over-{f['key']}")
+                    shared = {k: v for k, v in group[0]["levels"].items() if k != f["key"]}
+                    add(per_cell, s["id"], group[0]["id"], s["source"], group[0]["runs"][0], f"|macro-over-{f['key']}",
+                        {"spread_across": f"cells of {f['key']}", "values": [c["levels"].get(f["key"]) for c in group]}, shared)
                     # The usual paper convention: per training seed, average over the pooled factor (e.g. tasks),
                     # then report mean ± SD across those seeds.
                     for k in s["replicate_keys"]:
@@ -642,8 +702,12 @@ def _cell_stats(con, scope):
                                     per_seed[json.dumps(r["seed"].get(k), default=str)][lvl].append(r["value"])
                         complete = [lv for lv in per_seed.values() if len(lv) == len(group)]
                         if len(complete) > 1:
+                            keys_complete = [kk for kk, lv in per_seed.items() if len(lv) == len(group)]
                             add([statistics.fmean(statistics.fmean(v) for v in lv.values()) for lv in complete], s["id"],
-                                group[0]["id"], s["source"], group[0]["runs"][0], f"|macro-over-{f['key']}-per-{k}")
+                                group[0]["id"], s["source"], group[0]["runs"][0], f"|macro-over-{f['key']}-per-{k}",
+                                {"spread_across": k, "values": ids(keys_complete), "macro_over": f["key"],
+                                 "macro_levels": [c["levels"].get(f["key"]) for c in group],
+                                 "averaged_within": [x for x in s["replicate_keys"] if x != k]}, shared)
     try:
         con._lw_cells = (scope, out)
     except AttributeError:
@@ -657,6 +721,52 @@ def _close(a, b, decimals):
 
 def _area(path, depth=2):
     return "/".join(path.split("/")[:depth])
+
+
+def _sibling_sd(con, a: str, b: str, max_files: int = 300):
+    """Fallback for a printed `mean ± sd`: find stored values equal to the mean, then, in those files, sibling numbers
+    under one parent (a per-seed list or dict such as `macro_by_train_seed`) whose mean and sample/population SD
+    reproduce the printed pair. Index-only (value and fid indexes)."""
+    da = len(a.split(".")[1]) if "." in a else 0
+    db = len(b.split(".")[1]) if "." in b else 0
+    x = float(a)
+    ranked = {}
+    for scale in (1.0, 0.01, 100.0):
+        tol = 0.5 * 10 ** (-da) * scale + 1e-12
+        rows = con.execute("SELECT fid, locator FROM metrics_t WHERE value BETWEEN ? AND ? LIMIT 5000",
+                           (x * scale - tol, x * scale + tol)).fetchall() + con.execute(
+            "SELECT fid, locator FROM config_t WHERE num BETWEEN ? AND ? LIMIT 2000", (x * scale - tol, x * scale + tol)).fetchall()
+        for fid, loc in rows:
+            # a stored aggregate named like a mean is the best place to find its per-unit siblings
+            score = 0 if re.search(r"(mean|macro|avg|average)", loc.rsplit(".", 1)[-1], re.I) else 1
+            ranked[fid] = min(ranked.get(fid, 9), score)
+    fids = sorted(ranked, key=lambda f: (ranked[f], f))
+    hits = []
+    for fid in fids[:max_files]:
+        groups = defaultdict(list)
+        # keys such as `macro_by_train_seed` are stored as settings (they name a seed), so look in both tables
+        rows = con.execute("SELECT locator, value FROM metrics_t WHERE fid = ?", (fid,)).fetchall() + con.execute(
+            "SELECT locator, num FROM config_t WHERE fid = ? AND num IS NOT NULL", (fid,)).fetchall()
+        for loc, val in rows:
+            m = re.match(r"^(.*?)(\[\d+\]|\.[^.\[\]]+)$", loc)
+            if m:
+                groups[m.group(1)].append((loc, val))
+        for parent, items in groups.items():
+            vals = [v for _, v in items]
+            if not 2 <= len(vals) <= 12:
+                continue
+            st = _stats(vals)
+            for scale in (1.0, 100.0, 0.01):
+                if st and _close(x, st["mean"] * scale, da):
+                    conv = ("sample" if st.get("sd_sample") is not None and _close(float(b), st["sd_sample"] * scale, db) else
+                            "population" if st.get("sd_population") is not None and _close(float(b), st["sd_population"] * scale, db) else None)
+                    if conv:
+                        path = con.execute("SELECT path FROM files WHERE fid = ?", (fid,)).fetchone()[0]
+                        hits.append({"source": path, "locator": parent, "n": st["n"], "sd": conv, "per_unit_values": [round(v * scale, 4) for v in vals],
+                                     "sd_values": {"sample_sd": round(st["sd_sample"] * scale, 4), "population_sd": round(st["sd_population"] * scale, 4)},
+                                     "replicate_unit": {"from": "sibling values under " + parent, "keys": [l.rsplit(".", 1)[-1] if not l.endswith("]") else l[l.rfind("[") :] for l, _ in items]}})
+                    break
+    return hits
 
 
 def reconcile(con, scope: str | None = None, path: str | None = None, offset: int = 0, limit: int = 20, min_decimals: int = 2) -> dict:
@@ -681,7 +791,7 @@ def reconcile(con, scope: str | None = None, path: str | None = None, offset: in
                 da = len(a.split(".")[1]) if "." in a else 0
                 db = len(b.split(".")[1]) if "." in b else 0
                 hits = []
-                for mean, sds, sdp, n, sid, cid, ssrc, rsrc, rloc in cells:
+                for mean, sds, sdp, n, sid, cid, ssrc, rsrc, rloc, extra in cells:
                     for scale in (1.0, 100.0, 0.01):
                         if _close(float(a), mean * scale, da):
                             conv = ("sample" if sds is not None and _close(float(b), sds * scale, db) else
@@ -691,10 +801,19 @@ def reconcile(con, scope: str | None = None, path: str | None = None, offset: in
                                 alt = {"sample_sd": round(sds * scale, 4) if sds is not None else None,
                                        "population_sd": round(sdp * scale, 4) if sdp is not None else None}
                                 hits.append({"study": sid, "cell": cid, "n": n, "sd": conv, "sd_values": alt, "source": ssrc,
-                                             "example_run": rsrc, "locator": rloc})
-                local = [h for h in hits if _area(h["source"]) == area] or hits
-                state = "derived" if 0 < len(local) <= 5 else ("ambiguous" if local else
-                                                               "declared_external" if DECLARED_EXTERNAL.search(r["text"]) else "unsourced")
+                                             "example_run": rsrc, "locator": rloc, **{k: v for k, v in extra.items() if v}})
+                if not hits:
+                    hits = _sibling_sd(con, a, b)
+                # a report at the project root or one level down summarises the whole project: every area is local
+                local = [h for h in hits if d["path"].count("/") <= 1 or _area(h["source"]) == area]
+                if local:
+                    state = "derived" if len(local) <= 5 else "ambiguous"
+                elif hits:
+                    # only matched in another part of the project: a lead, not a source (could be a coincidence)
+                    state = "derived_elsewhere" if len(hits) <= 5 else "ambiguous"
+                    local = hits
+                else:
+                    state = "declared_external" if DECLARED_EXTERNAL.search(r["text"]) else "unsourced"
                 nums.append({"line": r["line"], "number": m.group(0), "kind": "mean±sd", "state": state, "sources": local[:3],
                              "n_sources": len(local), "sd_conventions": sorted({h["sd"] for h in local}), "context": r["text"][:160]})
                 consumed.update({m.start(1), m.start(2)})
@@ -729,8 +848,18 @@ def reconcile(con, scope: str | None = None, path: str | None = None, offset: in
                 nums.append(item)
         if nums:
             c = Counter(n["state"] for n in nums)
-            docs.append({"report": d["path"], "numbers": len(nums), "by_state": dict(c),
-                         "traced_ratio": round((c["sourced"] + c["derived"] + c["declared_external"]) / len(nums), 3), "_nums": nums})
+            entry = {"report": d["path"], "numbers": len(nums), "by_state": dict(c),
+                     "traced_ratio": round((c["sourced"] + c["derived"] + c["derived_elsewhere"] + c["declared_external"]) / len(nums), 3), "_nums": nums}
+            # Only unambiguous matches decide a convention (n_sources <= 5 and exactly one convention fits).
+            conv = defaultdict(list)
+            for n in nums:
+                if n["state"] in ("derived", "derived_elsewhere") and len(n.get("sd_conventions", [])) == 1:
+                    conv[n["sd_conventions"][0]].append(f"line {n['line']}: {n['number']}")
+            if len(conv) > 1:
+                entry["mixed_sd_conventions"] = {k: v[:4] for k, v in conv.items()}
+                entry["warning"] = ("this report prints sample-SD and population-SD values side by side; "
+                                    "the ± values are not comparable across those rows")
+            docs.append(entry)
     docs.sort(key=lambda x: (x["traced_ratio"], -x["numbers"]))
     if path:
         if not docs:
