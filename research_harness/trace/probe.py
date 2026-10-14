@@ -24,9 +24,9 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 
-PROBE_VERSION = "11"
+PROBE_VERSION = "12"
 BULK_MIN_FILES = 5000
-RESUME_COMPATIBLE = {"11"}  # v5 lacks only JSON declared facts; reuse its parse work on huge trees
+RESUME_COMPATIBLE = {"12"}  # v5 lacks only JSON declared facts; reuse its parse work on huge trees
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", ".mypy_cache", ".pytest_cache",
              ".ipynb_checkpoints", "wandb-cache", ".cache", ".research"}
 SENSITIVE = re.compile(r"(^|[._-])(secret|secrets|token|credentials?|password|passwd|id_rsa|id_ed25519|netrc)([._-]|$)|\.env$|\.pem$|\.key$", re.I)
@@ -348,7 +348,7 @@ def launch_args(text):
             continue
         for k, v in HYDRA_KV.findall(line):
             k = k.lstrip("+")
-            if len(out) < 120 and not SECRET_VALUE.search(f"{k}={v}"):
+            if len(out) < 300 and not SECRET_VALUE.search(f"{k}={v}"):
                 out.setdefault(k, v)
         for k, v in FLAG_KV.findall(line):
             if len(out) < 120 and not SECRET_VALUE.search(f"{k}={v}"):
@@ -586,7 +586,9 @@ def analyze(root, rel, size, mtime, max_text, _raw=None, max_archive=128 * 1024 
             head = [l.strip()[:400] for l in text.splitlines()[:40] if l.strip()][:8]
             if head:
                 facts["head"] = [redact(h) for h in head[:5]]
-            args = launch_args("\n".join(head + [c[1] for c in facts.get("cmds", [])][:5]))
+            # parse whole command lines (long launches carry dozens of overrides; the head kept for display is cut at 400)
+            full_head = [l.strip()[:20000] for l in text.splitlines()[:40] if l.strip()][:8]
+            args = launch_args("\n".join(full_head + [c[1] for c in facts.get("cmds", [])][:5]))
             if args:
                 facts["launch_args"] = args
         if role == "launcher" or role == "log":
