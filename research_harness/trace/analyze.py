@@ -383,10 +383,14 @@ def _stats(values):
     vals = [v for v in values if v is not None]
     if not vals:
         return None
-    s = {"n": len(vals), "mean": round(statistics.fmean(vals), 6)}
-    if len(vals) > 1:
-        s["sd_sample"] = round(statistics.stdev(vals), 6)
-        s["sd_population"] = round(statistics.pstdev(vals), 6)
+    # plain float math: statistics.stdev uses exact Fractions and dominated reconcile's run time
+    n = len(vals)
+    mean = math.fsum(vals) / n
+    s = {"n": n, "mean": round(mean, 6)}
+    if n > 1:
+        ss = math.fsum((v - mean) ** 2 for v in vals)
+        s["sd_sample"] = round(math.sqrt(ss / (n - 1)), 6)
+        s["sd_population"] = round(math.sqrt(ss / n), 6)
     return s
 
 
@@ -715,6 +719,25 @@ def _cell_stats_compute(con, scope):
     return out
 
 
+def _cells_near(cells, x, tol):
+    """Cells whose mean lies within tol of x (bisect on a mean-sorted copy cached on the list object's id)."""
+    import bisect
+    key = id(cells)
+    cache = _CELL_SORT.get(key)
+    if cache is None or cache[0] is not cells:
+        order = sorted(cells, key=lambda c: c[0])
+        cache = (cells, [c[0] for c in order], order)
+        _CELL_SORT.clear()
+        _CELL_SORT[key] = cache
+    _, means, order = cache
+    lo = bisect.bisect_left(means, x - tol - 1e-9)
+    hi = bisect.bisect_right(means, x + tol + 1e-9)
+    return order[lo:hi]
+
+
+_CELL_SORT: dict = {}
+
+
 def _close(a, b, decimals):
     return b is not None and abs(a - b) <= 0.5 * 10 ** (-decimals) + 1e-9
 
@@ -753,7 +776,10 @@ def _sibling_sd(con, a: str, b: str, max_files: int = 300):
                 groups[m.group(1)].append((loc, val))
         for parent, items in groups.items():
             vals = [v for _, v in items]
-            if not 2 <= len(vals) <= 12:
+            if not 2 <= len(vals) <= 12 or any(v is None for v in vals):
+                continue
+            m = math.fsum(vals) / len(vals)
+            if not any(_close(x, m * sc, da) for sc in (1.0, 100.0, 0.01)):
                 continue
             st = _stats(vals)
             for scale in (1.0, 100.0, 0.01):
@@ -791,17 +817,32 @@ def reconcile(con, scope: str | None = None, path: str | None = None, offset: in
                 da = len(a.split(".")[1]) if "." in a else 0
                 db = len(b.split(".")[1]) if "." in b else 0
                 hits = []
-                for mean, sds, sdp, n, sid, cid, ssrc, rsrc, rloc, extra in cells:
-                    for scale in (1.0, 100.0, 0.01):
-                        if _close(float(a), mean * scale, da):
-                            conv = ("sample" if sds is not None and _close(float(b), sds * scale, db) else
-                                    "population" if sdp is not None and _close(float(b), sdp * scale, db) else None)
-                            if conv:
-                                # spell out the other convention so a reader can state both
-                                alt = {"sample_sd": round(sds * scale, 4) if sds is not None else None,
-                                       "population_sd": round(sdp * scale, 4) if sdp is not None else None}
-                                hits.append({"study": sid, "cell": cid, "n": n, "sd": conv, "sd_values": alt, "source": ssrc,
-                                             "example_run": rsrc, "locator": rloc, **{k: v for k, v in extra.items() if v}})
+                for scale in (1.0, 100.0, 0.01):
+                    for mean, sds, sdp, n, sid, cid, ssrc, rsrc, rloc, extra in _cells_near(cells, float(a) / scale, 0.5 * 10 ** (-da) / scale):
+                        if not _close(float(a), mean * scale, da):
+                            continue
+                        conv, approx = None, False
+                        for name_, v in (("sample", sds), ("population", sdp)):
+                            if v is not None and _close(float(b), v * scale, db):
+                                conv = name_
+                                break
+                        if conv is None:
+                            # authors often take the SD of already-rounded per-seed means: allow one unit in the last digit
+                            for name_, v in (("sample", sds), ("population", sdp)):
+                                if v is not None and abs(float(b) - v * scale) <= 10 ** (-db) + 1e-9:
+                                    conv, approx = name_, True
+                                    break
+                        if conv:
+                            # spell out the other convention so a reader can state both
+                            alt = {"sample_sd": round(sds * scale, 4) if sds is not None else None,
+                                   "population_sd": round(sdp * scale, 4) if sdp is not None else None}
+                            hit = {"study": sid, "cell": cid, "n": n, "sd": conv, "sd_values": alt, "source": ssrc,
+                                   "example_run": rsrc, "locator": rloc, **{k: v for k, v in extra.items() if v}}
+                            if approx:
+                                hit["sd_rounding"] = "printed SD is off by one unit in the last digit: consistent with an SD of rounded per-seed means"
+                            hits.append(hit)
+                exact = [h for h in hits if "sd_rounding" not in h]
+                hits = exact or hits
                 if not hits:
                     hits = _sibling_sd(con, a, b)
                 # a report at the project root or one level down summarises the whole project: every area is local

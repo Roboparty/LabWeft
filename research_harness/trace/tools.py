@@ -189,6 +189,24 @@ def t_reconcile(ws, name, scope=None, path=None, offset=0, limit=None, number=No
         full["numbers"] = analyze.page(items, offset or 0, limit or 50)
         full["report"] = {k: v for k, v in full.get("report", {}).items() if k in ("report", "numbers", "by_state")}
         return full
+    if number and not path:
+        # where is this number printed, and how does each report's copy trace? (one call instead of report-by-report)
+        with _con(ws, name) as con:
+            rng = index.fid_range(con, scope) if scope else None
+            where, args = ("t.fid BETWEEN ? AND ?", list(rng)) if rng else ("1", [])
+            paths = [r[0] for r in con.execute(
+                f"SELECT f.path FROM texts_t t JOIN files f ON f.fid = t.fid WHERE {where} AND f.role = 'report' AND t.text LIKE ?",
+                args + [f"%{number}%"])][:25]
+            out = []
+            for p in paths:
+                rep = analyze.reconcile(con, path=p, limit=100000)
+                if rep["status"] != "found":
+                    continue
+                for n in rep["numbers"]["items"]:
+                    if str(number) in n["number"] and (not state or n["state"] == state):
+                        out.append({"report": p, **n})
+        return {"status": "found" if out else "not_found", "number": number, "reports_searched": len(paths),
+                "occurrences": analyze.page(out, offset or 0, limit or 30)}
     limit = limit or 60
     with _con(ws, name) as con:
         return analyze.reconcile(con, scope=scope, path=path, offset=offset, limit=limit)
