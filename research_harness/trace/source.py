@@ -264,7 +264,9 @@ def grep(workspace: Path, name: str, pattern: str, sub: str = ".", include: list
     status = "found" if hits else ("not_found" if exhaustive else "unknown")
     lim = [f"at most {per_file} matches per file; 90 s budget per host; binary files skipped"]
     if not exhaustive and not hits:
-        lim.append("search did not finish (" + ("; ".join(attempts) or f"exit {rc}") + "): absence is unknown")
+        why = {2: "grep error: the --sub path does not exist on the host or the --regex pattern is invalid",
+               124: "time budget exhausted before the search finished"}.get(rc, "; ".join(attempts) or f"exit {rc}")
+        lim.append(f"search did not finish ({why}): absence is unknown; `trace search` covers indexed text instantly")
     return {"status": status, "pattern": pattern, "mode": ("regex (auto-detected)" if auto_regex else "regex" if regex else "literal"),
             "truncated": len(out) > limit, "hits": hits, "host": host_used,
             "limitations": lim,
