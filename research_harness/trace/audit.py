@@ -832,7 +832,7 @@ def _table_arithmetic(con, rng) -> list[dict]:
                     rows.append((j + 1, cells))
                 j += 1
             i = j
-            if len(rows) < 3 or len(header) < 4:
+            if len(rows) < 3 or len(header) < 3:
                 continue
             vals = [[_cell(c) for c in cells] for _, cells in rows]
             numeric = [k for k in range(1, len(header)) if sum(1 for v in vals if v[k][0] is not None) >= len(rows) * 0.8]
