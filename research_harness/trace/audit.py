@@ -761,6 +761,7 @@ def _checkpoint_consistency(con, rng) -> list[dict]:
     hash, and an evaluation filed under `epoch_N/` must load `..._epoch_N.pt`."""
     out = []
     groups = defaultdict(list)
+    seed_groups = defaultdict(list)
     for path, text in con.execute("SELECT f.path, t.text FROM texts_t t JOIN files f ON f.fid = t.fid WHERE t.fid BETWEEN ? AND ? "
                                   "AND f.ext = '.json' AND f.path NOT LIKE '%::%'", rng):
         if not text or "checkpoint" not in text and "weights" not in text:
@@ -774,6 +775,21 @@ def _checkpoint_consistency(con, rng) -> list[dict]:
         if sha:
             d, b = posixpath.split(path)
             groups[(d, DIGITS.sub("#", b))].append((path, sha.group(1)))
+        ck = re.findall(r"[\w./-]+(?:weights|checkpoint|ckpt|model)[\w.-]*\.(?:pt|pth|ckpt|safetensors)", text)
+        if ck:
+            seeds = {int(x) for c in ck for x in ID_TOKEN.findall("/".join(c.split("/")[-3:]))}
+            if len(seeds) == 1:
+                seed_groups[posixpath.dirname(path)].append((path, seeds.pop()))
+    for d, items in seed_groups.items():
+        c = Counter(sd for _, sd in items)
+        own = {int(x) for x in ID_TOKEN.findall("/".join(d.split("/")[-3:]))}
+        if len(items) >= 3 and len(c) == 2:
+            (major, mc), (minor, nc) = c.most_common()
+            if nc == 1 and (not own or major in own):
+                odd = next(p for p, sd in items if sd == minor)
+                out.append({"kind": "checkpoint-mismatch", "files": [odd],
+                            "evidence": f"loads the checkpoint of seed {minor}, while its {mc} sibling evaluations in {d} load seed {major}"
+                                        + (f" (the folder is seed {sorted(own)})" if own else ""), "confidence": "high"})
     for (d, _), items in groups.items():
         c = Counter(h for _, h in items)
         if len(items) >= 3 and len(c) == 2:
@@ -953,6 +969,21 @@ def _walk_records(obj, path="$"):
             yield from _walk_records(v, f"{path}.{k}")
 
 
+def _walk_dicts(obj, path="$"):
+    if isinstance(obj, dict):
+        yield path, obj
+        for k, v in list(obj.items())[:500]:
+            yield from _walk_dicts(v, f"{path}.{k}")
+    elif isinstance(obj, list):
+        for i, x in enumerate(obj[:500]):
+            yield from _walk_dicts(x, f"{path}[{i}]")
+
+
+def _decimals(v):
+    t = repr(float(v))
+    return len(t.split(".")[1]) if "." in t and "e" not in t else 6
+
+
 def _flat(d, prefix=""):
     for k, v in d.items():
         if isinstance(v, dict):
@@ -993,6 +1024,25 @@ def _json_records(con, rng) -> list[dict]:
                     out.append({"kind": "identity-mismatch", "files": [path], "locator": k,
                                 "evidence": f"{k} points to weights of seed {sorted(ids)} ({v[-90:]}), while the record itself is for seed {sorted(own)}",
                                 "confidence": "high"})
+        # (c) a stored mean next to the values it summarises (r2_mean vs r2_per_dim)
+        for loc, d in _walk_dicts(data):
+            lists = {k: v for k, v in d.items() if isinstance(v, list) and 2 <= len(v) <= 1000
+                     and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in v)}
+            for k, v in d.items():
+                if isinstance(v, bool) or not isinstance(v, (int, float)):
+                    continue
+                m = re.match(r"^(.*?)[_-]?(mean|avg|average)$", k, re.I)
+                if not m:
+                    continue
+                stem = m.group(1).lower()
+                for lk, lv in lists.items():
+                    if stem and lk.lower().startswith(stem) or (not stem and re.search(r"(per_|values|all)", lk, re.I)):
+                        want = sum(lv) / len(lv)
+                        if abs(want - v) > max(1e-6, 1e-3 * abs(want)) and abs(want - v) > 0.5 * 10 ** (-min(6, _decimals(v))):
+                            out.append({"kind": "aggregate-mismatch", "files": [path], "locator": f"{loc}.{k}",
+                                        "evidence": f"{k} = {v:g}, but the mean of {lk} ({len(lv)} values) is {want:.6g}",
+                                        "confidence": "high"})
+                        break
         # (a) record outliers
         for loc, recs in _walk_records(data):
             flats = [dict(_flat(r)) for r in recs]
