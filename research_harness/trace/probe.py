@@ -24,9 +24,9 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 
-PROBE_VERSION = "12"
+PROBE_VERSION = "13"
 BULK_MIN_FILES = 5000
-RESUME_COMPATIBLE = {"12"}  # v5 lacks only JSON declared facts; reuse its parse work on huge trees
+RESUME_COMPATIBLE = {"13"}  # v5 lacks only JSON declared facts; reuse its parse work on huge trees
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", ".mypy_cache", ".pytest_cache",
              ".ipynb_checkpoints", "wandb-cache", ".cache", ".research"}
 SENSITIVE = re.compile(r"(^|[._-])(secret|secrets|token|credentials?|password|passwd|id_rsa|id_ed25519|netrc)([._-]|$)|\.env$|\.pem$|\.key$", re.I)
@@ -611,7 +611,7 @@ def analyze(root, rel, size, mtime, max_text, _raw=None, max_archive=128 * 1024 
         facts["title"] = redact(title)
         # Human-written prose (reports, READMEs, notes, launchers) is what the agent must read to name things;
         # keep it (redacted, capped) so reading and phrase search work even when the source mount is sick.
-        if ((doc or role in ("launcher", "other_text") or re.search(r"(readme|notes?|handoff|protocol|status|plan|final|summary|results|live|aggregate|coverage|manifest)", os.path.basename(rel), re.I))
+        if ((doc or role in ("launcher", "other_text") or re.search(r"(readme|notes?|handoff|protocol|status|plan|final|summary|results|live|aggregate|coverage|manifest|index|sums|checksum|provenance|audit)", os.path.basename(rel), re.I))
                 and len(raw) <= LIMITS["text_bytes"]) or (len(raw) <= SMALL_TEXT and ext in SMALL_TEXT_EXT):
             # small logs, queues, env/requirements files, short JSON/CSV: grep over the index is then exhaustive
             facts["text"] = redact(text)

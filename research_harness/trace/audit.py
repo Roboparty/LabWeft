@@ -264,6 +264,8 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
     findings += _table_arithmetic(con, rng)
     findings += _json_records(con, rng)
     findings += _missing_siblings(con, rng)
+    findings += _declared_sizes(con, rng)
+    findings += _event_order(con, rng)
     findings += _declared_hashes(con, rng)
     findings += _summary_before_runs(con, rng)
     findings += _value_outliers(con, like)
@@ -288,7 +290,7 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
              "duplicate-checksum": 3, "summary-older-than-inputs": 4, "summary-predates-run": 4, "duplicated-table-row": 3, "declared-checksum-mismatch": 2,
              "checkpoint-mismatch": 2, "stamp-after-write": 4,
              "table-arithmetic": 3, "record-outlier": 2, "identity-mismatch": 1,
-             "missing-in-replicate": 1}
+             "missing-in-replicate": 1, "declared-size-mismatch": 2, "event-order": 4}
     findings.sort(key=lambda f: (order.get(f["kind"], 9), f["files"][0]))
     return result("found" if findings else "not_found", con, scope=scope, by_kind=dict(Counter(f["kind"] for f in findings)),
                   findings=page(findings, offset, limit),
@@ -1043,3 +1045,105 @@ def _missing_siblings(con, rng) -> list[dict]:
                                 "evidence": f"{d} lacks {', '.join(miss[:4])}, which {counts[miss[0]]} of {len(ds)} sibling folders have",
                                 "confidence": "medium"})
     return out[:200]
+
+
+SIZE_HDR = re.compile(r"^(size|bytes|size_bytes|nbytes|file_size|length)$", re.I)
+PATH_HDR = re.compile(r"^(path|file|filename|relpath|relative_path|name)$", re.I)
+
+
+def _declared_sizes(con, rng) -> list[dict]:
+    """An archive/file index (TSV/CSV with a path column and a size column) whose recorded size differs from the
+    file's real size: the file was modified after the index was written."""
+    out = []
+    for path, text in con.execute("SELECT f.path, t.text FROM texts_t t JOIN files f ON f.fid = t.fid WHERE t.fid BETWEEN ? AND ? "
+                                  "AND f.ext IN ('.tsv', '.csv') AND f.path NOT LIKE '%::%'", rng):
+        lines = (text or "").splitlines()
+        if len(lines) < 2:
+            continue
+        sep = "\t" if "\t" in lines[0] else ","
+        hdr = [h.strip().strip('"') for h in lines[0].split(sep)]
+        pi = next((i for i, h in enumerate(hdr) if PATH_HDR.match(h)), None)
+        si = next((i for i, h in enumerate(hdr) if SIZE_HDR.match(h)), None)
+        start = 1
+        if pi is None or si is None:
+            # headerless `size<TAB>path` listings: infer the columns from the first rows
+            sample = [l.split(sep) for l in lines[:6]]
+            if not sample or len({len(r) for r in sample}) != 1 or len(sample[0]) < 2:
+                continue
+            ncol = len(sample[0])
+            si = next((i for i in range(ncol) if all(r[i].strip().isdigit() for r in sample)), None)
+            pi = next((i for i in range(ncol) if all(re.search(r"[/.]", r[i]) and not r[i].strip().isdigit() for r in sample)), None)
+            if pi is None or si is None:
+                continue
+            start = 0
+        base = posixpath.dirname(path)
+        bad, ok = [], 0
+        for ln, line in enumerate(lines[start:], start + 1):
+            cells = [c.strip().strip('"') for c in line.split(sep)]
+            if len(cells) <= max(pi, si) or not cells[si].isdigit():
+                continue
+            name = cells[pi].lstrip("./")
+            row = None
+            for cand in (name, posixpath.normpath(posixpath.join(base, name)), posixpath.normpath(posixpath.join(posixpath.dirname(base), name))):
+                row = con.execute("SELECT path, size FROM files WHERE path = ?", (cand,)).fetchone()
+                if row:
+                    break
+            if not row or row[1] is None or row[0] == path:
+                continue  # the index listing itself is written last
+            if int(cells[si]) == row[1]:
+                ok += 1
+            else:
+                bad.append((ln, row[0], int(cells[si]), row[1]))
+        if bad and ok >= 3 * len(bad):
+            ln, f, want, got = bad[0]
+            out.append({"kind": "declared-size-mismatch", "files": [f, path], "locator": f"{path} line {ln}",
+                        "evidence": f"{path} records {want} bytes for {f}, the file has {got} bytes (modified after the index was written)"
+                                    + (f"; {len(bad) - 1} more" if len(bad) > 1 else "") + f"; {ok} other entries match",
+                        "confidence": "high"})
+    return out
+
+
+STAMP_KEY = re.compile(r"(?P<k>(?:finali[sz]ed|completed|finished|archived|started|start|collected|created))(?:_at|_time)?\s*[=:]\s*\"?"
+                       r"(?P<t>20\d\d-\d\d-\d\dT\d\d:\d\d(?::\d\d)?(?:\.\d+)?(?:[+-]\d\d:?\d\d|Z))", re.I)
+BARE_STAMP = re.compile(r"^\s*(20\d\d-\d\d-\d\dT\d\d:\d\d(?::\d\d)?(?:\.\d+)?(?:[+-]\d\d:?\d\d|Z))\s*$")
+
+
+def _event_order(con, rng) -> list[dict]:
+    """Stamps in one provenance folder must respect the order of events: a run/phase cannot be finalized or completed
+    before it was started or archived (FINALIZED_AT 20:47 vs archived_at 20:51)."""
+    import datetime
+    per_dir = defaultdict(list)
+    for path, text in con.execute("SELECT f.path, t.text FROM texts_t t JOIN files f ON f.fid = t.fid WHERE t.fid BETWEEN ? AND ? "
+                                  "AND f.size < 20000 AND f.path NOT LIKE '%::%'", rng):
+        if not text:
+            continue
+        base = posixpath.basename(path).lower()
+        m = BARE_STAMP.match(text.strip()) if len(text) < 80 else None
+        if m:  # FINALIZED_AT.txt / STARTED_AT style: the file name is the event
+            ev = re.match(r"(finali[sz]ed|completed|finished|archived|started|start)", base)
+            if ev:
+                per_dir[posixpath.dirname(path)].append((ev.group(1), m.group(1), path))
+            continue
+        for mm in STAMP_KEY.finditer(text[:5000]):
+            per_dir[posixpath.dirname(path)].append((mm.group("k").lower(), mm.group("t"), path))
+    out = []
+    late = ("finali", "complet", "finish")
+    early = ("start", "archiv")
+    for d, evs in per_dir.items():
+        def ts(t):
+            try:
+                return datetime.datetime.fromisoformat(t.replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                return None
+        ends = [(k, ts(t), t, p) for k, t, p in evs if k.startswith(late) and ts(t)]
+        starts = [(k, ts(t), t, p) for k, t, p in evs if k.startswith(early) and ts(t)]
+        for k1, t1, raw1, p1 in ends:
+            for k2, t2, raw2, p2 in starts:
+                # archiving normally follows finalization, but finalization cannot precede the start of what it finalizes;
+                # and a 'finalized' stamp earlier than the archive it describes contradicts a FINALIZED-after-archive layout
+                if t2 - t1 > 60 and (k2.startswith("start") or k1.startswith("finali") and k2.startswith("archiv")):
+                    out.append({"kind": "event-order", "files": [p1, p2],
+                                "evidence": f"{k1} at {raw1} ({posixpath.basename(p1)}) is earlier than {k2} at {raw2} ({posixpath.basename(p2)})",
+                                "confidence": "medium"})
+                    break
+    return out[:100]
