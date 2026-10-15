@@ -292,8 +292,17 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
              "table-arithmetic": 3, "record-outlier": 2, "identity-mismatch": 1,
              "missing-in-replicate": 1, "declared-size-mismatch": 2, "event-order": 4}
     findings.sort(key=lambda f: (order.get(f["kind"], 9), f["files"][0]))
+    # what the rules above cannot judge: every report that prints numbers still needs a human-style check
+    reports = [r[0] for r in con.execute(
+        "SELECT f.path FROM files f WHERE f.fid BETWEEN ? AND ? AND f.role = 'report' AND f.ext IN ('.md', '.markdown', '.tex', '.html') "
+        "AND f.path NOT LIKE '%::%' AND EXISTS (SELECT 1 FROM lines_t l WHERE l.fid = f.fid AND l.kind = 'numbers')", rng)]
+    reports = [p for p in reports if not VENDORED.search(p)]
+    flagged = {f["files"][0] for f in findings}
+    manual = {"reports_with_numbers": len(reports), "without_any_automatic_lead": len([p for p in reports if p not in flagged]),
+              "next": "these audit rules only catch known patterns; run `worklist` and check every report against its raw "
+                      "files (most planted/real problems need arithmetic or cross-file reading)"}
     return result("found" if findings else "not_found", con, scope=scope, by_kind=dict(Counter(f["kind"] for f in findings)),
-                  findings=page(findings, offset, limit),
+                  findings=page(findings, offset, limit), manual_review_still_needed=manual,
                   limitations=["replicates are recognised by paths that differ only in numbers; differently named variants are not compared",
                                "launch settings come from command lines echoed in logs/launch scripts (probe v7); older indexes have none",
                                "a lead, not a verdict: read the cited files (and the authors' notes) before reporting"])
