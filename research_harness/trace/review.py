@@ -18,7 +18,7 @@ def _study(path: str) -> str:
     """The study a file belongs to: the folder below results/phases/experiments/legacy-style containers."""
     parts = path.split("/")
     for i, p in enumerate(parts[:-1]):
-        if re.match(r"(phase\d|p\d|exp|study|INTACT|20\d{6})", p, re.I) and i < len(parts) - 1:
+        if re.match(r"(phase\d|p\d|exp|study|20\d{6})", p, re.I) and i < len(parts) - 1:
             return "/".join(parts[: i + 1])
     return "/".join(parts[:2]) if len(parts) > 2 else parts[0]
 

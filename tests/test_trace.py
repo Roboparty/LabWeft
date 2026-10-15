@@ -565,3 +565,26 @@ class AuditProvenanceTests(unittest.TestCase):
             kinds = {f["kind"] for f in tools.t_audit(str(ws), "p")["findings"]["items"]}
             self.assertIn("declared-size-mismatch", kinds)
             self.assertIn("event-order", kinds)
+
+
+class SemanticReportTests(unittest.TestCase):
+    def test_semantic_map_renders_claims_and_experiments(self):
+        from research_harness.trace import report_html
+        with tempfile.TemporaryDirectory() as tmp:
+            sem = {"project": "demo", "one_line": "A shared action operator lets latents read out actions.", "background": "b",
+                   "method": {"name": "M", "idea": "i", "components": [{"name": "encoder", "role": "encodes"}]},
+                   "glossary": [{"term": "RH5", "meaning": "receding horizon 5"}],
+                   "phases": [{"period": "2026-08", "title": "baseline", "summary": "s", "evidence": ["a.md:1"]}],
+                   "claims": [{"id": "C1", "statement": "Direct beats CEM", "status": "成立",
+                               "numbers": [{"value": "95.6 ± 0.6", "meaning": "macro SR, 3 seeds", "source": "a.md:3"}], "evidence": ["a.md:3"]}],
+                   "experiments": [{"id": "E1", "question": "Does search help?", "type": "消融",
+                                    "design": {"compared": ["Direct", "CEM"], "fixed": ["E5"], "seeds": "3x3", "metric": "SR"},
+                                    "results": [{"condition": "Direct", "value": 95.6, "sd": 0.6}, {"condition": "CEM", "value": 94.6, "sd": 0.8}],
+                                    "finding": "no", "status": "有效", "supports": ["C1"], "evidence": ["a.md:3"]}],
+                   "invalidated": [], "open_questions": [], "reading_order": []}
+            data = {"name": "demo", "root": "/x", "generated": "now", "stats": {"files": 3}, "findings": [], "manual": ""}
+            p = report_html.render_semantic(sem, data, Path(tmp) / "m.html")
+            text = p.read_text(encoding="utf-8")
+            self.assertIn("Does search help?", text)
+            self.assertIn('id="sem"', text)
+            self.assertIn("app.css" not in text and "--accent" or "", text)
