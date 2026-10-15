@@ -27,6 +27,7 @@ KILLED = re.compile(r"(SIGTERM|SIGKILL|death signal|\bKilled\b|Terminated|CUDA o
                     r"Segmentation fault|core dumped|exitcode\s*:\s*-?[1-9]|DUE TO TIME LIMIT|CANCELLED)", re.I)
 SEED_LINE = re.compile(r"(?<![_\w])(?:global[ _])?seed(?: set to|\s*[:=])\s*(\d+)", re.I)
 PATH_SEED = re.compile(r"(?:^|[_/.-])(?:s|seed|train|train_seed|rs)(\d{1,6})(?=$|[_/.-])", re.I)
+VENDORED = re.compile(r"(^|/)(source|eval_source|third_party|vendor|external|site-packages|node_modules|upstream)(/|$)", re.I)
 INFRA_KEY = re.compile(r"(workers|prefetch|pin_memory|num_threads|nproc|master|port|device|cuda_visible|world_size|local_rank|"
                        r"interval|log_every|print_freq|save_every|wandb|progress|cache|mmap|compile|tmp|scratch|root)", re.I)
 INPUT_LIKE = re.compile(r"(normali[sz]|norm_stats|statistic|stats|mean_std|vocab|split|config|hparams|args|params|meta|schema|requirements|env|"
@@ -250,7 +251,7 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
         from .analyze import reconcile
         rec = reconcile(con, scope=scope, limit=1000)
         for d in rec.get("reports", {}).get("items", []):
-            if d.get("mixed_sd_conventions"):
+            if d.get("mixed_sd_conventions") and not VENDORED.search(d["report"]):
                 findings.append({"kind": "mixed-sd-convention", "files": [d["report"]],
                                  "evidence": "; ".join(f"{k}: {', '.join(v)}" for k, v in d["mixed_sd_conventions"].items()),
                                  "confidence": "medium"})
@@ -259,6 +260,7 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
     findings += _future_stamps(con, rng)
     findings += _duplicate_rows(con, rng)
     findings += _table_arithmetic(con, rng)
+    findings += _json_records(con, rng)
     findings += _declared_hashes(con, rng)
     findings += _summary_before_runs(con, rng)
     findings += _value_outliers(con, like)
@@ -266,12 +268,23 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
     # 8./9. mean ± SD pairs printed in reports, compared across documents
     findings += _report_pairs(con, rng)
     findings += _row_counts(con, rng)
+    # one file with several outlying settings (torch, torchvision, cuda...) is one finding
+    merged, keep = {}, []
+    for f in findings:
+        if f["kind"] in ("result-setting-outlier", "record-outlier", "setting-outlier"):
+            key = (f["kind"], f["files"][0])
+            if key in merged:
+                merged[key]["evidence"] += "; " + f["evidence"]
+                continue
+            merged[key] = f
+        keep.append(f)
+    findings = keep
     order = {"identical-replicate-content": 0, "truncated-run": 1, "setting-outlier": 2, "aggregate-mismatch": 3,
              "scale-outlier": 4, "mixed-sd-convention": 5, "referenced-file-missing": 6, "report-number-disagrees": 7,
              "cites-flagged-study": 8, "table-row-count-mismatch": 9, "seed-mismatch": 1, "result-setting-outlier": 2,
              "duplicate-checksum": 3, "summary-older-than-inputs": 4, "summary-predates-run": 4, "duplicated-table-row": 3, "declared-checksum-mismatch": 2,
              "checkpoint-mismatch": 2, "stamp-after-write": 4,
-             "table-arithmetic": 3}
+             "table-arithmetic": 3, "record-outlier": 2, "identity-mismatch": 1}
     findings.sort(key=lambda f: (order.get(f["kind"], 9), f["files"][0]))
     return result("found" if findings else "not_found", con, scope=scope, by_kind=dict(Counter(f["kind"] for f in findings)),
                   findings=page(findings, offset, limit),
@@ -424,7 +437,7 @@ def _value_outliers(con, like) -> list[dict]:
         # evaluation wrappers are sometimes classed as config; real configs (yaml, hydra dumps) vary by design
         members = [m for m in members if "::" not in m["path"] and (m["role"] == "result" or m["path"].endswith(".json"))
                    and "/.hydra/" not in m["path"]]
-        if len(members) < 4 or len(members) > 3000:
+        if len(members) < 3 or len(members) > 3000:
             continue
         vals = defaultdict(dict)
         raw_vals = defaultdict(dict)
@@ -463,12 +476,13 @@ def _value_outliers(con, like) -> list[dict]:
                                             f"{refs[sib][missing[0]][-160:]}", "siblings": [sib], "confidence": "medium"})
         for k, per in raw_vals.items():
             # short categorical settings (benchmark version, protocol, scorer) compared verbatim
-            if len(per) < 4 or k in shape_reported:
+            versionish = bool(re.search(r"(version|torch|cuda|cudnn|python|numpy|driver)", k, re.I))
+            if len(per) < (3 if versionish else 4) or k in shape_reported:
                 continue
             c = Counter(per.values())
             if len(c) == 2:
                 (major, mc), (minor, nc) = c.most_common()
-                if nc == 1 and mc >= 3:
+                if nc == 1 and mc >= (2 if versionish else 3):
                     odd = next(p for p, v in per.items() if v == minor)
                     shape_reported.add(k.removeprefix("text:"))
                     out.append({"kind": "result-setting-outlier", "files": [odd], "group": tpl, "setting": k,
@@ -491,7 +505,7 @@ def _value_outliers(con, like) -> list[dict]:
     return out
 
 
-VERSION_FIELD = re.compile(r'"([\w.]*(?:version|protocol|scorer|benchmark|evaluator|manifest_version)[\w.]*)"\s*:\s*"([^"/]{1,40})"', re.I)
+VERSION_FIELD = re.compile(r'"([\w.]*(?:version|protocol|scorer|benchmark|evaluator|manifest_version|torch|cuda|cudnn)[\w.]*)"\s*:\s*"([^"/]{1,40})"', re.I)
 SUM_LINE = re.compile(r"^\s*(?:([0-9a-fA-F]{64})\s+\*?(\S.*?)|(\S.*?)\s+([0-9a-fA-F]{64}))\s*$")
 
 
@@ -877,3 +891,91 @@ def _table_arithmetic(con, rng) -> list[dict]:
         else:
             merged[key] = f
     return list(merged.values())
+
+
+ID_TOKEN = re.compile(r"(?:^|[_/.-])(?:s|ts|seed|train|trainseed|train_seed)[_-]?(\d{1,5})(?=$|[_/.-])", re.I)
+FLAGGY = re.compile(r"(excluded|leak|valid|ok|pass|complete|status|version|torch|cuda|backend|protocol|scorer|benchmark|split|dataset|"
+                    r"deterministic)", re.I)
+
+
+def _walk_records(obj, path="$"):
+    if isinstance(obj, list):
+        dicts = [x for x in obj if isinstance(x, dict)]
+        if len(dicts) >= 3 and len(dicts) == len(obj):
+            yield path, dicts
+        for i, x in enumerate(obj[:500]):
+            yield from _walk_records(x, f"{path}[{i}]")
+    elif isinstance(obj, dict):
+        vals = list(obj.values())
+        if len(vals) >= 3 and all(isinstance(v, dict) for v in vals):
+            yield path, vals
+        for k, v in list(obj.items())[:500]:
+            yield from _walk_records(v, f"{path}.{k}")
+
+
+def _flat(d, prefix=""):
+    for k, v in d.items():
+        if isinstance(v, dict):
+            yield from _flat(v, f"{prefix}{k}.")
+        elif not isinstance(v, list):
+            yield f"{prefix}{k}", v
+
+
+def _json_records(con, rng) -> list[dict]:
+    """Inside one JSON file: (a) a list of similar records (manifest entries, per-cell results) where one record's flag,
+    version or protocol value differs from all others, or one numeric value is on a 100x smaller scale; (b) a record
+    whose checkpoint path names another seed than its own seed fields (job for seed 3074 loading `_s3073` weights)."""
+    out = []
+    for path, text in con.execute("SELECT f.path, t.text FROM texts_t t JOIN files f ON f.fid = t.fid WHERE t.fid BETWEEN ? AND ? "
+                                  "AND f.ext = '.json' AND f.path NOT LIKE '%::%'", rng):
+        if not text or not text.lstrip().startswith(("{", "[")) or VENDORED.search(path):
+            continue
+        try:
+            data = json.loads(text)
+        except ValueError:
+            continue
+        # (b) identity mismatch in the file itself (job/config/result for one run)
+        if isinstance(data, dict):
+            flat = dict(_flat(data))
+            ckpt = {k: v for k, v in flat.items() if isinstance(v, str) and re.search(r"(checkpoint|ckpt|weights|model_path)", k, re.I)
+                    and re.search(r"\.(pt|pth|ckpt|safetensors|bin)$", v)}
+            own = set()
+            for k, v in flat.items():
+                # identity = the training seed the record is about (eval/search seeds legitimately differ from the weights')
+                if re.search(r"(^|\.)(train_seed|training_seed|job_key|policy|policy_label|model_seed)$", k, re.I):
+                    if isinstance(v, (int, float)) and not isinstance(v, bool) and re.search(r"seed", k, re.I):
+                        own.add(int(v))
+                    elif isinstance(v, str):
+                        own |= {int(x) for x in ID_TOKEN.findall(v)}
+            for k, v in ckpt.items():
+                ids = {int(x) for x in ID_TOKEN.findall("/".join(v.split("/")[-3:]))}
+                if ids and own and not (ids & own) and len(own) == 1:
+                    out.append({"kind": "identity-mismatch", "files": [path], "locator": k,
+                                "evidence": f"{k} points to weights of seed {sorted(ids)} ({v[-90:]}), while the record itself is for seed {sorted(own)}",
+                                "confidence": "high"})
+        # (a) record outliers
+        for loc, recs in _walk_records(data):
+            flats = [dict(_flat(r)) for r in recs]
+            keys = set.intersection(*(set(f) for f in flats))
+            for k in keys:
+                vals = [f[k] for f in flats]
+                if all(isinstance(v, (bool, str)) for v in vals) and FLAGGY.search(k):
+                    c = Counter(json.dumps(v) for v in vals)
+                    if len(c) == 2:
+                        (major, mc), (minor, nc) = c.most_common()
+                        if nc == 1 and mc >= 4 and len(minor) <= 60:
+                            i = [json.dumps(v) for v in vals].index(minor)
+                            label = next((str(flats[i][x]) for x in flats[i] if re.search(r"(policy|name|id|key|cell|run)$", x, re.I)), f"#{i}")
+                            out.append({"kind": "record-outlier", "files": [path], "locator": f"{loc}[{i}].{k}",
+                                        "evidence": f"record '{label[:90]}': {k} = {minor}, while all {mc} other records have {major}",
+                                        "confidence": "high"})
+                nums = [v for v in vals if isinstance(v, (int, float)) and not isinstance(v, bool)]
+                if len(nums) == len(vals) and len(nums) >= 3 and re.search(r"(rate|percent|pct|sr|success|acc)", k, re.I):
+                    med = sorted(nums)[len(nums) // 2]
+                    if 5 <= med <= 100:
+                        for i, v in enumerate(nums):
+                            if 0 < v <= 1 and v * 50 < med:
+                                out.append({"kind": "record-outlier", "files": [path], "locator": f"{loc}[{i}].{k}",
+                                            "evidence": f"{k} = {v:g} in record #{i}, while the median of {len(nums)} records is {med:g} "
+                                                        "(a fraction among percentages?)", "confidence": "high"})
+    return out

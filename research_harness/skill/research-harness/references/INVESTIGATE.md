@@ -194,3 +194,20 @@ while required questions remain open.
 - `count` includes files inside skipped cache/.git folders as `files_including_skipped_folders` (the `find | wc -l`
   answer); `ls`/`count`/`compare` follow symlinked folders inside the source and report `followed_symlinks`.
 - Every CLI call has a hard limit (LABWEFT_TRACE_TIMEOUT, default 600 s) and answers `unknown` when it is hit.
+
+## Auditing a folder: how to use `audit` (round 10)
+
+`audit` is a lead generator, not a verdict and not exhaustive. A good audit run:
+1. `brief`, then `audit` (all scopes) and `validity`; read and verify every lead.
+2. Then go study by study: for each study's key report(s), compare every table against its raw data
+   (`reconcile --path REPORT`, `experiments --scope STUDY`, `read --json-path`), recompute differences, relative
+   changes (which base?), p-values from counts, means over the stated set, and check units.
+3. Compare sibling runs/evaluations: seeds, checkpoints (path and hash), software versions, launch settings, flags
+   in manifests, completion times vs. collection times.
+Expect the planted or real problems that need arithmetic or cross-file reasoning to be found in step 2, not by
+`audit` alone; budget most of the effort there.
+
+New `audit` kinds in round 10e/f: `table-arithmetic` (Macro/Mean columns and Δ columns recomputed from the other
+columns, rule learnt from the rows), `record-outlier` (one manifest/results record whose flag or version differs
+from all others, or a fraction among percentages), `identity-mismatch` (a job for seed 3074 loading `_s3073`
+weights), version drift (torch/CUDA) among sibling evaluations.
