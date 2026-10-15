@@ -211,3 +211,7 @@ New `audit` kinds in round 10e/f: `table-arithmetic` (Macro/Mean columns and Δ 
 columns, rule learnt from the rows), `record-outlier` (one manifest/results record whose flag or version differs
 from all others, or a fraction among percentages), `identity-mismatch` (a job for seed 3074 loading `_s3073`
 weights), version drift (torch/CUDA) among sibling evaluations.
+- `worklist [--scope DIR]` turns the audit into a checklist: every report with numbers (most numeric first) with
+  the table rows nothing in the folder reproduces, failed table arithmetic (including Mean/Macro rows and columns
+  and Δ columns) and cited files that are missing. Work through it report by report after `audit`.
+- `audit` also reports `missing-in-replicate` (a result file every sibling folder has but one lacks).

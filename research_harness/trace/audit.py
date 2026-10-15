@@ -261,6 +261,7 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
     findings += _duplicate_rows(con, rng)
     findings += _table_arithmetic(con, rng)
     findings += _json_records(con, rng)
+    findings += _missing_siblings(con, rng)
     findings += _declared_hashes(con, rng)
     findings += _summary_before_runs(con, rng)
     findings += _value_outliers(con, like)
@@ -284,7 +285,8 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
              "cites-flagged-study": 8, "table-row-count-mismatch": 9, "seed-mismatch": 1, "result-setting-outlier": 2,
              "duplicate-checksum": 3, "summary-older-than-inputs": 4, "summary-predates-run": 4, "duplicated-table-row": 3, "declared-checksum-mismatch": 2,
              "checkpoint-mismatch": 2, "stamp-after-write": 4,
-             "table-arithmetic": 3, "record-outlier": 2, "identity-mismatch": 1}
+             "table-arithmetic": 3, "record-outlier": 2, "identity-mismatch": 1,
+             "missing-in-replicate": 1}
     findings.sort(key=lambda f: (order.get(f["kind"], 9), f["files"][0]))
     return result("found" if findings else "not_found", con, scope=scope, by_kind=dict(Counter(f["kind"] for f in findings)),
                   findings=page(findings, offset, limit),
@@ -797,7 +799,7 @@ def _future_stamps(con, rng) -> list[dict]:
 
 AGG_COL = re.compile(r"^(macro|mean|avg|average|overall|all|4-task|3-task|four-task|平均|均值|宏平均)", re.I)
 DELTA_COL = re.compile(r"(Δ|delta|diff|gain|change|improv|提升|变化|差)", re.I)
-SKIP_COL = re.compile(r"(sd|std|stdev|se|sem|ci|n$|^n_|count|seed|p-?value|^p$|rank|#|time|sec|ms|epoch|lr|params?)", re.I)
+SKIP_COL = re.compile(r"(\b(sd|std|stdev|se|sem|ci|n|p|rank|lr|ms|sec|s)\b|^n_|count|seed|p-?value|#|time|epoch|params?|flips?|wins?|losses?)", re.I)
 CELL_NUM = re.compile(r"[-+]?\d+(?:\.\d+)?")
 
 
@@ -855,6 +857,29 @@ def _table_arithmetic(con, rng) -> list[dict]:
                         out.append({"kind": "table-arithmetic", "files": [path], "locator": f"line {ln}",
                                     "evidence": f"row '{label}': {header[a]} = {got:g}, but the mean of {', '.join(header[k] for k in parts)} "
                                                 f"is {want:.2f} (it holds in {ok} other rows)", "confidence": "high"})
+            # 1b. aggregate ROW (Mean / Macro / Average) = mean of the rows above it, column by column
+            body = [(ln, cells, v) for (ln, cells), v in zip(rows, vals) if not AGG_COL.search(cells[0])]
+            for (ln, cells), v in zip(rows, vals):
+                if not AGG_COL.search(cells[0]) or len(body) < 2 or re.search(r"(total|sum|合计|总)", cells[0], re.I):
+                    continue
+                ok, bad = 0, []
+                for k in numeric:
+                    if SKIP_COL.search(header[k]) or v[k][0] is None:
+                        continue
+                    xs = [b[2][k][0] for b in body if b[2][k][0] is not None]
+                    if len(xs) != len(body):
+                        continue
+                    want = sum(xs) / len(xs)
+                    tol = 0.5 * 10 ** (-v[k][1]) + 0.5 * 10 ** (-min(b[2][k][1] for b in body)) + 1e-9
+                    if abs(want - v[k][0]) <= tol:
+                        ok += 1
+                    elif not DELTA_COL.search(header[k]):
+                        bad.append((header[k], v[k][0], want))
+                if bad and ok >= 1 and ok >= len(bad):
+                    for col, got, want in bad[:3]:
+                        out.append({"kind": "table-arithmetic", "files": [path], "locator": f"line {ln}",
+                                    "evidence": f"row '{cells[0]}', column {col}: {got:g}, but the mean of the {len(body)} rows above is "
+                                                f"{want:.2f} (the row holds in {ok} other column(s))", "confidence": "high"})
             # 2. delta column = same difference / relative change of two columns in every row
             for d in [k for k in numeric if DELTA_COL.search(header[k])]:
                 best = None
@@ -979,3 +1004,38 @@ def _json_records(con, rng) -> list[dict]:
                                             "evidence": f"{k} = {v:g} in record #{i}, while the median of {len(nums)} records is {med:g} "
                                                         "(a fraction among percentages?)", "confidence": "high"})
     return out
+
+
+RESULTISH = re.compile(r"(\.(json|csv|tsv|jsonl)$|result|metric|eval|score|summary)", re.I)
+
+
+def _missing_siblings(con, rng) -> list[dict]:
+    """Replicate folders (same path shape, digits ignored) normally hold the same set of files. A file that every
+    sibling has but one folder lacks is a missing raw result (seed_1.json absent from one cell)."""
+    dirs = defaultdict(set)
+    for (path,) in con.execute("SELECT path FROM files WHERE fid BETWEEN ? AND ? AND path NOT LIKE '%::%'", rng):
+        d, b = posixpath.split(path)
+        dirs[d].add(b)
+    groups = defaultdict(list)
+    for d, names in dirs.items():
+        groups[DIGITS.sub("#", d)].append(d)
+    out = []
+    for tpl, ds in groups.items():
+        if len(ds) < 3 or len(ds) > 2000:
+            continue
+        counts = Counter(n for d in ds for n in dirs[d])
+        need = len(ds) - 1 if len(ds) < 10 else max(3, int(0.9 * len(ds)))  # small groups: all but the one folder
+        typical = {n for n, c in counts.items() if c >= max(2, need)}
+        common = {n for n in typical if counts[n] < len(ds)}
+        if not common:
+            continue
+        for d in ds:
+            # only results count: logs, env stamps, scripts and pruned checkpoints are routinely absent
+            miss = sorted(n for n in common if n not in dirs[d] and RESULTISH.search(n))
+            # a folder missing most of the common set is a different kind of run (or not started), not a lost file
+            if miss and len(miss) <= max(1, len(typical) // 3) and len(dirs[d]) >= 2:
+                if all(REPLICATE_SEG.search(m) or re.search(r"\d", m) for m in miss) or len(miss) <= 2:
+                    out.append({"kind": "missing-in-replicate", "files": [d + "/" + miss[0]], "locator": d,
+                                "evidence": f"{d} lacks {', '.join(miss[:4])}, which {counts[miss[0]]} of {len(ds)} sibling folders have",
+                                "confidence": "medium"})
+    return out[:200]
