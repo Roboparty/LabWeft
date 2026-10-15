@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 
 from ..store import HarnessError
-from . import analyze, audit, index, ledger, navigate, source, verify
+from . import analyze, audit, index, ledger, navigate, review, source, verify
 
 
 class _Con:
@@ -466,6 +466,11 @@ def t_git(ws, name, repo=".", ref=None):
     return verify.git(Path(ws), name, repo, refs)
 
 
+def t_worklist(ws, name, scope=None, offset=0, limit=30):
+    with _con(ws, name) as con:
+        return review.worklist(con, scope=scope, limit=limit, offset=offset)
+
+
 S = {"type": "string"}
 I = {"type": "integer"}
 NAME = {"workspace": S, "source": S}
@@ -517,6 +522,8 @@ TOOLS = {
                       {**NAME, "a": S, "b": S, "limit": I}, ["workspace", "source", "a", "b"]),
     "trace_git": (t_git, "Read-only git on the host: current HEAD of a checkout and, per commit/branch, whether its object exists in this checkout, its date/subject and containing branches.",
                   {**NAME, "repo": S, "ref": {"type": "array", "items": S}}, ["workspace", "source"]),
+    "trace_worklist": (t_worklist, "Audit worklist after `audit`: every report with numbers (most numeric first) with the table rows nothing in the folder reproduces, failed table arithmetic and cited files that are missing -- work through it report by report.",
+                       {**NAME, "scope": S, "offset": I, "limit": I}, ["workspace", "source"]),
     "trace_obligations": (t_obligations, "Evidence obligation ledger over recorded claims/runs/cells with stable diagnostic codes.",
                           {"workspace": S, "offset": I, "limit": I, "kinds": {"type": "array", "items": S}}, ["workspace"]),
 }

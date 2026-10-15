@@ -536,9 +536,12 @@ class TableArithmeticTests(unittest.TestCase):
                 "| a | 80.00 | 90.00 | 70.00 | 80.00 |\n| b | 60.00 | 90.00 | 60.00 | 70.00 |\n"
                 "| c | 50.00 | 70.00 | 60.00 | 60.00 |\n| d | 40.00 | 50.00 | 60.00 | 53.00 |\n\n"
                 "| task | Base | Ours | Delta |\n|---|---|---|---|\n| x | 80.00 | 85.00 | +5.00 |\n| y | 70.00 | 72.00 | +2.00 |\n"
-                "| z | 60.00 | 66.00 | +6.00 |\n| w | 50.00 | 51.00 | +2.00 |\n", encoding="utf-8")
+                "| z | 60.00 | 66.00 | +6.00 |\n| w | 50.00 | 51.00 | +2.00 |\n\n"
+                "| cell | Official Direct | Official Guarded |\n|---|---|---|\n| B0 | 83.22 | 87.44 |\n| Q01 | 85.33 | 87.11 |\n"
+                "| Q11 | 86.00 | 85.89 |\n| Mean | 85.67 | 86.81 |\n", encoding="utf-8")
             ws = Path(tmp) / "ws"
             tools.t_collect(str(ws), "p", str(src))
             ev = [f["evidence"] for f in tools.t_audit(str(ws), "p")["findings"]["items"] if f["kind"] == "table-arithmetic"]
             self.assertTrue(any("row 'd'" in e and "Macro" in e for e in ev))
             self.assertTrue(any("row 'w'" in e and "Delta" in e for e in ev))
+            self.assertTrue(any("row 'Mean', column Official Direct" in e for e in ev))
