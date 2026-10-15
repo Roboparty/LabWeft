@@ -545,3 +545,23 @@ class TableArithmeticTests(unittest.TestCase):
             self.assertTrue(any("row 'd'" in e and "Macro" in e for e in ev))
             self.assertTrue(any("row 'w'" in e and "Delta" in e for e in ev))
             self.assertTrue(any("row 'Mean', column Official Direct" in e for e in ev))
+
+
+class AuditProvenanceTests(unittest.TestCase):
+    def test_size_index_and_event_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "p"
+            (src / "configs").mkdir(parents=True)
+            (src / "provenance").mkdir()
+            for i in range(5):
+                (src / "configs" / f"c{i}.json").write_text(json.dumps({"w": i}))
+            sizes = {f"configs/c{i}.json": (src / "configs" / f"c{i}.json").stat().st_size for i in range(5)}
+            sizes["configs/c2.json"] -= 1
+            (src / "provenance" / "ARCHIVE_FILE_INDEX.tsv").write_text("".join(f"{v}\t{k}\n" for k, v in sizes.items()))
+            (src / "provenance" / "FINALIZED_AT.txt").write_text("2026-09-06T20:47:59+08:00\n")
+            (src / "provenance" / "SOURCE_STATE.txt").write_text("git_head=abc\narchived_at=2026-09-06T20:51:23+08:00\n")
+            ws = Path(tmp) / "ws"
+            tools.t_collect(str(ws), "p", str(src))
+            kinds = {f["kind"] for f in tools.t_audit(str(ws), "p")["findings"]["items"]}
+            self.assertIn("declared-size-mismatch", kinds)
+            self.assertIn("event-order", kinds)
