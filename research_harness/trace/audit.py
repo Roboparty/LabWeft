@@ -258,6 +258,7 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
     findings += _checkpoint_consistency(con, rng)
     findings += _future_stamps(con, rng)
     findings += _duplicate_rows(con, rng)
+    findings += _table_arithmetic(con, rng)
     findings += _declared_hashes(con, rng)
     findings += _summary_before_runs(con, rng)
     findings += _value_outliers(con, like)
@@ -269,7 +270,8 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
              "scale-outlier": 4, "mixed-sd-convention": 5, "referenced-file-missing": 6, "report-number-disagrees": 7,
              "cites-flagged-study": 8, "table-row-count-mismatch": 9, "seed-mismatch": 1, "result-setting-outlier": 2,
              "duplicate-checksum": 3, "summary-older-than-inputs": 4, "summary-predates-run": 4, "duplicated-table-row": 3, "declared-checksum-mismatch": 2,
-             "checkpoint-mismatch": 2, "stamp-after-write": 4}
+             "checkpoint-mismatch": 2, "stamp-after-write": 4,
+             "table-arithmetic": 3}
     findings.sort(key=lambda f: (order.get(f["kind"], 9), f["files"][0]))
     return result("found" if findings else "not_found", con, scope=scope, by_kind=dict(Counter(f["kind"] for f in findings)),
                   findings=page(findings, offset, limit),
@@ -777,3 +779,101 @@ def _future_stamps(con, rng) -> list[dict]:
                             "confidence": "medium"})
                 break
     return out
+
+
+AGG_COL = re.compile(r"^(macro|mean|avg|average|overall|all|4-task|3-task|four-task|平均|均值|宏平均)", re.I)
+DELTA_COL = re.compile(r"(Δ|delta|diff|gain|change|improv|提升|变化|差)", re.I)
+SKIP_COL = re.compile(r"(sd|std|stdev|se|sem|ci|n$|^n_|count|seed|p-?value|^p$|rank|#|time|sec|ms|epoch|lr|params?)", re.I)
+CELL_NUM = re.compile(r"[-+]?\d+(?:\.\d+)?")
+
+
+def _cell(c):
+    m = CELL_NUM.search(c.replace("−", "-"))
+    if not m or re.search(r"[A-Za-z]{3,}", c.split(m.group(0))[0]):
+        return None, 0
+    v = m.group(0)
+    return float(v), (len(v.split(".")[1]) if "." in v else 0)
+
+
+def _table_arithmetic(con, rng) -> list[dict]:
+    """Recompute what a markdown table claims about itself: an aggregate column (Macro / Mean) must be the mean of the
+    per-task columns in its row, and a delta column must be the same difference (or relative change) of two columns in
+    every row. The rule is learnt from the rows (it must hold for most of them); rows that break it are reported."""
+    out = []
+    for path, text in con.execute("SELECT f.path, t.text FROM texts_t t JOIN files f ON f.fid = t.fid WHERE t.fid BETWEEN ? AND ? "
+                                  "AND f.role = 'report' AND f.ext IN ('.md', '.markdown')", rng):
+        lines = (text or "").splitlines()
+        i = 0
+        while i < len(lines):
+            if not (lines[i].strip().startswith("|") and i + 1 < len(lines) and re.match(r"^\s*\|?\s*:?-{2,}", lines[i + 1])):
+                i += 1
+                continue
+            header = [c.strip(" *`") for c in lines[i].strip().strip("|").split("|")]
+            rows, j = [], i + 2
+            while j < len(lines) and lines[j].strip().startswith("|"):
+                cells = [c.strip(" *`") for c in lines[j].strip().strip("|").split("|")]
+                if len(cells) == len(header):
+                    rows.append((j + 1, cells))
+                j += 1
+            i = j
+            if len(rows) < 3 or len(header) < 4:
+                continue
+            vals = [[_cell(c) for c in cells] for _, cells in rows]
+            numeric = [k for k in range(1, len(header)) if sum(1 for v in vals if v[k][0] is not None) >= len(rows) * 0.8]
+            # 1. aggregate column = mean of the other value columns
+            for a in [k for k in numeric if AGG_COL.search(header[k])]:
+                parts = [k for k in numeric if k != a and not AGG_COL.search(header[k]) and not DELTA_COL.search(header[k])
+                         and not SKIP_COL.search(header[k])]
+                if len(parts) < 2:
+                    continue
+                ok, bad = 0, []
+                for (ln, cells), v in zip(rows, vals):
+                    xs = [v[k][0] for k in parts]
+                    if v[a][0] is None or any(x is None for x in xs):
+                        continue
+                    tol = 0.5 * 10 ** (-max(v[a][1], 0)) + 0.5 * 10 ** (-min(v[k][1] for k in parts)) + 1e-9
+                    if abs(sum(xs) / len(xs) - v[a][0]) <= tol:
+                        ok += 1
+                    else:
+                        bad.append((ln, cells[0], v[a][0], sum(xs) / len(xs)))
+                if bad and ok >= 2 * len(bad) and ok >= 3:
+                    for ln, label, got, want in bad[:3]:
+                        out.append({"kind": "table-arithmetic", "files": [path], "locator": f"line {ln}",
+                                    "evidence": f"row '{label}': {header[a]} = {got:g}, but the mean of {', '.join(header[k] for k in parts)} "
+                                                f"is {want:.2f} (it holds in {ok} other rows)", "confidence": "high"})
+            # 2. delta column = same difference / relative change of two columns in every row
+            for d in [k for k in numeric if DELTA_COL.search(header[k])]:
+                best = None
+                for x in numeric:
+                    for y in numeric:
+                        if len({x, y, d}) < 3 or DELTA_COL.search(header[x]) or DELTA_COL.search(header[y]):
+                            continue
+                        for mode in ("diff", "rel"):
+                            ok, bad = 0, []
+                            for (ln, cells), v in zip(rows, vals):
+                                if None in (v[x][0], v[y][0], v[d][0]) or (mode == "rel" and v[y][0] == 0):
+                                    continue
+                                want = v[x][0] - v[y][0] if mode == "diff" else (v[x][0] / v[y][0] - 1) * 100
+                                tol = 0.5 * 10 ** (-v[d][1]) + 0.5 * 10 ** (-min(v[x][1], v[y][1])) * (1 if mode == "diff" else 100 / max(abs(v[y][0]), 1e-9)) + 1e-9
+                                if abs(want - v[d][0]) <= tol:
+                                    ok += 1
+                                else:
+                                    bad.append((ln, cells[0], v[d][0], want))
+                            if ok >= 3 and (best is None or ok > best[0]):
+                                best = (ok, bad, x, y, mode)
+                if best and best[1] and best[0] >= 2 * len(best[1]):
+                    ok, bad, x, y, mode = best
+                    rule = f"{header[x]} - {header[y]}" if mode == "diff" else f"({header[x]} / {header[y]} - 1) x 100"
+                    for ln, label, got, want in bad[:3]:
+                        out.append({"kind": "table-arithmetic", "files": [path], "locator": f"line {ln}",
+                                    "evidence": f"row '{label}': {header[d]} = {got:g}, but {rule} = {want:.2f} (the rule holds in {ok} other rows)",
+                                    "confidence": "high"})
+    # the same document copied into several snapshots: one finding listing the copies
+    merged = {}
+    for f in out:
+        key = (posixpath.basename(f["files"][0]), f["locator"], f["evidence"])
+        if key in merged:
+            merged[key].setdefault("copies", []).append(f["files"][0])
+        else:
+            merged[key] = f
+    return list(merged.values())

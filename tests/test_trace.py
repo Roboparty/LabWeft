@@ -524,3 +524,21 @@ class AuditRound10Tests(unittest.TestCase):
             self.assertIn("duplicated-table-row", kinds)
             self.assertIn("declared-checksum-mismatch", kinds)
             self.assertIn("result-setting-outlier", kinds)
+
+
+class TableArithmeticTests(unittest.TestCase):
+    def test_macro_and_delta_columns_are_recomputed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "p"
+            src.mkdir()
+            (src / "RESULTS.md").write_text(
+                "# R\n\n| arm | PushT | Cube | Reacher | Macro |\n|---|---|---|---|---|\n"
+                "| a | 80.00 | 90.00 | 70.00 | 80.00 |\n| b | 60.00 | 90.00 | 60.00 | 70.00 |\n"
+                "| c | 50.00 | 70.00 | 60.00 | 60.00 |\n| d | 40.00 | 50.00 | 60.00 | 53.00 |\n\n"
+                "| task | Base | Ours | Delta |\n|---|---|---|---|\n| x | 80.00 | 85.00 | +5.00 |\n| y | 70.00 | 72.00 | +2.00 |\n"
+                "| z | 60.00 | 66.00 | +6.00 |\n| w | 50.00 | 51.00 | +2.00 |\n", encoding="utf-8")
+            ws = Path(tmp) / "ws"
+            tools.t_collect(str(ws), "p", str(src))
+            ev = [f["evidence"] for f in tools.t_audit(str(ws), "p")["findings"]["items"] if f["kind"] == "table-arithmetic"]
+            self.assertTrue(any("row 'd'" in e and "Macro" in e for e in ev))
+            self.assertTrue(any("row 'w'" in e and "Delta" in e for e in ev))
