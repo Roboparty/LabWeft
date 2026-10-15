@@ -243,16 +243,30 @@ def verify_list(con, ws: Path, name: str, path: str, compute: bool = True, limit
             entries.append((n.strip().lstrip("./"), h.lower()))
     if not entries:
         raise HarnessError(f"{path} has no `<sha256>  <name>` lines")
-    base = posixpath.dirname(path)
-    shas = {}
-    resolved = {}
-    for n, _ in entries:
-        for cand in (posixpath.normpath(posixpath.join(base, n)), n.lstrip("/")):
-            row = con.execute("SELECT sha FROM files WHERE path = ?", (cand,)).fetchone()
+    # names are relative to some folder: the list's own, one of its parents (`manifests/FILES.sha256` listing the
+    # package root) or the source root -- pick the base that resolves the most entries
+    d = posixpath.dirname(path)
+    bases = [d]
+    while d and len(bases) < 5:
+        d = posixpath.dirname(d)
+        bases.append(d)
+    def resolve_from(b):
+        got = {}
+        for n, _ in entries:
+            c = posixpath.normpath(posixpath.join(b, n)) if b else n.lstrip("/")
+            row = con.execute("SELECT sha FROM files WHERE path = ?", (c,)).fetchone()
+            if row is None:
+                row = con.execute("SELECT 'link' FROM skips WHERE kind = 'symlink' AND path = ?", (c,)).fetchone()
+                if row is not None:
+                    got[n] = (c, None)
+                    continue
             if row is not None:
-                resolved[n] = cand
-                shas[cand] = row[0]
-                break
+                got[n] = (c, row[0])
+        return got
+    best = max(((b, resolve_from(b)) for b in bases), key=lambda x: len(x[1]))
+    base = best[0]
+    resolved = {n: c for n, (c, _) in best[1].items()}
+    shas = {c: h for c, h in best[1].values() if h}
     unresolved = [n for n, _ in entries if n not in resolved]
     if unresolved:
         # lists written elsewhere (`cd run && sha256sum ... > ../FILES.sha256`, or names relative to a parent):
@@ -274,7 +288,9 @@ def verify_list(con, ws: Path, name: str, path: str, compute: bool = True, limit
                         shas[cand] = row[0]
                 base = newbase
                 break
-    todo = [p for p in resolved.values() if not shas.get(p)]
+    # verification must reflect the files as they are now: hash every listed file on the host when the list is not huge
+    # (index hashes date from the scan and go stale when files are edited later)
+    todo = list(resolved.values()) if compute and len(resolved) <= 3000 else [p for p in resolved.values() if not shas.get(p)]
     origin = "index hashes"
     if todo and compute:
         cfg = source.load(ws, name)
@@ -288,7 +304,7 @@ def verify_list(con, ws: Path, name: str, path: str, compute: bool = True, limit
             parts = line.split(None, 1)
             if len(parts) == 2 and len(parts[0]) == 64:
                 shas[parts[1].strip().lstrip("*")] = parts[0]
-        origin += f" + {len(todo)} computed on the host"
+        origin = f"{len(todo)} files hashed live on the host" + (" (+ index hashes)" if len(todo) < len(resolved) else "")
     ok, bad, missing, unknown = [], [], [], []
     for n, h in entries:
         p = resolved.get(n)
