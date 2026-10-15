@@ -215,3 +215,6 @@ weights), version drift (torch/CUDA) among sibling evaluations.
   the table rows nothing in the folder reproduces, failed table arithmetic (including Mean/Macro rows and columns
   and Δ columns) and cited files that are missing. Work through it report by report after `audit`.
 - `audit` also reports `missing-in-replicate` (a result file every sibling folder has but one lacks).
+- For a large folder, `worklist` lists the studies (`studies`, with report and result-file counts). Give each study
+  to its own worker (`worklist --scope STUDY`), have it check every report against `raw_files_cited` and the
+  study's result files, then merge. Thoroughness per report, not the number of audit leads, decides an audit.
