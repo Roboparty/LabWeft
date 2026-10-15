@@ -239,6 +239,9 @@ def t_timeline(ws, name, offset=0, limit=40):
 
 
 def t_read(ws, name, path, start=1, lines=None, live=False, limit=None, json_path=None, pattern=None, context=2):
+    if path and "::" not in path:
+        with _con(ws, name) as con:
+            path, _ = _follow(con, ws, name, path)
     if pattern:
         full = t_read(ws, name, path, start=1, lines=800, live=live)
         rx = re.compile(pattern, re.I) if re.search(r"[|.*\\\[]", pattern) else re.compile(re.escape(pattern), re.I)
@@ -364,6 +367,9 @@ def _local_grep(con, pattern, sub, include, regex, limit, per_file):
 
 def t_grep(ws, name, pattern, sub=".", include=None, regex=False, limit=200, per_file=50, path=None, live=False):
     sub = path or sub
+    if sub not in (None, "", "."):
+        with _con(ws, name) as con:
+            sub, _ = _follow(con, ws, name, sub)
     if not live:
         with _con(ws, name) as con:
             out = _local_grep(con, pattern, sub, include, regex, limit, per_file)
@@ -438,7 +444,11 @@ def t_count(ws, name, path="", name_glob=None, what="files", group_by=None, live
 
 def t_checksum(ws, name, path, compute=True):
     with _con(ws, name) as con:
-        return verify.checksum(con, Path(ws), name, path, compute)
+        real, hops = _follow(con, ws, name, path)
+        out = verify.checksum(con, Path(ws), name, real, compute)
+        if hops:
+            out["followed_symlinks"] = hops
+        return out
 
 
 def t_compare(ws, name, a, b, limit=40):
