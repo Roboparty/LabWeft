@@ -693,7 +693,7 @@ def _duplicate_rows(con, rng) -> list[dict]:
 
 
 HASH64 = re.compile(r"\b[0-9a-f]{64}\b")
-FNAME = re.compile(r"[\w./-]+\.(?:json|csv|md|txt|yaml|yml|py|log|tsv|jsonl)\b")
+FNAME = re.compile(r"[\w./-]+\.(?:json|csv|md|txt|yaml|yml|py|log|tsv|jsonl|pdf|png|html|tex|sh|npz|npy|pt|pth|ckpt|tar|gz|zip|env|toml|cfg|ini)\b")
 
 
 def _declared_hashes(con, rng) -> list[dict]:
@@ -710,7 +710,9 @@ def _declared_hashes(con, rng) -> list[dict]:
             hs = HASH64.findall(line.lower())
             if len(hs) != 1:
                 continue
-            names = FNAME.findall(line) or (FNAME.findall(lines[i - 1]) if i else [])
+            names = FNAME.findall(line)
+            if not names and i and HASH64.sub("", line.lower()).strip(" \t\"',:-|`") == "":
+                names = FNAME.findall(lines[i - 1])  # a hash alone on its line belongs to the file named just above
             for nm in names[:2]:
                 nm = nm.strip("./") if not nm.startswith("../") else nm
                 cands = [posixpath.normpath(posixpath.join(base, nm)), posixpath.normpath(posixpath.join(posixpath.dirname(base), nm)), nm]
