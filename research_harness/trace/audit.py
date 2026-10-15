@@ -266,6 +266,7 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
     findings += _missing_siblings(con, rng)
     findings += _declared_sizes(con, rng)
     findings += _event_order(con, rng)
+    findings += _sibling_stamps(con, rng)
     findings += _declared_hashes(con, rng)
     findings += _summary_before_runs(con, rng)
     findings += _value_outliers(con, like)
@@ -290,7 +291,8 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
              "duplicate-checksum": 3, "summary-older-than-inputs": 4, "summary-predates-run": 4, "duplicated-table-row": 3, "declared-checksum-mismatch": 2,
              "checkpoint-mismatch": 2, "stamp-after-write": 4,
              "table-arithmetic": 3, "record-outlier": 2, "identity-mismatch": 1,
-             "missing-in-replicate": 1, "declared-size-mismatch": 2, "event-order": 4}
+             "missing-in-replicate": 1, "declared-size-mismatch": 2, "event-order": 4,
+             "stamp-disagrees-with-log": 4}
     findings.sort(key=lambda f: (order.get(f["kind"], 9), f["files"][0]))
     # what the rules above cannot judge: every report that prints numbers still needs a human-style check
     reports = [r[0] for r in con.execute(
@@ -762,6 +764,7 @@ def _checkpoint_consistency(con, rng) -> list[dict]:
     out = []
     groups = defaultdict(list)
     seed_groups = defaultdict(list)
+    label_groups = defaultdict(list)
     for path, text in con.execute("SELECT f.path, t.text FROM texts_t t JOIN files f ON f.fid = t.fid WHERE t.fid BETWEEN ? AND ? "
                                   "AND f.ext = '.json' AND f.path NOT LIKE '%::%'", rng):
         if not text or "checkpoint" not in text and "weights" not in text:
@@ -776,10 +779,22 @@ def _checkpoint_consistency(con, rng) -> list[dict]:
             d, b = posixpath.split(path)
             groups[(d, DIGITS.sub("#", b))].append((path, sha.group(1)))
         ck = re.findall(r"[\w./-]+(?:weights|checkpoint|ckpt|model)[\w.-]*\.(?:pt|pth|ckpt|safetensors)", text)
+        stems = {posixpath.splitext(posixpath.basename(c))[0] for c in re.findall(r"[\w./-]+\.(?:pt|pth|ckpt|safetensors)", text)}
+        if len(stems) == 1:
+            label_groups[posixpath.dirname(path)].append((path, posixpath.splitext(posixpath.basename(path))[0], stems.pop()))
         if ck:
             seeds = {int(x) for c in ck for x in ID_TOKEN.findall("/".join(c.split("/")[-3:]))}
             if len(seeds) == 1:
                 seed_groups[posixpath.dirname(path)].append((path, seeds.pop()))
+    for d, items in label_groups.items():
+        # probes/evals named after the checkpoint they evaluate (B_epoch5.json -> B_epoch5.ckpt)
+        same = [p for p, own, ck in items if own == ck]
+        if len(same) >= 2:
+            for p, own, ck in items:
+                if own != ck and any(o == ck for _, o, _ in items):
+                    out.append({"kind": "checkpoint-mismatch", "files": [p],
+                                "evidence": f"{posixpath.basename(p)} evaluates checkpoint {ck}, which belongs to its sibling {ck}.json; "
+                                            f"{len(same)} sibling files evaluate the checkpoint they are named after", "confidence": "high"})
     for d, items in seed_groups.items():
         c = Counter(sd for _, sd in items)
         own = {int(x) for x in ID_TOKEN.findall("/".join(d.split("/")[-3:]))}
@@ -1205,4 +1220,45 @@ def _event_order(con, rng) -> list[dict]:
                                 "evidence": f"{k1} at {raw1} ({posixpath.basename(p1)}) is earlier than {k2} at {raw2} ({posixpath.basename(p2)})",
                                 "confidence": "medium"})
                     break
+    return out[:100]
+
+
+LOG_TS = re.compile(r"(20\d\d-\d\d-\d\d)[ T](\d\d:\d\d:\d\d)")
+UNIX_START = re.compile(r'"(?:started_unix|start_unix|start_time_unix|started_at_unix)"\s*:\s*(\d{9,10}(?:\.\d+)?)')
+
+
+def _sibling_stamps(con, rng) -> list[dict]:
+    """An eval/run record states when it started (unix time); the log written next to it shows its own wall-clock
+    times. The offset between the two is the same for every sibling (time zone); one record whose offset differs
+    has an edited or wrong stamp."""
+    import datetime
+    by_dir = defaultdict(list)
+    for path, text in con.execute("SELECT f.path, t.text FROM texts_t t JOIN files f ON f.fid = t.fid WHERE t.fid BETWEEN ? AND ? "
+                                  "AND f.ext = '.json' AND f.path NOT LIKE '%::%'", rng):
+        m = UNIX_START.search(text or "")
+        if not m:
+            continue
+        stem = posixpath.splitext(path)[0]
+        log = con.execute("SELECT t.text FROM texts_t t JOIN files f ON f.fid = t.fid WHERE f.path = ?", (stem + ".log",)).fetchone()
+        if not log or not log[0]:
+            continue
+        lm = LOG_TS.search(log[0])
+        if not lm:
+            continue
+        local = datetime.datetime.fromisoformat(f"{lm.group(1)}T{lm.group(2)}").replace(tzinfo=datetime.timezone.utc).timestamp()
+        by_dir[DIGITS.sub("#", posixpath.dirname(path))].append((path, local - float(m.group(1))))
+    out = []
+    for tpl, items in by_dir.items():
+        if len(items) < 4:
+            continue
+        offs = sorted(o for _, o in items)
+        med = offs[len(offs) // 2]
+        typical = sum(1 for o in offs if abs(o - med) < 600)
+        # a second convention shared by several records (logs in UTC vs local time) is not an edit: flag lone outliers
+        bucket = Counter(round((o - med) / 600) for o in offs)
+        for p, o in items:
+            if abs(o - med) >= 1800 and typical >= 3 and bucket[round((o - med) / 600)] == 1:
+                out.append({"kind": "stamp-disagrees-with-log", "files": [p],
+                            "evidence": f"its started time is {round((o - med) / 3600, 2)} h away from what its .log shows, relative to the "
+                                        f"offset shared by {typical} sibling records", "confidence": "medium"})
     return out[:100]
