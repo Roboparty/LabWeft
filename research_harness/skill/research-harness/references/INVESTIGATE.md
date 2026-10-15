@@ -218,3 +218,12 @@ weights), version drift (torch/CUDA) among sibling evaluations.
 - For a large folder, `worklist` lists the studies (`studies`, with report and result-file counts). Give each study
   to its own worker (`worklist --scope STUDY`), have it check every report against `raw_files_cited` and the
   study's result files, then merge. Thoroughness per report, not the number of audit leads, decides an audit.
+
+## Semantic research map (paper view)
+
+Folder names are not research. To present a project, read the authors' key reports (`brief`, `read`), then write a
+map in the format of `references/SEMANTIC_MAP.md`: background and method, claims with numbers and status
+(holds / partly / superseded / retracted / to verify), experiments grouped by the research question they answer
+(main, ablation, control, mechanism, re-evaluation), the timeline of phases, superseded work and open questions,
+each item with `path:line` evidence. Check every number with `reconcile` / `experiments` or the raw file. Then
+`labweft trace report WS --source NAME --out map.html --semantic map.json` renders it in the LabWeft look.

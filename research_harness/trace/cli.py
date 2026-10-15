@@ -9,7 +9,7 @@ def add_cli(sub) -> None:
     ts = t.add_subparsers(dest="trace_command", required=True)
     c = ts.add_parser("collect", help="Run/resume the read-only probe next to the data and build the index")
     c.add_argument("workspace")
-    c.add_argument("--source", required=True, help="short name for this source, e.g. myproject")
+    c.add_argument("--source", required=True, help="short name for this source, e.g. my-project")
     c.add_argument("--root", required=True, help="absolute folder on the host")
     c.add_argument("--host", help="SSH alias; omit for a local folder")
     c.add_argument("--remote-dir", help="writable scratch dir on the host (default ~/.labweft-trace)")
