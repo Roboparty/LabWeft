@@ -31,7 +31,7 @@ VENDORED = re.compile(r"(^|/)(source|eval_source|third_party|vendor|external|sit
 INFRA_KEY = re.compile(r"(workers|prefetch|pin_memory|num_threads|nproc|master|port|device|cuda_visible|world_size|local_rank|"
                        r"interval|log_every|print_freq|save_every|wandb|progress|cache|mmap|compile|tmp|scratch|root)", re.I)
 INPUT_LIKE = re.compile(r"(normali[sz]|norm_stats|statistic|stats|mean_std|vocab|split|config|hparams|args|params|meta|schema|requirements|env|"
-                        r"manifest|subset|dataset|index|episodes?_ids?)", re.I)
+                        r"manifest|subset|dataset|index|episodes?_ids?|resolved|optimization|options|settings)", re.I)
 PCT_COL = re.compile(r"(sr|success|rate|acc|accuracy|score|pct|percent|macro|mean|avg|average|top\d)", re.I)
 COUNT_COL = re.compile(r"(^n_|_n$|count|num_|^num|only_|both|neither|episode|_id$|^id$|row|index|step|epoch|seed|size|seconds|time)", re.I)
 REPLICATE_SEG = re.compile(r"(?:^|[_.-])(?:s|seed|train|eval|rep|run|trial|fold|r)[_-]?\d+(?=$|[_.-])", re.I)
@@ -71,8 +71,10 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
     findings = []
 
     # 1. identical content across replicates
-    for tpl, members in _groups(con, like, ("result", "result_table", "data", "other_text", "config")).items():
-        members = [m for m in members if m["role"] != "config" or m["path"].endswith(".json")]
+    for tpl, members in _groups(con, like, ("result", "result_table", "data", "other_text", "config", "report")).items():
+        # eval wrappers classed as config, and per-run text outputs (seed42_n50.txt) classed as report, are results too
+        members = [m for m in members if (m["role"] != "config" or m["path"].endswith(".json"))
+                   and (m["role"] != "report" or re.search(r"(^|/)(results?|eval\w*|outputs?)/", m["path"]) and m["path"].endswith(".txt"))]
         if len(members) < 3:
             continue
         if INPUT_LIKE.search(posixpath.basename(tpl)):
