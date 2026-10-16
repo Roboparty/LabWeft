@@ -483,6 +483,61 @@ def t_verify_map(ws, name, semantic, out=None):
     return res
 
 
+def t_publish_map(ws, name, semantic, import_evidence=False):
+    """Verify a semantic map and publish it into the LabWeft workspace (`.research/semantic_map.json`) so
+    `labweft serve` / `labweft export` show it next to the Cell/Run map, with every evidence path linked to the
+    workspace's file snapshots and to the map nodes that cite the same file."""
+    import json as _json
+    from . import mapcheck
+    from ..store import Store, atomic_write
+    sem = _json.loads(Path(semantic).read_text(encoding="utf-8"))
+    res = mapcheck.verify(Path(ws), name, sem)
+    sem = mapcheck.annotate(sem, res)
+    imported = None
+    if import_evidence:
+        # copy the cited (text) files into the workspace mirror and sync them as hash-pinned snapshots, so every
+        # evidence link in the paper view opens the exact bytes it was checked against
+        cited = sorted({mapcheck.parse(l)[0] for l in _map_locators(sem) if l and "::" not in l})
+        with _con(ws, name) as con:
+            known = [p for p in cited if con.execute("SELECT 1 FROM files WHERE path = ? AND size < 5000000", (p,)).fetchone()]
+        if known:
+            r = t_fetch(ws, name, paths=known, sync=True)
+            imported = {"fetched": r.get("fetched"), "missing": len(r.get("missing", []))}
+    links = {}
+    try:
+        state = Store(ws).load()
+        by_path = {f["path"]: fid for fid, f in state["files"].items()}
+        cited_by = {}
+        for nid, n in state["nodes"].items():
+            for r in n.get("evidence", []) or []:
+                cited_by.setdefault(r.get("file_id"), []).append(nid)
+        for _, _, loc, _ in [(None, None, l, None) for l in _map_locators(sem)]:
+            p, a, b = mapcheck.parse(loc)
+            fid = by_path.get(p)
+            if fid and p not in links:
+                f = state["files"][fid]
+                links[p] = {"file_id": fid, "sha256": f.get("sha256"), "nodes": sorted(set(cited_by.get(fid, [])))[:12]}
+    except Exception:  # a trace-only workspace has no LabWeft map yet: the semantic view still works
+        pass
+    sem["_links"] = links
+    sem["_source"] = name
+    out = Path(ws) / ".research" / "semantic_map.json"
+    atomic_write(out, _json.dumps(sem, ensure_ascii=False))
+    return {"status": "found", "written": str(out), "verification": res["summary"], "linked_paths": len(links), "imported": imported}
+
+
+def _map_locators(sem):
+    for c in sem.get("claims", []):
+        yield from c.get("evidence", [])
+        yield from (n.get("source") for n in c.get("numbers", []) if n.get("source"))
+    for e in sem.get("experiments", []):
+        yield from e.get("evidence", [])
+        yield from (r.get("source") for r in e.get("results", []) if r.get("source"))
+    for k in ("phases", "invalidated", "open_questions"):
+        for x in sem.get(k, []):
+            yield from x.get("evidence", [])
+
+
 def t_report(ws, name, out, semantic=None, refresh=False):
     """Write the HTML report: the semantic research map when a map JSON (SEMANTIC_MAP.md format) is given,
     else the index-only view. Returns the written path."""
@@ -554,6 +609,8 @@ TOOLS = {
                        {**NAME, "scope": S, "offset": I, "limit": I}, ["workspace", "source"]),
     "trace_verify_map": (t_verify_map, "Check a semantic map (references/SEMANTIC_MAP.md) against the project: every path:line exists, every stated number is printed at its source (or recomputes from the table there). --out writes the map annotated for the report view.",
                          {**NAME, "semantic": S, "out": S}, ["workspace", "source", "semantic"]),
+    "trace_publish_map": (t_publish_map, "Verify a semantic map and publish it into this LabWeft workspace so `labweft serve` and `labweft export` show the paper view (claims, experiments, timeline) linked to the Cell/Run map and evidence snapshots.",
+                          {**NAME, "semantic": S, "import_evidence": {"type": "boolean"}}, ["workspace", "source", "semantic"]),
     "trace_report": (t_report, "Write a self-contained HTML report in the LabWeft look. With --semantic MAP.json (an agent-written paper-style map, see references/SEMANTIC_MAP.md) it shows research summary, claims, experiments by research question, timeline, superseded work and open questions, each with evidence paths; without it, the index-only view.",
                      {**NAME, "out": S, "semantic": S, "refresh": {"type": "boolean"}}, ["workspace", "source", "out"]),
     "trace_obligations": (t_obligations, "Evidence obligation ledger over recorded claims/runs/cells with stable diagnostic codes.",

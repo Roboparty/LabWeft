@@ -43,7 +43,7 @@ def add_cli(sub) -> None:
         "depth": "folder depth to summarise", "key": "shared id array key (pair)", "value": "per-item value key (pair)",
     }
     for name, (_, desc, props, req) in TOOLS.items():
-        p = ts.add_parser(name.removeprefix("trace_"), help=desc)
+        p = ts.add_parser(name.removeprefix("trace_").replace("_", "-"), help=desc)
         p.add_argument("workspace")
         p.add_argument("--format", choices=["json", "text"], default="json", dest="out_format",
                        help="text = compact indented outline for reading in a terminal or agent context")
@@ -77,7 +77,7 @@ def dispatch(args):
         return t_resume(args.workspace, args.source)
     if cmd == "ingest":
         return t_ingest(args.workspace, args.source)
-    tool = "trace_" + cmd
+    tool = "trace_" + cmd.replace("-", "_")
     _, _, props, _ = TOOLS[tool]
     payload = {k: getattr(args, k) for k in props if getattr(args, k, None) not in (None, False)}
     payload["workspace"] = args.workspace

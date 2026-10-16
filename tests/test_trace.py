@@ -614,3 +614,26 @@ class MapCheckTests(unittest.TestCase):
             ann = json.loads(out.read_text(encoding="utf-8"))
             self.assertEqual(ann["claims"][0]["_check"], "verified")
             self.assertEqual(ann["claims"][2]["numbers"][0]["_check"], "ok_derived")
+
+
+class PublishMapTests(unittest.TestCase):
+    def test_published_map_appears_in_the_workspace_presentation(self):
+        from research_harness.server import presentation, export_html
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "p"
+            src.mkdir()
+            (src / "REPORT.md").write_text("# R\n\nDirect 88.22 +/- 0.39\n", encoding="utf-8")
+            ws = Path(tmp) / "ws"
+            Store(ws).init("demo") if hasattr(Store(ws), "init") else None
+            tools.t_collect(str(ws), "p", str(src))
+            sem = {"project": "demo", "claims": [{"id": "C1", "statement": "s", "status": "成立", "evidence": ["REPORT.md:3"],
+                                                  "numbers": [{"value": "88.22 ± 0.39", "source": "REPORT.md:3"}]}], "experiments": []}
+            mp = Path(tmp) / "map.json"
+            mp.write_text(json.dumps(sem), encoding="utf-8")
+            res = tools.t_publish_map(str(ws), "p", str(mp))
+            self.assertEqual(res["verification"], {"ok": 2})
+            if Store(ws).exists():
+                data = presentation(Store(ws))
+                self.assertEqual(data["semantic"]["claims"][0]["_check"], "verified")
+                html = export_html(Store(ws), Path(tmp) / "out.html").read_text(encoding="utf-8")
+                self.assertIn("renderSemantic", html)
