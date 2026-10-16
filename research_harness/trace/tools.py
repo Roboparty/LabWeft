@@ -471,6 +471,18 @@ def t_worklist(ws, name, scope=None, offset=0, limit=30):
         return review.worklist(con, scope=scope, limit=limit, offset=offset)
 
 
+def t_verify_map(ws, name, semantic, out=None):
+    """Check every `path:line` and number of a semantic map against the project; optionally write the annotated map."""
+    import json as _json
+    from . import mapcheck
+    sem = _json.loads(Path(semantic).read_text(encoding="utf-8"))
+    res = mapcheck.verify(Path(ws), name, sem)
+    if out:
+        Path(out).write_text(_json.dumps(mapcheck.annotate(sem, res), ensure_ascii=False, indent=1), encoding="utf-8")
+    res.pop("results")
+    return res
+
+
 def t_report(ws, name, out, semantic=None, refresh=False):
     """Write the HTML report: the semantic research map when a map JSON (SEMANTIC_MAP.md format) is given,
     else the index-only view. Returns the written path."""
@@ -480,6 +492,9 @@ def t_report(ws, name, out, semantic=None, refresh=False):
     if semantic:
         data = _json.loads((index.trace_dir(Path(ws), name) / "report-data.json").read_text(encoding="utf-8"))
         sem = _json.loads(Path(semantic).read_text(encoding="utf-8"))
+        if "_check_summary" not in sem:  # always show which statements the tool verified
+            from . import mapcheck
+            sem = mapcheck.annotate(sem, mapcheck.verify(Path(ws), name, sem))
         p = report_html.render_semantic(sem, data, Path(out))
     return {"status": "found", "written": str(p)}
 
@@ -537,6 +552,8 @@ TOOLS = {
                   {**NAME, "repo": S, "ref": {"type": "array", "items": S}}, ["workspace", "source"]),
     "trace_worklist": (t_worklist, "Audit worklist after `audit`: every report with numbers (most numeric first) with the table rows nothing in the folder reproduces, failed table arithmetic and cited files that are missing -- work through it report by report.",
                        {**NAME, "scope": S, "offset": I, "limit": I}, ["workspace", "source"]),
+    "trace_verify_map": (t_verify_map, "Check a semantic map (references/SEMANTIC_MAP.md) against the project: every path:line exists, every stated number is printed at its source (or recomputes from the table there). --out writes the map annotated for the report view.",
+                         {**NAME, "semantic": S, "out": S}, ["workspace", "source", "semantic"]),
     "trace_report": (t_report, "Write a self-contained HTML report in the LabWeft look. With --semantic MAP.json (an agent-written paper-style map, see references/SEMANTIC_MAP.md) it shows research summary, claims, experiments by research question, timeline, superseded work and open questions, each with evidence paths; without it, the index-only view.",
                      {**NAME, "out": S, "semantic": S, "refresh": {"type": "boolean"}}, ["workspace", "source", "out"]),
     "trace_obligations": (t_obligations, "Evidence obligation ledger over recorded claims/runs/cells with stable diagnostic codes.",
