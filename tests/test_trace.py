@@ -724,3 +724,31 @@ class SeedDerivedMapTests(unittest.TestCase):
                          claims=[{"id": "C1", "numbers": [{"value": "25,307 / 25,396", "source": "R.md:7"},
                                                           {"value": "99.56 ± 0.19 / 99.67 ± 0.00", "source": "R.md:3-5"}]}])
         self.assertEqual([x["status"] for x in r], ["ok", "ok_derived", "ok_derived"])
+
+
+class ScaleOutlierPrecisionTests(unittest.TestCase):
+    def test_low_success_rates_and_activation_stats_are_not_fractions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "p" / "study"
+            src.mkdir(parents=True)
+            # 300-episode success rates: 0.67% and 1% are real (2/300, 3/300), 0.7567 is a fraction of 75.67
+            rows = [("a", 75.6667), ("b", 76.3333), ("c", 74.0), ("d", 0.6667), ("e", 1.0), ("f", 78.3333), ("g", 0.7567)]
+            (src / "endpoints.csv").write_text("cell,sr_mean\n" + "\n".join(f"{c},{v}" for c, v in rows) + "\n", encoding="utf-8")
+            (src / "geometry.csv").write_text("block,mean_std\n" + "\n".join(f"b{i},{v}" for i, v in
+                                              enumerate([13.0, 12.1, 9.6, 11.0, 0.06, 0.03])) + "\n", encoding="utf-8")
+            ws = Path(tmp) / "ws"
+            tools.t_collect(str(ws), "p", str(Path(tmp) / "p"))
+            out = tools.t_audit(str(ws), "p", scope="study")
+            hits = [f for f in out["findings"]["items"] if f["kind"] == "scale-outlier"]
+            self.assertEqual([(f["files"][0].rsplit("/", 1)[-1], f["evidence"].split(" ")[2]) for f in hits], [("endpoints.csv", "0.7567")], out)
+
+    def test_learning_curves_are_not_scale_outliers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "p" / "study" / "run" / "metrics"
+            src.mkdir(parents=True)
+            rows = [{"epoch": i, "accuracy_pct": v} for i, v in enumerate([0.1002, 0.0877, 9.9, 11.06, 12.5, 13.1])]
+            (src / "epoch_metrics.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+            ws = Path(tmp) / "ws"
+            tools.t_collect(str(ws), "p", str(Path(tmp) / "p"))
+            out = tools.t_audit(str(ws), "p", scope="study")
+            self.assertFalse([f for f in out["findings"]["items"] if f["kind"] == "scale-outlier"], out)

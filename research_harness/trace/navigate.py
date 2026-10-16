@@ -119,7 +119,8 @@ def _exists(con, path: str) -> bool:
     if con.execute("SELECT 1 FROM files WHERE path >= ? AND path < ? LIMIT 1", (p + "/", p + "0")).fetchone() is not None:
         return True
     try:  # symlinks, empty and skipped folders are present too
-        return con.execute("SELECT 1 FROM skips WHERE path = ? OR (path >= ? AND path < ?) LIMIT 1", (p, p + "/", p + "0")).fetchone() is not None
+        return (con.execute("SELECT 1 FROM skips WHERE path = ?", (p,)).fetchone() is not None
+                or con.execute("SELECT 1 FROM skips WHERE path >= ? AND path < ? LIMIT 1", (p + "/", p + "0")).fetchone() is not None)
     except Exception:
         return False
 

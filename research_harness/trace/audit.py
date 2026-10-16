@@ -33,6 +33,9 @@ INFRA_KEY = re.compile(r"(workers|prefetch|pin_memory|num_threads|nproc|master|p
 INPUT_LIKE = re.compile(r"(normali[sz]|norm_stats|statistic|stats|mean_std|vocab|split|config|hparams|args|params|meta|schema|requirements|env|"
                         r"manifest|subset|dataset|index|episodes?_ids?|resolved|optimization|options|settings)", re.I)
 PCT_COL = re.compile(r"(sr|success|rate|acc|accuracy|score|pct|percent|macro|mean|avg|average|top\d)", re.I)
+# statistics of activations/geometry (mean_std, grad_norm, cos_mean) are not percentages even when named "mean"
+NON_PCT_COL = re.compile(r"(std|var|norm|rank|cos|loss|entropy|grad|dist|sigma|eig|magnitude|scale|lr\b|logit|kl\b)", re.I)
+TIME_SERIES_FILE = re.compile(r"(epoch|step|histor|curve|progress|trajector|train_log|training_log|learning)", re.I)
 COUNT_COL = re.compile(r"(^n_|_n$|count|num_|^num|only_|both|neither|episode|_id$|^id$|row|index|step|epoch|seed|size|seconds|time)", re.I)
 REPLICATE_SEG = re.compile(r"(?:^|[_.-])(?:s|seed|train|eval|rep|run|trial|fold|r)[_-]?\d+(?=$|[_.-])", re.I)
 SEEDISH = re.compile(r"(^|[._-])(seed|train_seed|eval_seed|run|name|id|output|out|dir|path|log|save|ckpt|checkpoint|resume|wandb|tag|host|gpu|port|rank|time|date)", re.I)
@@ -43,7 +46,7 @@ def _template(path: str) -> str:
 
 
 def _groups(con, like, roles):
-    q = f"SELECT path, sha, size, role FROM files WHERE path LIKE ? AND role IN ({','.join('?' * len(roles))})"
+    q = f"SELECT fid, path, sha, size, role FROM files WHERE path LIKE ? AND role IN ({','.join('?' * len(roles))})"
     groups = defaultdict(list)
     for r in con.execute(q, (like, *roles)):
         groups[_template(r["path"])].append(dict(r))
@@ -97,10 +100,16 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
 
     # 2. truncated runs and 3. setting outliers, both among sibling logs/launchers
     for tpl, members in _groups(con, like, ("log", "launcher", "other_text")).items():
+        got = {fid: j for fid, j in con.execute(f"SELECT fid, json FROM facts_t WHERE fid IN ({','.join('?' * len(members))})",
+                                                 [m["fid"] for m in members])} if len(members) <= 30000 else None
         facts = {}
         for m in members:
-            row = con.execute("SELECT json FROM facts WHERE path = ?", (m["path"],)).fetchone()
-            facts[m["path"]] = json.loads(row[0]) if row else {}
+            if got is None:
+                row = con.execute("SELECT json FROM facts_t WHERE fid = ?", (m["fid"],)).fetchone()
+                j = row[0] if row else None
+            else:
+                j = got.get(m["fid"])
+            facts[m["path"]] = json.loads(j) if j else {}
         ends = {p: _end_state(f) for p, f in facts.items() if f.get("progress")}
         if len(ends) >= 2:
             finished = [p for p, e in ends.items() if e["done_marker"] or (e["last_step"] and e["last_step"][0] == e["last_step"][1])]
@@ -151,6 +160,23 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
 
     # 4. structured files citing files that do not exist (a per-run JSON listed in a CSV, a probe file in a manifest)
     seen = set()
+    # suffix lookups (`LIKE '%/a/b'`) scan the whole index; on a 600k-file tree build in-memory tables once instead
+    lookup = {}
+
+    def tails2():
+        if "t2" not in lookup:
+            lookup["t2"] = {"/".join(x.split("/")[-2:]) for (x,) in con.execute("SELECT path FROM files")}
+        return lookup["t2"]
+
+    def dirs_ending(suffix):
+        if "dirs" not in lookup:
+            by_last = defaultdict(set)
+            for (d,) in con.execute("SELECT DISTINCT dir FROM files WHERE fid BETWEEN ? AND ?", rng):
+                if d:
+                    by_last[d.rsplit("/", 1)[-1]].add(d)
+            lookup["dirs"] = by_last
+        last = suffix.rsplit("/", 1)[-1]
+        return sorted(d for d in lookup["dirs"].get(last, ()) if d == suffix or d.endswith("/" + suffix))[:3]
     for r in con.execute("SELECT f.path AS src, t.raw FROM refs_t t JOIN files f ON f.fid = t.src WHERE t.src BETWEEN ? AND ? "
                          "AND t.target IS NULL AND f.role IN ('result', 'result_table', 'manifest', 'data')", rng):
         raw = r["raw"].strip("`'\" ")
@@ -169,7 +195,7 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
             d0 = posixpath.dirname(d0)
         if found:
             continue
-        if len(parts) >= 2 and con.execute("SELECT 1 FROM files WHERE path LIKE ? LIMIT 1", ("%/" + "/".join(parts[-2:]),)).fetchone():
+        if len(parts) >= 2 and "/".join(parts[-2:]) in tails2():
             continue
         if re.search(r"\.(pt|pth|ckpt|npz|npy|safetensors|bin|h5)$", raw):
             continue  # weights and arrays are routinely left out of archives on purpose
@@ -187,10 +213,9 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
             dparts = [x for x in posixpath.dirname(tail).split("/") if x]
             for k in range(min(len(dparts), 6), 1, -1):
                 suffix = "/".join(dparts[-k:])
-                rows = con.execute("SELECT DISTINCT dir FROM files WHERE fid BETWEEN ? AND ? AND (dir = ? OR dir LIKE ?) LIMIT 3",
-                                   (*rng, suffix, "%/" + suffix)).fetchall()
+                rows = dirs_ending(suffix)
                 if len(rows) == 1:
-                    hit = rows[0][0]
+                    hit = rows[0]
                     break
         if not hit:
             continue
@@ -207,8 +232,13 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
 
     # 5. an aggregate stored next to its parts that is not their mean (macro vs per-task, mean vs per-seed)
     groups = defaultdict(lambda: defaultdict(dict))
+    # tens of millions of metric rows on a big tree: let SQLite keep only aggregate-like and part-like locators
+    agg_like = " OR ".join(f"m.locator LIKE '%.{w}'" + f" OR m.locator LIKE '%.{w}[0]'"
+                           for w in ("macro", "mean", "avg", "average", "macro_mean", "mean_sr", "overall"))
+    part_like = " OR ".join(f"m.locator LIKE '%.{w}.%'"
+                            for w in ("tasks", "per_task", "task_means", "per_seed_macro", "macro_by_train_seed", "seeds", "per_seed"))
     for r in con.execute("SELECT f.path, m.locator, m.value FROM metrics_t m JOIN files f ON f.fid = m.fid "
-                         "WHERE m.fid BETWEEN ? AND ? AND f.role IN ('result', 'result_table')", rng):
+                         f"WHERE m.fid BETWEEN ? AND ? AND f.role IN ('result', 'result_table') AND ({agg_like} OR {part_like})", rng):
         loc = r["locator"]
         m = re.match(r"^(.*?)\.(macro|mean|avg|average|macro_mean|mean_sr|overall)(?:\[0\])?$", loc, re.I)
         if m:
@@ -230,9 +260,24 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
 
     # 6. a value on a different scale from the rest of its column (a fraction among percentages)
     cols = defaultdict(list)
-    for r in con.execute("SELECT f.path, m.locator, m.key, m.value FROM metrics_t m JOIN files f ON f.fid = m.fid "
-                         "WHERE m.fid BETWEEN ? AND ? AND f.role = 'result_table' AND m.key LIKE 'table:%'", rng):
-        cols[(r["path"], r["key"])].append((r["locator"], r["value"]))
+    # only columns that can hold the pattern (>= 4 non-zero values in 0..100, one of them in (0, 1], a percentage-like
+    # name) are read back row by row; the rest are judged by SQLite aggregates
+    pct_like = " OR ".join(f"m.key LIKE '%{w}%'" for w in ("sr", "success", "rate", "acc", "score", "pct", "percent", "macro",
+                                                            "mean", "avg", "average", "top"))
+    cand = con.execute("SELECT m.fid, m.key FROM metrics_t m JOIN files f ON f.fid = m.fid "
+                       f"WHERE m.fid BETWEEN ? AND ? AND f.role = 'result_table' AND m.key LIKE 'table:%' AND ({pct_like}) "
+                       "AND m.value IS NOT NULL AND m.value != 0 GROUP BY m.fid, m.key "
+                       "HAVING COUNT(*) >= 4 AND MIN(m.value) >= 0 AND MAX(m.value) <= 100.0001 AND MAX(m.value) >= 5 "
+                       "AND SUM(m.value > 0 AND m.value <= 1) >= 1", rng).fetchall()
+    for fid, key in cand:
+        if not PCT_COL.search(key[6:]) or COUNT_COL.search(key[6:]) or NON_PCT_COL.search(key[6:]):
+            continue
+        name = con.execute("SELECT path FROM files WHERE fid = ?", (fid,)).fetchone()[0].rsplit("/", 1)[-1]
+        if TIME_SERIES_FILE.search(name):
+            continue  # learning curves start low: epoch 0 at 0.1% is not a fraction among percentages
+        for r in con.execute("SELECT f.path, m.locator, m.value FROM metrics_t m JOIN files f ON f.fid = m.fid "
+                             "WHERE m.fid = ? AND m.key = ?", (fid, key)):
+            cols[(r["path"], key)].append((r["locator"], r["value"]))
     for (path, key), vals in cols.items():
         nums = [v for _, v in vals if v]
         if len(nums) < 4:
@@ -241,7 +286,13 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
         # only percentage-like metric columns: success/accuracy/score/macro/mean values in 0..100
         if med < 5 or max(nums) > 100.0001 or min(nums) < 0 or not PCT_COL.search(key[6:]) or COUNT_COL.search(key[6:]):
             continue
+        # success rates over N episodes come in steps of 100/N (300 episodes: 0.33): a small value on that grid is a
+        # genuinely low percentage (0.67% = 2/300), a fraction of the median would not be on it
+        grain = next((g for g in (1, 2, 3, 4, 5, 6, 8, 10, 20, 25)
+                      if sum(abs(x * g - round(x * g)) < 0.02 for x in nums) >= 0.8 * len(nums)), None)
         for loc, v in vals:
+            if grain and abs(v * grain - round(v * grain)) < 0.02:
+                continue
             if v and 0 < v <= 1 and abs(v) * 50 < med and abs(v * 100 - med) < 0.6 * med:
                 findings.append({"kind": "scale-outlier", "files": [path], "locator": loc,
                                  "evidence": f"{key[6:]} = {v:.4g} while the column's median is {med:.4g} (looks like a fraction among percentages)",
@@ -259,13 +310,14 @@ def audit(con, scope: str | None = None, offset: int = 0, limit: int = 40) -> di
                                  "confidence": "medium"})
     findings += _stale_summaries(con, rng)
     findings += _checkpoint_consistency(con, rng)
-    findings += _future_stamps(con, rng)
+    future, per_dir = _stamp_pass(con, rng)
+    findings += future
     findings += _duplicate_rows(con, rng)
     findings += _table_arithmetic(con, rng)
     findings += _json_records(con, rng)
     findings += _missing_siblings(con, rng)
     findings += _declared_sizes(con, rng)
-    findings += _event_order(con, rng)
+    findings += _event_order_from(per_dir)
     findings += _sibling_stamps(con, rng)
     findings += _declared_hashes(con, rng)
     findings += _summary_before_runs(con, rng)
@@ -459,9 +511,18 @@ def _value_outliers(con, like) -> list[dict]:
         vals = defaultdict(dict)
         raw_vals = defaultdict(dict)
         shape_reported = set()
+        # one query per table for the whole group, not three per member
+        fids = [m["fid"] for m in members]
+        marks = ",".join("?" * len(fids))
+        cfg_by, txt_by, refs_by = defaultdict(list), {}, defaultdict(list)
+        for fid, k, v in con.execute(f"SELECT fid, key, value FROM config_t INDEXED BY config_fid WHERE fid IN ({marks}) AND num IS NULL", fids):
+            cfg_by[fid].append((k, v))
+        for fid, t in con.execute(f"SELECT fid, substr(text, 1, 20000) FROM texts_t WHERE fid IN ({marks})", fids):
+            txt_by[fid] = t
+        for fid, raw in con.execute(f"SELECT src, raw FROM refs_t WHERE src IN ({marks})", fids):
+            refs_by[fid].append((raw,))
         for m in members:
-            for k, v in con.execute("SELECT c.key, c.value FROM config_t c JOIN files f ON f.fid = c.fid WHERE f.path = ? AND c.num IS NULL",
-                                    (m["path"],)):
+            for k, v in cfg_by.get(m["fid"], ()):
                 if SEEDISH.search(k.rsplit(".", 1)[-1]) and not re.search(r"(checkpoint|ckpt|policy|model|weights)", k, re.I):
                     continue
                 if not isinstance(v, str) or len(v) > 300 or re.search(r"(time|date|_at$|host|node|pid|uuid|hash|sha)", k, re.I):
@@ -470,16 +531,15 @@ def _value_outliers(con, like) -> list[dict]:
                 if len(v) <= 40 and "/" not in v:
                     raw_vals[k][m["path"]] = v
             # version/protocol strings are often not kept as settings: read them from the JSON text
-            t = con.execute("SELECT t.text FROM texts_t t JOIN files f ON f.fid = t.fid WHERE f.path = ?", (m["path"],)).fetchone()
-            if t and t[0] and t[0].lstrip().startswith("{"):
-                for vk, vv in VERSION_FIELD.findall(t[0][:20000]):
+            t0 = txt_by.get(m["fid"])
+            if t0 and t0.lstrip().startswith("{"):
+                for vk, vv in _version_fields(t0):
                     raw_vals["text:" + vk][m["path"]] = vv
         # paths a result file names (checkpoint, policy dir): same comparison on their digit-free shape
         refs = {}
         for m in members:
             # shape of the last three components only: the same checkpoint relayed via /data vs /data2 is not an outlier
-            refs[m["path"]] = {DIGITS.sub("#", "/".join(r[0].split("/")[-3:])): r[0] for r in con.execute(
-                "SELECT t.raw FROM refs_t t JOIN files f ON f.fid = t.src WHERE f.path = ?", (m["path"],)) if "/" in r[0]}
+            refs[m["path"]] = {DIGITS.sub("#", "/".join(r[0].split("/")[-3:])): r[0] for r in refs_by.get(m["fid"], ()) if "/" in r[0]}
         have = [p for p, r in refs.items() if r]
         if len(have) >= 4:
             count = Counter(t for p in have for t in refs[p])
@@ -520,6 +580,15 @@ def _value_outliers(con, like) -> list[dict]:
                             "evidence": f"{k} = {raw[:160]} here, while {mc} sibling results record the shape {sraw[:160]}",
                             "siblings": [sib], "confidence": "medium"})
     return out
+
+
+JSON_STR_FIELD = re.compile(r'"([\w.]+)"\s*:\s*"([^"/]{1,40})"')
+VERSION_KEY = re.compile(r"(version|protocol|scorer|benchmark|evaluator|manifest_version|torch|cuda|cudnn)", re.I)
+
+
+def _version_fields(text: str) -> list:
+    """Same pairs as VERSION_FIELD.findall, in linear time: match every string field, then test the key."""
+    return [(k, v) for k, v in JSON_STR_FIELD.findall(text) if VERSION_KEY.search(k)]
 
 
 VERSION_FIELD = re.compile(r'"([\w.]*(?:version|protocol|scorer|benchmark|evaluator|manifest_version|torch|cuda|cudnn)[\w.]*)"\s*:\s*"([^"/]{1,40})"', re.I)
@@ -637,10 +706,14 @@ def _summary_before_runs(con, rng) -> list[dict]:
     """A summary stamped `generated_at T` that names runs (by id) whose own results were finished after T: either the
     summary was regenerated without updating its stamp, or it reports numbers that did not exist yet."""
     out = []
-    for fid, path, text in con.execute("SELECT f.fid, f.path, t.text FROM texts_t t JOIN files f ON f.fid = t.fid WHERE t.fid BETWEEN ? AND ? "
-                                       "AND f.role IN ('result', 'result_table', 'report')", rng):
-        if not SUMMARY_NAME.search(posixpath.basename(path)) or re.search(r"(preview|draft|interim|partial|wip|tmp)", path, re.I):
-            continue  # an interim summary is expected to predate later runs
+    # pick summaries by name first; reading every result text of a big tree just to test its name dominated the audit
+    cands = [(fid, path) for fid, path in con.execute("SELECT fid, path FROM files WHERE fid BETWEEN ? AND ? "
+                                                      "AND role IN ('result', 'result_table', 'report')", rng)
+             if SUMMARY_NAME.search(posixpath.basename(path)) and not re.search(r"(preview|draft|interim|partial|wip|tmp)", path, re.I)]
+    run_files = {}
+    for fid, path in cands:  # an interim summary is expected to predate later runs
+        row = con.execute("SELECT text FROM texts_t WHERE fid = ?", (fid,)).fetchone()
+        text = row[0] if row else None
         m = re.search(r'(generated(?:_at)?|Generated)\W{0,4}(20\d\d-\d\d-\d\d[T ]\d\d:\d\d)', text or "")
         if not m:
             continue
@@ -655,11 +728,18 @@ def _summary_before_runs(con, rng) -> list[dict]:
         runs = {t for (t,) in con.execute("SELECT token FROM tokens_t WHERE fid = ?", (fid,))
                 if RUN_TOKEN.match(t) and any(ch.isdigit() for ch in t) and t.lower() not in own}
         late = []
+        if study not in run_files:  # result files of the study by the run folders above them (one scan per study)
+            by_run = defaultdict(list)
+            for rfid, rpath in con.execute("SELECT fid, path FROM files WHERE fid BETWEEN ? AND ? AND role = 'result'", srng):
+                for comp in set(rpath.split("/")[-4:-1]):  # the run's own folder, not a study-level file below a matching name
+                    by_run[comp].append((rfid, rpath))
+            run_files[study] = by_run
         for run in list(runs)[:300]:
-            for rpath, rtext in con.execute("SELECT f.path, t.text FROM texts_t t JOIN files f ON f.fid = t.fid WHERE t.fid BETWEEN ? AND ? "
-                                            "AND f.role = 'result' AND f.path LIKE ?", (srng[0], srng[1], f"%/{run}/%")):
-                if run not in rpath.split("/")[-4:-1]:
-                    continue  # the run's own folder, not a study-level file that merely sits below a matching name
+            for rfid, rpath in run_files[study].get(run, ()):
+                row = con.execute("SELECT text FROM texts_t WHERE fid = ?", (rfid,)).fetchone()
+                rtext = row[0] if row else None
+                if rtext is None:
+                    continue
                 done = _stamp(rtext, first=False)
                 if done and done - gen > 10 * 60:
                     late.append((rpath, done))
@@ -758,6 +838,23 @@ CKPT_EPOCH = re.compile(r"(?:weights|checkpoint|ckpt|model)[_-]?(?:epoch|ep|e)[_
 PATH_EPOCH = re.compile(r"(?:^|/)epoch[_-]?(\d{1,4})(?=/)", re.I)
 
 
+WEIGHT_EXT = re.compile(r"\.(?:pt|pth|ckpt|safetensors|bin)(?![\w])")
+PATH_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./-")
+
+
+def _weight_paths(text: str) -> list[str]:
+    """`dir/x_epoch5.pt`-like paths in a text, in linear time (a `[\w./-]+\.pt` regex backtracks quadratically on the
+    long tokens of big JSON files)."""
+    out = []
+    for m in WEIGHT_EXT.finditer(text):
+        i, lo = m.start(), max(0, m.start() - 400)
+        while i > lo and (text[i - 1] in PATH_CHARS or text[i - 1].isalnum()):
+            i -= 1
+        if i < m.start():
+            out.append(text[i:m.end()])
+    return out
+
+
 def _checkpoint_consistency(con, rng) -> list[dict]:
     """Evaluations of one checkpoint (sibling files differing only in the eval seed) must record the same checkpoint
     hash, and an evaluation filed under `epoch_N/` must load `..._epoch_N.pt`."""
@@ -766,11 +863,13 @@ def _checkpoint_consistency(con, rng) -> list[dict]:
     seed_groups = defaultdict(list)
     label_groups = defaultdict(list)
     for path, text in con.execute("SELECT f.path, t.text FROM texts_t t JOIN files f ON f.fid = t.fid WHERE t.fid BETWEEN ? AND ? "
-                                  "AND f.ext = '.json' AND f.path NOT LIKE '%::%'", rng):
-        if not text or "checkpoint" not in text and "weights" not in text:
+                                  "AND f.ext = '.json' AND f.path NOT LIKE '%::%' "
+                                  "AND (instr(t.text, 'checkpoint') > 0 OR instr(t.text, 'weights') > 0)", rng):
+        if not text:
             continue
-        sha = CKPT_SHA.search(text)
-        eps = {int(x) for x in CKPT_EPOCH.findall(text)}
+        sha = CKPT_SHA.search(text) if "sha256" in text or "SHA256" in text else None
+        found = _weight_paths(text)
+        eps = {int(x) for c in found for x in CKPT_EPOCH.findall(c)}  # the pattern only matches inside such paths
         pe = PATH_EPOCH.findall(path)
         if pe and eps and int(pe[-1]) not in eps and len(eps) == 1:
             out.append({"kind": "checkpoint-mismatch", "files": [path],
@@ -778,8 +877,9 @@ def _checkpoint_consistency(con, rng) -> list[dict]:
         if sha:
             d, b = posixpath.split(path)
             groups[(d, DIGITS.sub("#", b))].append((path, sha.group(1)))
-        ck = re.findall(r"[\w./-]+(?:weights|checkpoint|ckpt|model)[\w.-]*\.(?:pt|pth|ckpt|safetensors)", text)
-        stems = {posixpath.splitext(posixpath.basename(c))[0] for c in re.findall(r"[\w./-]+\.(?:pt|pth|ckpt|safetensors)", text)}
+        files = [c for c in found if not c.endswith(".bin")]
+        ck = [c for c in files if re.search(r"(?:weights|checkpoint|ckpt|model)[\w.-]*\.\w+$", c)]
+        stems = {posixpath.splitext(posixpath.basename(c))[0] for c in files}
         if len(stems) == 1:
             label_groups[posixpath.dirname(path)].append((path, posixpath.splitext(posixpath.basename(path))[0], stems.pop()))
         if ck:
@@ -820,15 +920,35 @@ def _checkpoint_consistency(con, rng) -> list[dict]:
 EVENT_STAMP = re.compile(r"(?:completed|finished|ended|done|collected|end)(?:_at|_time)?\s*[=:]\s*\"?(20\d\d-\d\d-\d\dT\d\d:\d\d(?::\d\d)?(?:\.\d+)?(?:[+-]\d\d:?\d\d|Z))", re.I)
 
 
+# One scan of the text table feeds both stamp checks (each full read of a large index costs about a minute).
+STAMP_PASS_SQL = ("SELECT f.path, t.text, f.mtime, f.size FROM texts_t t JOIN files f ON f.fid = t.fid WHERE t.fid BETWEEN ? AND ? "
+                  "AND f.path NOT LIKE '%::%' AND length(t.text) <= 200000 AND ("
+                  "(f.size < 20000 AND length(t.text) < 80) OR t.text LIKE '%end%' OR t.text LIKE '%done%' OR t.text LIKE '%complet%' "
+                  "OR t.text LIKE '%finish%' OR t.text LIKE '%collect%' OR t.text LIKE '%finali%' OR t.text LIKE '%archiv%' "
+                  "OR t.text LIKE '%start%')")
+
+
+def _stamp_pass(con, rng):
+    future, per_dir = [], defaultdict(list)
+    for path, text, mtime, size in con.execute(STAMP_PASS_SQL, rng):
+        if not text:
+            continue
+        if mtime is not None:
+            _future_row(path, text, mtime, future)
+        if size is not None and size < 20000:
+            _event_row(path, text, per_dir)
+    return future, per_dir
+
+
 def _future_stamps(con, rng) -> list[dict]:
+    return _stamp_pass(con, rng)[0]
+
+
+def _future_row(path, text, mtime, out) -> None:
     """A file states that something completed at time T, but the file itself was last written well before T: the
     stamp was edited (or the record was written before the event it reports)."""
     import datetime
-    out = []
-    for path, text, mtime in con.execute("SELECT f.path, t.text, f.mtime FROM texts_t t JOIN files f ON f.fid = t.fid WHERE t.fid BETWEEN ? AND ? "
-                                         "AND f.mtime IS NOT NULL AND f.path NOT LIKE '%::%'", rng):
-        if not text or len(text) > 200000:
-            continue
+    if True:
         for m in EVENT_STAMP.finditer(text):
             try:
                 t = datetime.datetime.fromisoformat(m.group(1).replace("Z", "+00:00")).timestamp()
@@ -840,7 +960,6 @@ def _future_stamps(con, rng) -> list[dict]:
                             "evidence": f"records `{m.group(0)[:60]}`, {int((t - mtime) / 60)} min after the file was last written ({when})",
                             "confidence": "medium"})
                 break
-    return out
 
 
 AGG_COL = re.compile(r"^(macro|mean|avg|average|overall|all|4-task|3-task|four-task|平均|均值|宏平均)", re.I)
@@ -975,23 +1094,27 @@ def _walk_records(obj, path="$"):
         if len(dicts) >= 3 and len(dicts) == len(obj):
             yield path, dicts
         for i, x in enumerate(obj[:500]):
-            yield from _walk_records(x, f"{path}[{i}]")
+            if isinstance(x, (list, dict)):
+                yield from _walk_records(x, f"{path}[{i}]")
     elif isinstance(obj, dict):
         vals = list(obj.values())
         if len(vals) >= 3 and all(isinstance(v, dict) for v in vals):
             yield path, vals
         for k, v in list(obj.items())[:500]:
-            yield from _walk_records(v, f"{path}.{k}")
+            if isinstance(v, (list, dict)):
+                yield from _walk_records(v, f"{path}.{k}")
 
 
 def _walk_dicts(obj, path="$"):
     if isinstance(obj, dict):
         yield path, obj
         for k, v in list(obj.items())[:500]:
-            yield from _walk_dicts(v, f"{path}.{k}")
+            if isinstance(v, (list, dict)):
+                yield from _walk_dicts(v, f"{path}.{k}")
     elif isinstance(obj, list):
         for i, x in enumerate(obj[:500]):
-            yield from _walk_dicts(x, f"{path}[{i}]")
+            if isinstance(x, (list, dict)):
+                yield from _walk_dicts(x, f"{path}[{i}]")
 
 
 def _decimals(v):
@@ -1005,6 +1128,17 @@ def _flat(d, prefix=""):
             yield from _flat(v, f"{prefix}{k}.")
         elif not isinstance(v, list):
             yield f"{prefix}{k}", v
+
+
+# patterns used per JSON key (re.search(r'...') pays a cache lookup on every call)
+_JR0 = re.compile(r"(checkpoint|ckpt|weights|model_path)", re.I)
+_JR1 = re.compile(r"\.(pt|pth|ckpt|safetensors|bin)$")
+_JR2 = re.compile(r"(^|\.)(train_seed|training_seed|job_key|policy|policy_label|model_seed)$", re.I)
+_JR3 = re.compile(r"seed", re.I)
+_JR4 = re.compile(r"^(.*?)[_-]?(mean|avg|average)$", re.I)
+_JR5 = re.compile(r"(per_|values|all)", re.I)
+_JR6 = re.compile(r"(policy|name|id|key|cell|run)$", re.I)
+_JR7 = re.compile(r"(rate|percent|pct|sr|success|acc)", re.I)
 
 
 def _json_records(con, rng) -> list[dict]:
@@ -1023,13 +1157,13 @@ def _json_records(con, rng) -> list[dict]:
         # (b) identity mismatch in the file itself (job/config/result for one run)
         if isinstance(data, dict):
             flat = dict(_flat(data))
-            ckpt = {k: v for k, v in flat.items() if isinstance(v, str) and re.search(r"(checkpoint|ckpt|weights|model_path)", k, re.I)
-                    and re.search(r"\.(pt|pth|ckpt|safetensors|bin)$", v)}
+            ckpt = {k: v for k, v in flat.items() if isinstance(v, str) and _JR0.search(k)
+                    and _JR1.search(v)}
             own = set()
             for k, v in flat.items():
                 # identity = the training seed the record is about (eval/search seeds legitimately differ from the weights')
-                if re.search(r"(^|\.)(train_seed|training_seed|job_key|policy|policy_label|model_seed)$", k, re.I):
-                    if isinstance(v, (int, float)) and not isinstance(v, bool) and re.search(r"seed", k, re.I):
+                if _JR2.search(k):
+                    if isinstance(v, (int, float)) and not isinstance(v, bool) and _JR3.search(k):
                         own.add(int(v))
                     elif isinstance(v, str):
                         own |= {int(x) for x in ID_TOKEN.findall(v)}
@@ -1046,12 +1180,12 @@ def _json_records(con, rng) -> list[dict]:
             for k, v in d.items():
                 if isinstance(v, bool) or not isinstance(v, (int, float)):
                     continue
-                m = re.match(r"^(.*?)[_-]?(mean|avg|average)$", k, re.I)
+                m = _JR4.match(k)
                 if not m:
                     continue
                 stem = m.group(1).lower()
                 for lk, lv in lists.items():
-                    if stem and lk.lower().startswith(stem) or (not stem and re.search(r"(per_|values|all)", lk, re.I)):
+                    if stem and lk.lower().startswith(stem) or (not stem and _JR5.search(lk)):
                         want = sum(lv) / len(lv)
                         if abs(want - v) > max(1e-6, 1e-3 * abs(want)) and abs(want - v) > 0.5 * 10 ** (-min(6, _decimals(v))):
                             out.append({"kind": "aggregate-mismatch", "files": [path], "locator": f"{loc}.{k}",
@@ -1070,12 +1204,12 @@ def _json_records(con, rng) -> list[dict]:
                         (major, mc), (minor, nc) = c.most_common()
                         if nc == 1 and mc >= 4 and len(minor) <= 60:
                             i = [json.dumps(v) for v in vals].index(minor)
-                            label = next((str(flats[i][x]) for x in flats[i] if re.search(r"(policy|name|id|key|cell|run)$", x, re.I)), f"#{i}")
+                            label = next((str(flats[i][x]) for x in flats[i] if _JR6.search(x)), f"#{i}")
                             out.append({"kind": "record-outlier", "files": [path], "locator": f"{loc}[{i}].{k}",
                                         "evidence": f"record '{label[:90]}': {k} = {minor}, while all {mc} other records have {major}",
                                         "confidence": "high"})
                 nums = [v for v in vals if isinstance(v, (int, float)) and not isinstance(v, bool)]
-                if len(nums) == len(vals) and len(nums) >= 3 and re.search(r"(rate|percent|pct|sr|success|acc)", k, re.I):
+                if len(nums) == len(vals) and len(nums) >= 3 and _JR7.search(k):
                     med = sorted(nums)[len(nums) // 2]
                     if 5 <= med <= 100:
                         for i, v in enumerate(nums):
@@ -1183,23 +1317,25 @@ BARE_STAMP = re.compile(r"^\s*(20\d\d-\d\d-\d\dT\d\d:\d\d(?::\d\d)?(?:\.\d+)?(?:
 
 
 def _event_order(con, rng) -> list[dict]:
+    return _event_order_from(_stamp_pass(con, rng)[1])
+
+
+def _event_row(path, text, per_dir) -> None:
+    base = posixpath.basename(path).lower()
+    m = BARE_STAMP.match(text.strip()) if len(text) < 80 else None
+    if m:  # FINALIZED_AT.txt / STARTED_AT style: the file name is the event
+        ev = re.match(r"(finali[sz]ed|completed|finished|archived|started|start)", base)
+        if ev:
+            per_dir[posixpath.dirname(path)].append((ev.group(1), m.group(1), path))
+        return
+    for mm in STAMP_KEY.finditer(text[:5000]):
+        per_dir[posixpath.dirname(path)].append((mm.group("k").lower(), mm.group("t"), path))
+
+
+def _event_order_from(per_dir) -> list[dict]:
     """Stamps in one provenance folder must respect the order of events: a run/phase cannot be finalized or completed
     before it was started or archived (FINALIZED_AT 20:47 vs archived_at 20:51)."""
     import datetime
-    per_dir = defaultdict(list)
-    for path, text in con.execute("SELECT f.path, t.text FROM texts_t t JOIN files f ON f.fid = t.fid WHERE t.fid BETWEEN ? AND ? "
-                                  "AND f.size < 20000 AND f.path NOT LIKE '%::%'", rng):
-        if not text:
-            continue
-        base = posixpath.basename(path).lower()
-        m = BARE_STAMP.match(text.strip()) if len(text) < 80 else None
-        if m:  # FINALIZED_AT.txt / STARTED_AT style: the file name is the event
-            ev = re.match(r"(finali[sz]ed|completed|finished|archived|started|start)", base)
-            if ev:
-                per_dir[posixpath.dirname(path)].append((ev.group(1), m.group(1), path))
-            continue
-        for mm in STAMP_KEY.finditer(text[:5000]):
-            per_dir[posixpath.dirname(path)].append((mm.group("k").lower(), mm.group("t"), path))
     out = []
     late = ("finali", "complet", "finish")
     early = ("start", "archiv")

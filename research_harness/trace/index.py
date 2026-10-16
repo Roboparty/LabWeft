@@ -41,6 +41,7 @@ CREATE INDEX tokens_token ON tokens_t(token);
 CREATE INDEX refs_target ON refs_t(target);
 CREATE INDEX refs_src ON refs_t(src);
 CREATE INDEX lines_fid ON lines_t(fid);
+CREATE INDEX skips_path ON skips(path);
 """
 
 
@@ -260,6 +261,7 @@ def connect(workspace: Path, name: str) -> sqlite3.Connection:
     db = trace_dir(workspace, name) / "index.sqlite"
     if not db.exists():
         raise FileNotFoundError(f"No trace index for {name!r}; run `labweft trace collect` or `trace ingest` first")
+    _upgrade(db)
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     con.row_factory = sqlite3.Row
     try:  # big sorts spill to disk: keep them next to the index, not on a (possibly full) system drive
@@ -267,6 +269,22 @@ def connect(workspace: Path, name: str) -> sqlite3.Connection:
     except sqlite3.Error:
         pass
     return con
+
+
+def _upgrade(db: Path) -> None:
+    """Indexes added after an index file was built (existence checks on `skips` scanned every row per lookup)."""
+    try:
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        have = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'index'")}
+        tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        con.close()
+        if "skips" in tables and "skips_path" not in have:
+            con = sqlite3.connect(db)
+            con.execute("CREATE INDEX IF NOT EXISTS skips_path ON skips(path)")
+            con.commit()
+            con.close()
+    except sqlite3.Error:
+        pass  # a read-only or busy index still works, only slower
 
 
 def fid_range(con: sqlite3.Connection, prefix: str) -> tuple[int, int] | None:
