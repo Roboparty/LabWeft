@@ -588,3 +588,29 @@ class SemanticReportTests(unittest.TestCase):
             self.assertIn("Does search help?", text)
             self.assertIn('id="sem"', text)
             self.assertIn("app.css" not in text and "--accent" or "", text)
+
+
+class MapCheckTests(unittest.TestCase):
+    def test_map_evidence_and_numbers_are_checked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "p"
+            src.mkdir()
+            (src / "REPORT.md").write_text("# R\n\n| m | SR |\n|---|---|\n| Direct | 88.22 +/- 0.39 |\n", encoding="utf-8")
+            (src / "seeds.csv").write_text("seed,sr\n0,88.0\n1,88.67\n2,88.0\n", encoding="utf-8")
+            ws = Path(tmp) / "ws"
+            tools.t_collect(str(ws), "p", str(src))
+            sem = {"claims": [
+                {"id": "C1", "statement": "ok", "evidence": ["REPORT.md:5"], "numbers": [{"value": "88.22 ± 0.39", "source": "REPORT.md:5"}]},
+                {"id": "C2", "statement": "wrong", "evidence": ["REPORT.md:99"], "numbers": [{"value": "91.00", "source": "REPORT.md:5"}]},
+                {"id": "C3", "statement": "derived", "evidence": [], "numbers": [{"value": "88.22", "source": "seeds.csv:3"}]}],
+                "experiments": []}
+            mp = Path(tmp) / "map.json"
+            mp.write_text(json.dumps(sem), encoding="utf-8")
+            out = Path(tmp) / "map.checked.json"
+            res = tools.t_verify_map(str(ws), "p", str(mp), out=str(out))
+            st = [p["status"] for p in res["problems"]]
+            self.assertIn("line_out_of_range", st)
+            self.assertIn("number_not_at_source", st)
+            ann = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual(ann["claims"][0]["_check"], "verified")
+            self.assertEqual(ann["claims"][2]["numbers"][0]["_check"], "ok_derived")
