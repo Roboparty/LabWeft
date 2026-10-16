@@ -22,7 +22,8 @@ THOUSANDS = re.compile(r"(?<=\d),(?=\d{3}\b)")
 
 def _nums(text: str) -> list:
     t = text.replace("−", "-")
-    if t.count(",") < 3:  # prose "3,276 jobs"; never inside CSV rows, where commas separate cells
+    csv_like = "|" not in t and ", " not in t and t.count(",") >= 3
+    if not csv_like:  # prose and markdown tables write "3,276"; in CSV rows commas separate cells
         t = THOUSANDS.sub("", t)
     return NUM.findall(t)
 
@@ -114,7 +115,8 @@ def _columns(lines: list) -> list:
     rows = []
     for line in lines:
         cells = re.split(r"[,\t|]", line)
-        rows.append([float(c) if re.fullmatch(r"\s*[-+]?\d+(?:\.\d+)?\s*", c) else None for c in cells])
+        rows.append([float(c.strip().rstrip("%").strip("* ")) if re.fullmatch(r"\s*\**\s*[-+]?\d+(?:\.\d+)?\s*%?\s*\**\s*", c) else None
+                     for c in cells])
     width = max((len(r) for r in rows), default=0)
     return [[r[c] for r in rows if c < len(r) and r[c] is not None] for c in range(width)], [
         [r[c] if c < len(r) else None for r in rows] for c in range(width)]
