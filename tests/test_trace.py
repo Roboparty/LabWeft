@@ -681,3 +681,46 @@ class SemanticResearchMapTests(unittest.TestCase):
             tools.t_publish_map(str(ws), "p", str(mp), build_map=True)
             state = Store(ws).load()
             self.assertTrue(all(n["status"] == "archived" for n in state["nodes"].values() if n["kind"] in ("question", "cell")))
+
+
+class SeedDerivedMapTests(unittest.TestCase):
+    def _verify(self, files: dict, results: list, claims=None):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "p"
+            for rel, text in files.items():
+                (src / rel).parent.mkdir(parents=True, exist_ok=True)
+                (src / rel).write_text(text, encoding="utf-8")
+            ws = Path(tmp) / "ws"
+            tools.t_collect(str(ws), "p", str(src))
+            from research_harness.trace import mapcheck
+            sem = {"claims": claims or [], "experiments": [{"id": "E1", "results": results}]}
+            return mapcheck.verify(ws, "p", sem)["results"]
+
+    def test_interleaved_seed_rows_of_a_csv(self):
+        csv = "phase,cell,train_seed,epoch,macro\n" + "\n".join(
+            f"p13,p13_r_s{s},{s},{e},{v}" for s, e, v in [(11, 2, 96.25), (11, 5, 97.3333333), (23, 2, 95.9166667), (23, 5, 96.3333333),
+                                                        (59, 2, 96.25), (59, 5, 97.5)]) + "\n"
+        r = self._verify({"m.csv": csv}, [{"condition": "R E5", "value": 97.06, "sd": 0.63, "source": "m.csv:3"},
+                                         {"condition": "wrong", "value": 97.16, "sd": 0.63, "source": "m.csv:3"}])
+        self.assertEqual([x["status"] for x in r], ["ok_derived", "number_not_at_source"])
+        self.assertEqual(r[0]["derived_from"], "seed_rows")
+
+    def test_mean_over_seed_folders_and_train_by_eval_grid(self):
+        files = {f"runs/direct_s{s}/result.json": f'{{\n  "seed": {s},\n  "success_rate_percent": {v}\n}}\n' for s, v in [(7, 89.0), (8, 87.0), (9, 87.0)]}
+        grid = {(3072, 0): 90, (3072, 1): 91, (3072, 42): 93, (3073, 0): 91, (3073, 1): 90, (3073, 42): 90,
+                (3074, 0): 89, (3074, 1): 93, (3074, 42): 91}
+        files.update({f"ev/prod_s{t}_e1/eval_seed_{e}/summary.json": f'{{\n  "sr": {v}\n}}\n' for (t, e), v in grid.items()})
+        r = self._verify(files, [{"condition": "direct", "value": 87.67, "source": "runs/direct_s7/result.json:3"},
+                                 {"condition": "product", "value": 90.89, "sd": 0.51, "source": "ev/prod_s3074_e1/eval_seed_0/summary.json:2"},
+                                 {"condition": "wrong", "value": 88.67, "source": "runs/direct_s7/result.json:3"}])
+        self.assertEqual([x["status"] for x in r], ["ok_derived", "ok_derived", "number_not_at_source"])
+        self.assertEqual(r[0]["derived_from"], "seed_files:3")
+        self.assertEqual(r[1]["derived_from"], "seed_grid:3x3")
+
+    def test_sd_from_unrounded_values_and_prose_numbers(self):
+        md = ("| cell | seed | SR |\n|---|---|---|\n| a | 1 | 99.67% |\n| a | 2 | 99.33% |\n| a | 3 | **99.67%** |\n\n"
+              "已记录 25,396条成对诊断；25,307条均为 excitation。\n")
+        r = self._verify({"R.md": md}, [{"condition": "a", "value": 99.56, "sd": 0.19, "source": "R.md:3-5"}],
+                         claims=[{"id": "C1", "numbers": [{"value": "25,307 / 25,396", "source": "R.md:7"},
+                                                          {"value": "99.56 ± 0.19 / 99.67 ± 0.00", "source": "R.md:3-5"}]}])
+        self.assertEqual([x["status"] for x in r], ["ok", "ok_derived", "ok_derived"])

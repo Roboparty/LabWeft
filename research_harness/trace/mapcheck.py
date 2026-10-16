@@ -17,7 +17,7 @@ from . import index, navigate, source
 
 LOC = re.compile(r"^(?P<path>.+?):(?P<a>\d+)(?:\s*[-–]\s*(?P<b>\d+))?\s*$")
 NUM = re.compile(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
-THOUSANDS = re.compile(r"(?<=\d),(?=\d{3}\b)")
+THOUSANDS = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")
 
 
 def _nums(text: str) -> list:
@@ -88,7 +88,7 @@ def _tokens(value) -> list:
         d = len(s.split(".")[1].rstrip("0")) if "." in s else 0
         return [(float(value), min(d, 6))]
     out = []
-    for t in _nums(str(value)):
+    for t in NUM.findall(THOUSANDS.sub("", str(value).replace("−", "-"))):  # map values are prose
         mant = t.split("e")[0].split("E")[0]
         d = len(mant.split(".")[1]) if "." in mant else 0
         if "e" in t.lower():
@@ -115,7 +115,7 @@ def _columns(lines: list) -> list:
     rows = []
     for line in lines:
         cells = re.split(r"[,\t|]", line)
-        rows.append([float(c.strip().rstrip("%").strip("* ")) if re.fullmatch(r"\s*\**\s*[-+]?\d+(?:\.\d+)?\s*%?\s*\**\s*", c) else None
+        rows.append([float(c.strip().strip("*% ")) if re.fullmatch(r"\s*\**\s*[-+]?\d+(?:\.\d+)?\s*%?\s*\**\s*", c) else None
                      for c in cells])
     width = max((len(r) for r in rows), default=0)
     return [[r[c] for r in rows if c < len(r) and r[c] is not None] for c in range(width)], [
@@ -141,10 +141,8 @@ def _derived(x: float, d: int, lines: list, sd: tuple | None = None) -> bool:
         for vals in compact:
             for k in range(2, 6):
                 for seg in combinations(vals[:14], k):
-                    m, s1, s0 = stats(seg)
-                    for sc in (1.0, 100.0):
-                        if abs(m * sc - x) <= tol and (abs(s1 * sc - y) <= tol_sd or abs(s0 * sc - y) <= tol_sd):
-                            return True
+                    if _match_stats(list(seg), [(x, d), sd]):
+                        return True
         return False
     for vals in full:
         for i in range(len(vals)):
@@ -152,11 +150,173 @@ def _derived(x: float, d: int, lines: list, sd: tuple | None = None) -> bool:
                 seg = vals[i:i + k]
                 if len(seg) < k or any(v is None for v in seg):
                     continue
-                for cand in stats(seg):
+                for cand in stats(seg)[:1]:  # a lone number is a mean; an SD is only checked with its mean
                     for sc in (1.0, 100.0):
                         if abs(cand * sc - x) <= tol:
                             return True
     return False
+
+
+SEED_TOKEN = re.compile(r"(?i)(?<![a-z0-9])(s|seed[_-]?|train_seed[_-]?|eval_seed[_-]?)(\d+)(?![0-9])")
+PAIR = re.compile(r"([-+]?\d+(?:\.\d+)?)\s*(?:±|\+/-|\+-)\s*(\d+(?:\.\d+)?)")
+KEYVAL = re.compile(r'^\s*"?([A-Za-z_][\w .%/-]*?)"?\s*[:=]\s*([-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)\s*,?\s*$')
+
+
+def _decimals(v: float) -> int:
+    r = repr(float(v))
+    return len(r.split(".")[1].rstrip("0")) if "." in r and "e" not in r else 0
+
+
+def _match_stats(vals: list, toks: list) -> bool:
+    """`toks` (value[, SD]) are the mean[/SD] of `vals` at the printed precision (also x100). Authors compute the SD
+    from unrounded values, so the SD may also differ by the rounding of the printed inputs."""
+    import math
+    if len(vals) < 2 or not toks:
+        return False
+    k = max(_decimals(v) for v in vals)
+    in_tol = 0.5 * 10 ** (-k) if k else 0.0
+    m = sum(vals) / len(vals)
+    ss = sum((v - m) ** 2 for v in vals)
+    sds = (math.sqrt(ss / (len(vals) - 1)), math.sqrt(ss / len(vals)))
+    (x, d), rest = toks[0], toks[1:]
+    for sc in (1.0, 100.0):
+        if abs(m * sc - x) > 0.5 * 10 ** (-d) + 1e-9:
+            continue
+        if not rest:
+            return True
+        y, dy = rest[0]
+        if any(abs(sd * sc - y) <= 0.5 * 10 ** (-dy) + 1.3 * in_tol * sc + 1e-9 for sd in sds):
+            return True
+    return False
+
+
+def _cells(line: str) -> list:
+    if "|" in line:
+        return [c.strip() for c in line.strip().strip("|").split("|")]
+    return [c.strip() for c in re.split(r"\t|,", line)]
+
+
+def _seed_rows(lines: list, a: int, toks: list) -> bool:
+    """Mean (± SD) over the seed replicates of the cited table row: rows anywhere in the file whose identifying cells
+    equal the cited row's once seed numbers are masked (replicates are often interleaved with other settings)."""
+    if not a or a > len(lines):
+        return False
+    header = _cells(lines[0]) if lines else []
+    seed_cols = {i for i, h in enumerate(header) if re.search(r"seed", h, re.I)}
+
+    def key(line):
+        cells = _cells(line)
+        out = []
+        for i, c in enumerate(cells):
+            if i in seed_cols:
+                continue
+            if re.fullmatch(r"[-+]?\d+\.\d+%?|\**[-+]?\d+\.\d+\**", c):
+                break  # measurements start at the first decimal cell
+            out.append(SEED_TOKEN.sub(lambda m: m.group(1) + "#", c))
+        return tuple(out), cells
+    k0, row0 = key(lines[a - 1])
+    if len(row0) < 3 or not any(SEED_TOKEN.search(c) for c in row0) and not seed_cols:
+        return False
+    group = [cells for k, cells in (key(l) for l in lines[:20000]) if k == k0 and len(cells) == len(row0)]
+    if not 2 <= len(group) <= 12:
+        return False
+    for col in range(len(row0)):
+        vals = []
+        for cells in group:
+            t = cells[col].strip("*% ")
+            if not re.fullmatch(r"[-+]?\d+(?:\.\d+)?", t):
+                break
+            vals.append(float(t))
+        else:
+            if _match_stats(vals, toks):
+                return True
+    return False
+
+
+def _seed_siblings(con, path: str) -> list:
+    """Files that differ from `path` only in one seed number (runs/x_s7/result.json -> x_s8, x_s9)."""
+    out = []
+    for m in SEED_TOKEN.finditer(path):
+        prefix, suffix = path[:m.start(2)], path[m.end(2):]
+        pat = re.compile(re.escape(prefix) + r"\d+" + re.escape(suffix) + "$")
+        rows = con.execute("SELECT path FROM files WHERE path LIKE ? ESCAPE '\\' LIMIT 400",
+                           (prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%",)).fetchall()
+        sib = sorted({r[0] for r in rows if pat.match(r[0]) and r[0] != path})
+        if 1 <= len(sib) <= 11:
+            out.append(sib)
+    toks = list(SEED_TOKEN.finditer(path))
+    if len(toks) >= 2:  # every seed number free: training x evaluation seed grids
+        pat, last = "", 0
+        for m in toks:
+            pat += re.escape(path[last:m.start(2)]) + r"(\d+)"
+            last = m.end(2)
+        pat = re.compile(pat + re.escape(path[last:]) + "$")
+        prefix = path[:toks[0].start(2)]
+        rows = con.execute("SELECT path FROM files WHERE path LIKE ? ESCAPE '\\' LIMIT 4000",
+                           (prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%",)).fetchall()
+        sib = sorted({r[0] for r in rows if pat.match(r[0]) and r[0] != path})
+        if 3 <= len(sib) <= 40:
+            out.append(("grid", pat, sib))
+    return out
+
+
+def _value_like(cited: str, lines: list, a: int):
+    """The number a sibling file prints where the cited file printed its value: same key for `key: value` lines,
+    else the same line if its text (numbers masked) matches."""
+    kv = KEYVAL.match(cited)
+    if kv:
+        for line in lines:
+            m = KEYVAL.match(line)
+            if m and m.group(1) == kv.group(1):
+                return [float(m.group(2))]
+        return None
+    if kv is None and a and a <= len(lines) and NUM.sub("#", lines[a - 1]) == NUM.sub("#", cited):
+        return [float(x) for x in _nums(lines[a - 1])]
+    return None
+
+
+def _seed_derived(con, ws, name, path, lines, a, b, toks, cache):
+    """The stated value is a mean (± SD) over seed replicates: of interleaved rows in the cited table, or of the
+    same field in sibling files that differ from the cited one only in a seed number."""
+    for i in range(a, min(b, a + 3) + 1):
+        if _seed_rows(lines, i, toks):
+            return "seed_rows"
+    for i in range(a, min(b, a + 3) + 1):
+        if i > len(lines):
+            break
+        cited = lines[i - 1]
+        v0 = _value_like(cited, lines, i)
+        if not v0:
+            continue
+        for sibs in _seed_siblings(con, path):
+            grid = isinstance(sibs, tuple)
+            pat, files = (sibs[1], sibs[2]) if grid else (None, sibs)
+            need = {p for p in files if p not in cache}
+            if need:
+                cache.update(_texts(con, ws, name, need))
+            vals = [(path, v0)]
+            for p in files:
+                v = _value_like(cited, cache.get(p) or [], i)
+                if v and len(v) == len(v0):
+                    vals.append((p, v))
+            if len(vals) < 2:
+                continue
+            for pos in range(len(v0)):
+                if not grid:
+                    if _match_stats([v[pos] for _, v in vals], toks):
+                        return f"seed_files:{len(vals)}"
+                    continue
+                groups = [pat.match(p).groups() for p, _ in vals]
+                varying = [k for k in range(len(groups[0])) if len({g[k] for g in groups}) > 1]
+                if len(varying) < 2:
+                    continue
+                outer = {}
+                for (p, v), g in zip(vals, groups):  # mean over the inner (evaluation) seeds of each outer (training) seed
+                    outer.setdefault(g[varying[0]], []).append(v[pos])
+                means = [sum(x) / len(x) for x in outer.values()]
+                if len(means) >= 2 and len({len(x) for x in outer.values()}) == 1 and _match_stats(means, toks):
+                    return f"seed_grid:{len(means)}x{len(vals) // len(means)}"
+    return None
 
 
 def verify(ws: Path, name: str, sem: dict, slack: int = 2) -> dict:
@@ -195,7 +355,7 @@ def verify(ws: Path, name: str, sem: dict, slack: int = 2) -> dict:
     for p, (q, ok) in list(resolved.items()):
         if not ok and texts.get(q) is not None:
             resolved[p] = (q, True)
-    con.close()
+    sib_texts = {}
     results = []
     for kind, where, loc, vals in items:
         st = {"kind": kind, "where": where, "locator": loc}
@@ -225,12 +385,30 @@ def verify(ws: Path, name: str, sem: dict, slack: int = 2) -> dict:
                 else:
                     derived = [x for x, d in toks if x in miss and _derived(x, d, wide)]
                 miss = [x for x in miss if x not in derived]
+                if miss and a and 1 <= len(toks) <= 2:
+                    how = _seed_derived(con, ws, name, q, lines, a, b, toks, sib_texts)
+                    if how:
+                        derived, miss = [t[0] for t in toks], []
+                        st["derived_from"] = how
+                if miss and a and len(toks) > 2:
+                    # several `mean ± SD` pairs in one value ("71.14 ± 45.80 / 97.42 ± 0.22"): check pair by pair
+                    for v in (vals if isinstance(vals, list) else [vals]):
+                        for m_, s_ in PAIR.findall(THOUSANDS.sub("", str(v or ""))):
+                            pair = _tokens(m_) + _tokens(s_)
+                            if not any(x in miss for x, _ in pair):
+                                continue
+                            if _derived(pair[0][0], pair[0][1], lines[max(0, a - 1): b + 1], sd=pair[1]) \
+                                    or _seed_derived(con, ws, name, q, lines, a, b, pair, sib_texts):
+                                derived += [x for x, _ in pair]
+                                miss = [x for x in miss if x not in (pair[0][0], pair[1][0])]
+                                st["derived_from"] = "mean_sd_pairs"
                 st["status"] = ("ok" if not derived else "ok_derived") if toks and not miss else ("number_not_at_source" if toks else "no_number")
                 if miss:
                     st["missing"] = miss[:4]
             else:
                 st["status"] = "ok"
         results.append(st)
+    con.close()
     counts = Counter(r["status"] for r in results)
     by_kind = defaultdict(Counter)
     for r in results:

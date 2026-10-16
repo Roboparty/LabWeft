@@ -20,6 +20,7 @@
 .tree-actions>button[aria-pressed="true"]{background:#e6f0e6;color:#245b45}
 #tree-zoom-value{min-width:35px;text-align:center;font-size:10px;font-variant-numeric:tabular-nums}
 .research-canvas{position:relative;height:min(72vh,780px);min-height:420px;overflow:hidden;cursor:grab;touch-action:none;background:radial-gradient(#d5ded5 0.7px,transparent 0.8px) 0 0/18px 18px,#fdfefd}
+.research-canvas[data-hierarchy]{height:auto;min-height:0;cursor:default}
 .research-canvas.dragging{cursor:grabbing}
 #research-tree-svg{width:100%;height:100%;display:block;user-select:none}
 .tree-level{font-size:12px;fill:#83918b;font-family:ui-monospace,monospace}
@@ -37,6 +38,8 @@
 .research-dot:hover .node-halo,.research-dot:focus .node-halo{opacity:.3}
 .research-dot.selected .node-halo{stroke:#315f4f;stroke-width:1.6;opacity:.65;fill:none}
 .research-dot .node-code{fill:#596b63;font-size:13px;letter-spacing:.3px;font-family:ui-monospace,monospace}
+.research-dot .node-label{fill:#33443d;font-size:12.5px}
+.research-dot.selected .node-label{fill:#173f33;font-weight:600}
 .research-dot .node-hidden{fill:#557363;font-size:10px;font-family:ui-monospace,monospace}
 .research-dot.filtered{opacity:.15}.node-failure-mark{stroke:#fff;stroke-width:1.3;fill:none;pointer-events:none}
 .research-tree-foot{display:flex;justify-content:space-between;gap:12px;padding:9px 13px;font-size:10px;line-height:1.6;color:#859289;border-top:1px solid #e7ece8;flex-wrap:wrap}

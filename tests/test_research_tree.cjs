@@ -96,3 +96,14 @@ test('reprojecting relations preserves original run provenance',()=>{
  const twice=context.projectedCellRelations(nodes,once);
  assert.equal(JSON.stringify(twice),before);assert.equal(JSON.stringify(once),before);
 });
+test('without cell lineage the tree shows module lanes, questions and their conditions',()=>{
+ const n=(id,kind,parent_id,label=id)=>({id,kind,parent_id,label,attrs:{},status:'recorded'});
+ const nodes=Object.fromEntries([n('m1','module','project','消融实验'),n('q1','question','m1','E1 · why?'),n('q2','question','m1','E2 · how?'),n('c1','cell','q1'),n('c2','cell','q1'),n('c3','cell','q2')].map(x=>[x.id,x]));
+ const open=build(nodes,[{source:'c1',target:'c2',relation:'compares'}]);
+ assert.equal(open.hierarchy,true);assert.equal(open.lanes.length,1);assert.equal(open.nodes.length,5);
+ const pos=new Map(open.nodes.map(x=>[x.id,x]));
+ assert.equal(open.links.length,3);for(const e of open.links)assert.ok(pos.get(e.source).x<pos.get(e.target).x);
+ const folded=build(nodes,[],new Set(['q1']));
+ assert.equal(folded.nodes.length,3);assert.equal(folded.nodes.find(x=>x.id==='q1').hidden,2);
+ const seen=new Set();for(const x of open.nodes){const k=x.x+','+x.y;assert.ok(!seen.has(k));seen.add(k);}
+});

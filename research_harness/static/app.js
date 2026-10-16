@@ -84,8 +84,6 @@ async function load() {
   savedKey='rh-view-'+data.project.id;
   expanded=initialExpanded();
   try { const old=JSON.parse(localStorage.getItem(savedKey)||'null');if(old?.version===4){expanded=new Set(old.expanded||[]);selected=old.selected;layout=old.layout||'lineage';} }catch(_){}
-  // the research tree draws cell lineage (derived_from); a map without lineage opens as the question outline
-  if(layout==='lineage'&&!Object.values(data.edges).some(e=>e.relation==='derived_from'))layout='tree';
   if(!selected || !data.nodes[selected]||data.nodes[selected].status==='archived')selected=Object.values(data.nodes).filter(n=>n.kind==='module'&&n.parent_id===data.project.id&&n.status!=='archived').sort(sortNodes)[0]?.id || Object.values(data.nodes).find(n=>n.kind==='claim'&&findingPriority(n)==='primary')?.id || Object.values(data.nodes)[0]?.id;
   {const m=/node=([\w-]+)/.exec(location.hash);if(m&&data.nodes[m[1]]){selected=m[1];let p=m[1],seen=new Set();while(data.nodes[p]&&!seen.has(p)){seen.add(p);expanded.add(p);p=data.nodes[p].parent_id;}}}
   for(const id of cellSelection)if(data.nodes[id]?.kind!=='cell'||data.nodes[id].status==='archived')cellSelection.delete(id);
@@ -229,7 +227,34 @@ function resolveTreeFocus(nodeMap, focusId) {
  return n&&n.status!=='archived'&&['module','question','cell'].includes(n.kind)?n.id:null;
 }
 function recordedTreeFocus(nodeMap){return Object.values(nodeMap).filter(n=>n.status!=='archived').map(n=>resolveTreeFocus(nodeMap,n.attrs?.current_focus)).find(Boolean)||null;}
+// Without recorded cell lineage the tree shows the research hierarchy: module lanes, questions, their conditions.
+function hasCellLineage(nodeMap,edgeList){return edgeList.some(e=>e.relation==='derived_from'&&nodeMap[e.source]?.kind==='cell'&&nodeMap[e.target]?.kind==='cell');}
+function hierarchyTreeModel(nodeMap, edgeList, collapsed=new Set()) {
+ const live=Object.values(nodeMap).filter(n=>n.status!=='archived'),order=(a,b)=>(a.attrs?.order??100)-(b.attrs?.order??100)||String(a.label).localeCompare(String(b.label),undefined,{numeric:true})||a.id.localeCompare(b.id);
+ const questions=live.filter(n=>n.kind==='question').sort(order),cellsOf=new Map(),parent=new Map();
+ for(const c of live.filter(n=>n.kind==='cell')){if(!cellsOf.has(c.parent_id))cellsOf.set(c.parent_id,[]);cellsOf.get(c.parent_id).push(c);}
+ const laneOf=q=>{let p=nodeMap[q.parent_id],seen=new Set();while(p&&p.kind!=='module'&&!seen.has(p.id)){seen.add(p.id);p=nodeMap[p.parent_id];}return p||null;};
+ const groups=new Map();for(const q of questions){const m=laneOf(q),key=m?.id||'';if(!groups.has(key))groups.set(key,{owner:m,questions:[]});groups.get(key).questions.push(q);}
+ const ordered=[...groups.entries()].sort((a,b)=>a[1].owner&&b[1].owner?order(a[1].owner,b[1].owner):a[1].owner?-1:1);
+ const nodes=[],lanes=[],links=[];let top=62;
+ for(const [key,g] of ordered){
+  let rows=0;const start=top;
+  for(const q of g.questions){
+   const cells=(cellsOf.get(q.id)||[]).sort(order),open=cells.length&&!collapsed.has(q.id);
+   const y0=start+26+rows*38;
+   if(open){cells.forEach((c,i)=>{parent.set(c.id,q.id);nodes.push({id:c.id,node:c,lane:key,level:1,x:190+420,y:y0+i*38,hidden:0});links.push({source:q.id,target:c.id,secondary:false,projected:false,originalEdges:[]});});}
+   nodes.push({id:q.id,node:q,lane:key,level:0,x:190,y:open?y0+(cells.length-1)*19:y0,hidden:open?0:cells.length});
+   rows+=open?cells.length:1;
+  }
+  const height=Math.max(1,rows)*38+28;
+  lanes.push({id:key,owner:g.owner,y:start,height,count:g.questions.length,rootOnly:false});top+=height;
+ }
+ const ids=new Set(nodes.map(n=>n.id));
+ const secondary=edgeList.filter(e=>e.relation!=='derived_from'&&ids.has(e.source)&&ids.has(e.target)&&!(e.relation==='compares'&&parent.get(e.target)===parent.get(e.source))).map(e=>({source:e.target,target:e.source,secondary:true,relation:e.relation}));
+ return {nodes,lanes,links,secondary,parent,warnings:[],width:1120,height:Math.max(340,top+20),total:questions.length+[...cellsOf.values()].reduce((a,b)=>a+b.length,0),hierarchy:true};
+}
 function researchTreeModel(nodeMap, edgeList, collapsed=new Set(), focusId=null) {
+ if(!hasCellLineage(nodeMap,edgeList)&&Object.values(nodeMap).some(n=>n.kind==='question'&&n.status!=='archived'))return hierarchyTreeModel(nodeMap,edgeList,collapsed);
  focusId=resolveTreeFocus(nodeMap,focusId);
  edgeList=projectedCellRelations(nodeMap,edgeList);
  const grouped=groupedRelationModel(nodeMap,edgeList),cells=grouped.groups.flatMap(g=>g.cells),byId=new Map(cells.map(n=>[n.id,n]));
@@ -276,12 +301,16 @@ function researchTreeModel(nodeMap, edgeList, collapsed=new Set(), focusId=null)
 }
 // END research-tree-model
 function currentTreeFocus(){return recordedTreeFocus(data.nodes);}
-function displayedTreeModel(){return researchTreeModel(data.nodes,Object.values(data.edges),treeCollapsed,treeShowAll||filter?null:currentTreeFocus());}
+let treeHierarchyInit=false;
+function displayedTreeModel(){
+ if(!treeHierarchyInit&&!hasCellLineage(data.nodes,Object.values(data.edges))){treeHierarchyInit=true;let keep=data.nodes[selected];while(keep&&keep.kind!=='question')keep=data.nodes[keep.parent_id];const qs=Object.values(data.nodes).filter(n=>n.kind==='question');for(const q of qs)if(q.id!==keep?.id)treeCollapsed.add(q.id);}
+ return researchTreeModel(data.nodes,Object.values(data.edges),treeCollapsed,treeShowAll||filter?null:currentTreeFocus());}
 function treeOutcome(n){
  if(n.status==='failed'||children(n.id).some(r=>r.kind==='run'&&(r.status==='failed'||r.attrs?.backend_correct===false)))return 'failed';
  const selection=n.attrs?.selection;if(typeof selection==='string'){if(/^(保留|keep)/i.test(selection))return 'retained';if(/^(退步|同分|discard|tie)/i.test(selection))return 'unselected';}
  return 'recorded';
 }
+function hierarchyTreeLabel(p){const text=displayLabel(p.node),max=p.level===0?30:36;return (text.length>max?text.slice(0,max-1)+'…':text)+(p.hidden?`  ▸${p.hidden}`:'');}
 function shortTreeLabel(n){const text=displayLabel(n),match=text.match(/^[A-Za-z]+\d+\b/);if(match)return match[0];if(Number.isInteger(n.attrs?.generation))return 'G'+n.attrs.generation;const runs=children(n.id).filter(r=>r.kind==='run'),runId=runs[0]?.attrs?.id;if(typeof runId==='string'&&runId.length<=24)return runId+(runs.length>1?' +'+(runs.length-1):'');const part=text.split('·')[0].trim();return part.length>11?part.slice(0,10)+'…':part;}
 function treeNodeInspector(n){
  if(!n)return '';
@@ -294,14 +323,16 @@ function renderResearchTree(){
  const model=displayedTreeModel(),positions=new Map(model.nodes.map(n=>[n.id,n]));
  const local=(zh,en)=>lang==='zh'?zh:en,n=relationInspect?data.nodes[selected]:null,path=new Set();
  if(n){let id=n.id;while(id&&!path.has(id)){path.add(id);id=model.parent.get(id);}}
- const axes=Array.from({length:Math.max(0,...model.nodes.map(n=>n.level))+1},(_,i)=>`<text x="${190+i*142}" y="29" text-anchor="middle" class="tree-level">L${i}</text>`).join('');
+ const colX=i=>model.hierarchy?190+i*420:190+i*142;
+ const axes=Array.from({length:Math.max(0,...model.nodes.map(n=>n.level))+1},(_,i)=>`<text x="${colX(i)}" y="29" text-anchor="${model.hierarchy?'start':'middle'}" class="tree-level">${model.hierarchy?esc([local('研究问题','Research question'),local('实验条件 · 结果','Condition · result')][i]||''):'L'+i}</text>`).join('');
  const lanes=model.lanes.map((lane,i)=>{const name=lane.owner?displayLabel(lane.owner):local('未分组','Ungrouped');return `<g class="tree-lane"><rect x="0" y="${lane.y}" width="${model.width}" height="${lane.height}" fill="${i%2?'#f6f8f633':'#edf2ef55'}"/><line x1="160" x2="${model.width-25}" y1="${lane.y+lane.height-1}" y2="${lane.y+lane.height-1}"/><text x="15" y="${lane.y+lane.height/2+4}" ${lane.owner?`data-select="${esc(lane.owner.id)}" role="button" tabindex="0"`:''}><title>${esc(name)}</title>${esc(name.length>15?name.slice(0,14)+'…':name)}</text></g>`;}).join('');
- const edgePath=e=>{const a=positions.get(e.source),b=positions.get(e.target);const mid=(a.x+b.x)/2;return `M${a.x},${a.y} C${mid},${a.y} ${mid},${b.y} ${b.x},${b.y}`;};
+ const textWidth=text=>[...text].reduce((w,ch)=>w+(/[\u2e80-\uffff]/.test(ch)?13:7),0);
+ const edgePath=e=>{const a=positions.get(e.source),b=positions.get(e.target);const ax=model.hierarchy&&!e.secondary?Math.min(b.x-40,a.x+15+textWidth(hierarchyTreeLabel(a))+10):a.x;const mid=(ax+b.x)/2;return `M${ax},${a.y} C${mid},${a.y} ${mid},${b.y} ${b.x},${b.y}`;};
  const lines=[...model.links,...(treeSecondary?model.secondary:[])].map(e=>`<path class="tree-connection ${e.secondary?'secondary':''} ${n?(path.has(e.source)&&path.has(e.target)?'on-path':'muted'):''}" d="${edgePath(e)}"><title>${esc(e.projected?local('运行谱系：','Run lineage: ')+(e.originalEdges||[]).map(x=>x.source+' → '+x.target).join('; '):local('已记录关系','Recorded relation'))}</title></path>`).join('');
- const dots=model.nodes.map(p=>{const match=!filter||(displayLabel(p.node)+' '+displayDescription(p.node)+' '+p.id).toLowerCase().includes(filter.toLowerCase()),outcome=treeOutcome(p.node);return `<g class="research-dot ${outcome} ${p.id===selected&&n?'selected':''} ${!match?'filtered':''}" transform="translate(${p.x} ${p.y})" data-select="${esc(p.id)}" data-tree-node="${esc(p.id)}" role="button" tabindex="0" aria-label="${esc(local('查看 ','Inspect ')+displayLabel(p.node))}"><title>${esc(displayLabel(p.node))}${p.node.attrs?.selection?' — '+esc(p.node.attrs.selection):''}</title><circle class="node-halo" r="15"/><circle class="node-hit" r="20"/><circle class="node-dot-shape" r="8"/>${outcome==='failed'?'<path class="node-failure-mark" d="M-3,-3 L3,3 M-3,3 L3,-3"/>':''}<text y="-20" text-anchor="middle" class="node-code">${esc(shortTreeLabel(p.node))}</text>${p.hidden?`<text y="30" text-anchor="middle" class="node-hidden">+${p.hidden}</text>`:''}</g>`;}).join('');
+ const dots=model.nodes.map(p=>{const match=!filter||(displayLabel(p.node)+' '+displayDescription(p.node)+' '+p.id).toLowerCase().includes(filter.toLowerCase()),outcome=treeOutcome(p.node);return `<g class="research-dot ${outcome} ${p.id===selected&&n?'selected':''} ${!match?'filtered':''}" transform="translate(${p.x} ${p.y})" data-select="${esc(p.id)}" data-tree-node="${esc(p.id)}" role="button" tabindex="0" aria-label="${esc(local('查看 ','Inspect ')+displayLabel(p.node))}"><title>${esc(displayLabel(p.node))}${p.node.attrs?.selection?' — '+esc(p.node.attrs.selection):''}</title><circle class="node-halo" r="15"/><circle class="node-hit" r="20"/><circle class="node-dot-shape" r="8"/>${outcome==='failed'?'<path class="node-failure-mark" d="M-3,-3 L3,3 M-3,3 L3,-3"/>':''}${model.hierarchy?`<text x="15" y="4" class="node-label">${esc(hierarchyTreeLabel(p))}</text>`:`<text y="-20" text-anchor="middle" class="node-code">${esc(shortTreeLabel(p.node))}</text>${p.hidden?`<text y="30" text-anchor="middle" class="node-hidden">+${p.hidden}</text>`:''}`}</g>`;}).join('');
  const maxLevel=Math.max(0,...model.nodes.map(n=>n.level));
- const vertical=Array.from({length:maxLevel+1},(_,i)=>`<line class="tree-guide" x1="${190+i*142}" x2="${190+i*142}" y1="43" y2="${model.height-10}"/>`).join('');
- return `<div class="research-tree-shell ${treeFullscreen?'is-expanded':''}"><div class="research-tree-toolbar"><div class="tree-legend"><span class="recorded">${esc(local('已记录','Recorded'))}</span><span class="retained">${esc(local('保留','Retained'))}</span><span class="unselected">${esc(local('未选用','Not selected'))}</span><span class="failed">${esc(local('失败','Failed'))}</span></div><div class="tree-actions"><button id="tree-secondary" aria-pressed="${treeSecondary}">${esc(local('次级关系','Secondary links'))}</button><button id="tree-zoom-out" aria-label="${esc(local('缩小研究树','Zoom out'))}">−</button><span id="tree-zoom-value">${Math.round(treeCamera.scale*100)}%</span><button id="tree-zoom-in" aria-label="${esc(local('放大研究树','Zoom in'))}">+</button><button id="tree-fit">${esc(local('适应','Fit'))}</button><button id="tree-full">${esc(treeFullscreen?local('退出画布','Close canvas'):local('展开画布','Expand canvas'))}</button></div></div><div class="research-canvas" id="research-canvas"><svg id="research-tree-svg" viewBox="0 0 ${model.width} ${model.height}" aria-label="${esc(local('研究谱系树','Research lineage tree'))}"><g id="research-tree-transform" transform="translate(${treeCamera.x} ${treeCamera.y}) scale(${treeCamera.scale})">${lanes}${vertical}${axes}${lines}${dots}</g></svg>${!model.nodes.length?`<div class="tree-empty">${esc(local('暂无候选节点，可切换大纲查看记录。','No candidate nodes; use Outline to inspect records.'))}</div>`:''}${treeNodeInspector(n)}</div><div class="research-tree-foot"><span>${model.nodes.length} / ${model.total} ${esc(local('节点','nodes'))}${model.warnings.length?' · '+esc(local('关系待核查','Relations need review')):''}</span><span>${esc(local('拖动平移 · Ctrl＋滚轮缩放 · Shift＋点击折叠 · L 表示派生层级','Drag to pan · Ctrl+wheel to zoom · Shift+click to fold · L = lineage depth'))}</span></div></div>`;
+ const vertical=Array.from({length:maxLevel+1},(_,i)=>`<line class="tree-guide" x1="${colX(i)}" x2="${colX(i)}" y1="43" y2="${model.height-10}"/>`).join('');
+ return `<div class="research-tree-shell ${treeFullscreen?'is-expanded':''}"><div class="research-tree-toolbar"><div class="tree-legend"><span class="recorded">${esc(local('已记录','Recorded'))}</span><span class="retained">${esc(local('保留','Retained'))}</span><span class="unselected">${esc(local('未选用','Not selected'))}</span><span class="failed">${esc(local('失败','Failed'))}</span></div><div class="tree-actions"><button id="tree-secondary" aria-pressed="${treeSecondary}">${esc(local('次级关系','Secondary links'))}</button><button id="tree-zoom-out" aria-label="${esc(local('缩小研究树','Zoom out'))}">−</button><span id="tree-zoom-value">${Math.round(treeCamera.scale*100)}%</span><button id="tree-zoom-in" aria-label="${esc(local('放大研究树','Zoom in'))}">+</button><button id="tree-fit">${esc(local('适应','Fit'))}</button><button id="tree-full">${esc(treeFullscreen?local('退出画布','Close canvas'):local('展开画布','Expand canvas'))}</button></div></div><div class="research-canvas" id="research-canvas" ${model.hierarchy?'data-hierarchy="1"':''}><svg id="research-tree-svg" viewBox="0 0 ${model.width} ${model.height}" ${model.hierarchy?`style="height:auto;aspect-ratio:${model.width}/${model.height}"`:''} aria-label="${esc(local('研究谱系树','Research lineage tree'))}"><g id="research-tree-transform" transform="translate(${treeCamera.x} ${treeCamera.y}) scale(${treeCamera.scale})">${lanes}${vertical}${axes}${lines}${dots}</g></svg>${!model.nodes.length?`<div class="tree-empty">${esc(local('暂无候选节点，可切换大纲查看记录。','No candidate nodes; use Outline to inspect records.'))}</div>`:''}${treeNodeInspector(n)}</div><div class="research-tree-foot"><span>${model.nodes.length} / ${model.total} ${esc(local('节点','nodes'))}${model.warnings.length?' · '+esc(local('关系待核查','Relations need review')):''}</span><span>${esc(local('拖动平移 · Ctrl＋滚轮缩放 · Shift＋点击折叠 · L 表示派生层级','Drag to pan · Ctrl+wheel to zoom · Shift+click to fold · L = lineage depth'))}</span></div></div>`;
 }
 function bindResearchTree(){
  const svg=$('research-tree-svg'),canvas=$('research-canvas');if(!svg)return;
@@ -329,7 +360,7 @@ function bindResearchTree(){
  canvas.onpointermove=e=>{if(!drag)return;const p=point(e);treeCamera.x=drag.x+p.x-drag.p.x;treeCamera.y=drag.y+p.y-drag.p.y;paint();};
  canvas.onpointerup=canvas.onpointercancel=()=>{drag=null;canvas.classList.remove('dragging');};
  const fold=id=>{if(treeCollapsed.has(id))treeCollapsed.delete(id);else treeCollapsed.add(id);drawMapBody();};
- canvas.querySelectorAll('[data-tree-node]').forEach(el=>el.onclick=e=>{if(e.shiftKey){e.preventDefault();fold(el.dataset.treeNode);}else select(el.dataset.treeNode);});
+ canvas.querySelectorAll('[data-tree-node]').forEach(el=>el.onclick=e=>{const id=el.dataset.treeNode;if(e.shiftKey||(model.hierarchy&&data.nodes[id]?.kind==='question')){e.preventDefault();if(model.hierarchy&&data.nodes[id]?.kind==='question'){if(treeCollapsed.has(id))treeCollapsed.delete(id);else treeCollapsed.add(id);selected=id;relationInspect=true;drawMapBody();}else fold(id);}else select(id);});
  const foldButton=$('tree-fold-selected');if(foldButton)foldButton.onclick=()=>fold(selected);
 }
 function drawMapBody() {
