@@ -637,3 +637,47 @@ class PublishMapTests(unittest.TestCase):
                 self.assertEqual(data["semantic"]["claims"][0]["_check"], "verified")
                 html = export_html(Store(ws), Path(tmp) / "out.html").read_text(encoding="utf-8")
                 self.assertIn("renderSemantic", html)
+
+
+class SemanticResearchMapTests(unittest.TestCase):
+    def test_build_map_turns_experiments_into_questions_and_cells(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "p"
+            (src / "runs" / "a_s1").mkdir(parents=True)
+            (src / "REPORT.md").write_text("# R\n\n| cond | SR |\n|---|---|\n| base | 80.0 |\n| ours | 91.5 |\n", encoding="utf-8")
+            ws = Path(tmp) / "ws"
+            Store(ws).init("demo")
+            tools.t_collect(str(ws), "p", str(src))
+            sem = {"project": "demo",
+                   "claims": [{"id": "C1", "statement": "ours beats base", "status": "成立", "evidence": ["REPORT.md:6"],
+                               "numbers": [{"value": "91.5", "meaning": "ours SR", "source": "REPORT.md:6"}]}],
+                   "experiments": [{"id": "E1", "question": "Does ours beat base?", "type": "消融", "status": "有效", "supports": ["C1", "C1"],
+                                    "design": {"compared": ["base", "ours"], "metric": "SR (%)"},
+                                    "results": [{"condition": "base", "value": 80.0, "source": "REPORT.md:5"},
+                                                {"condition": "ours", "value": 91.5, "source": "REPORT.md:6"}]}]}
+            mp = Path(tmp) / "map.json"
+            mp.write_text(json.dumps(sem), encoding="utf-8")
+            res = tools.t_publish_map(str(ws), "p", str(mp), build_map=True)
+            self.assertEqual(res["map"]["questions"], 1)
+            state = Store(ws).load()
+            kinds = {}
+            for n in state["nodes"].values():
+                kinds.setdefault(n["kind"], []).append(n)
+            self.assertEqual(kinds["module"][0]["label"], "消融实验")
+            q = kinds["question"][0]
+            self.assertTrue(q["label"].startswith("E1 · Does ours beat base?"))
+            self.assertEqual(q["attrs"]["study_summary"]["zh"]["rows"][1][1], "91.5")
+            cells = sorted(kinds["cell"], key=lambda n: n["label"])
+            self.assertEqual([c["label"] for c in cells], ["base · 80", "ours · 91.5"])
+            self.assertTrue(all(c["status"] == "recorded" and c["evidence"][0]["locator"].startswith("line:") for c in cells))
+            self.assertEqual(kinds["claim"][0]["status"], "recorded")
+            rels = sorted(e["relation"] for e in state["edges"].values())
+            self.assertEqual(rels, ["compares", "supports"])
+            # publishing again changes nothing; dropping the experiment archives its nodes
+            again = tools.t_publish_map(str(ws), "p", str(mp), build_map=True)
+            self.assertFalse(again["map"]["changed"])
+            sem["experiments"] = []
+            mp.write_text(json.dumps(sem), encoding="utf-8")
+            tools.t_publish_map(str(ws), "p", str(mp), build_map=True)
+            state = Store(ws).load()
+            self.assertTrue(all(n["status"] == "archived" for n in state["nodes"].values() if n["kind"] in ("question", "cell")))

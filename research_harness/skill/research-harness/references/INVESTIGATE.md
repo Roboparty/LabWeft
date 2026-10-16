@@ -227,3 +227,10 @@ map in the format of `references/SEMANTIC_MAP.md`: background and method, claims
 (main, ablation, control, mechanism, re-evaluation), the timeline of phases, superseded work and open questions,
 each item with `path:line` evidence. Check every number with `reconcile` / `experiments` or the raw file. Then
 `labweft trace report WS --source NAME --out map.html --semantic map.json` renders it in the LabWeft look.
+
+To put it into the LabWeft workspace (`labweft serve` / `export`), run
+`labweft trace publish-map WS --source NAME --semantic map.json --build-map`. It verifies the map, imports every cited
+file (archive members as `<archive>.members/<member>`) as hash-pinned snapshots, and writes the research map from the
+paper semantics: experiment type -> the question an experiment answers (with its result table) -> one Cell per compared
+condition (value ± SD, verification status, link to the cited line), plus claim nodes the supporting experiments point
+to. Earlier folder-derived draft nodes are archived, not deleted; re-publishing an edited map updates only what changed.
