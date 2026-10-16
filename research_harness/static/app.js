@@ -124,7 +124,7 @@ function render() {
  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
  document.querySelector('.workspace-body').dataset.view=view;
  $('page-title').textContent=t(view+'Title');$('page-subtitle').textContent=t(view+'Subtitle');
- ({map:renderMap,compare:renderCompare,decisions:renderDecisions,sources:renderSources,history:renderHistory}[view])();
+ ({map:renderMap,semantic:renderSemantic,compare:renderCompare,decisions:renderDecisions,sources:renderSources,history:renderHistory}[view])();
  renderDetail();
 }
 function hasMatch(n) {if(!filter)return true;return (displayLabel(n)+' '+displayDescription(n)+' '+n.label+' '+n.description+' '+n.id).toLowerCase().includes(filter.toLowerCase())||children(n.id).some(hasMatch);}
@@ -345,6 +345,7 @@ function kv(obj){return `<dl class="kv">${Object.entries(obj).map(([k,v])=>`<dt>
 function compactMetric(value){return typeof value==='number'&&Number.isFinite(value)&&!Number.isInteger(value)&&String(value).split('.')[1]?.length>4?`≈${value.toFixed(4)}`:pretty(value);}
 function metricKv(obj){return `<dl class="kv">${Object.entries(obj).map(([k,v])=>`<dt>${esc(k)}</dt><dd title="${esc(pretty(v))}">${esc(compactMetric(v))}</dd>`).join('')}</dl>`;}
 function renderDetail(){
+ if(view==='semantic'){renderSemanticDetail();return;}
  const n=data.nodes[selected];
  if(!n){$('detail').innerHTML=`<div class="eyebrow">${esc(t('inspector'))}</div><h2>${esc(t('selectObject'))}</h2><p class="description">${esc(t('selectObjectHelp'))}</p>`;return;}
  const refs=n.evidence||[],related=Object.values(data.edges).filter(e=>e.source===n.id||e.target===n.id),attrs=n.attrs||{};
@@ -526,7 +527,84 @@ function init(){
  $('copy-prompt').onclick=async()=>{const text=t('prompt').replace('{project}',data?`「${data.project.name}」`:'');try{await navigator.clipboard.writeText(text);toast(t('copied'));}catch(_){openModal();$('modal-title').textContent=t('copyToAgent');$('modal-subtitle').textContent=t('noNewAgent');$('evidence-content').textContent=text;}};
  $('export-json').onclick=()=>{if(data){download('research-records-r'+data.revision+'.json',JSON.stringify(data,null,2),'application/json');toast(t('exportWarning'));}};
  window.addEventListener('keydown',e=>{if(e.key==='Escape'&&treeFullscreen){treeFullscreen=false;document.body.classList.remove('tree-expanded');drawMapBody();}});
+ {const m=/view=(\w+)/.exec(location.hash);if(m&&['map','semantic','compare','decisions','sources','history'].includes(m[1]))view=m[1];}
  load();
 }
+/* Paper view: an agent-written semantic map (claims, experiments by research question, timeline), every number
+   checked by `labweft trace verify-map`, published with `labweft trace publish-map`. */
+let semTab='claims',semSel=null,semQuery='';
+const SEM_ST={'成立':'','部分成立':'review','待验证':'review','已被取代':'provisional','已撤回':'provisional','有效':'','作废':'provisional','进行中':'review'};
+const SEM_CK={verified:'✓',partly:'◐',problem:'⚠',unchecked:'·'};
+const SEM_NC={ok:'✓',ok_derived:'✓≈',number_not_at_source:'⚠',path_missing:'⚠',line_out_of_range:'⚠',unreadable:'?',no_source:'?'};
+function semBadge(txt,cls=''){return `<span class="badge ${cls}">${esc(txt)}</span>`}
+function semTxt(zh,en){return lang==='en'?en:zh}
+function renderSemantic(){
+ const S=data.semantic;
+ if(!S){$('content').innerHTML=`<div class="panel-head"><div><h2>${esc(semTxt('研究语义','Paper view'))}</h2></div></div><div class="empty">${esc(semTxt('还没有发布研究语义地图。让 agent 按 references/SEMANTIC_MAP.md 读报告写出地图，然后运行 labweft trace publish-map。','No semantic map published yet. Have your agent write one (references/SEMANTIC_MAP.md), then run labweft trace publish-map.'))}</div>`;return;}
+ const tabs=[['summary',semTxt('概要','Summary')],['claims',semTxt('结论','Claims')+' '+(S.claims||[]).length],['experiments',semTxt('实验','Experiments')+' '+(S.experiments||[]).length],['timeline',semTxt('历程','Timeline')],['invalid',semTxt('作废与取代','Superseded')],['open',semTxt('待解决','Open')]];
+ const q=x=>!semQuery||String(x).toLowerCase().includes(semQuery);
+ let body='';
+ const row=(id,title,sub,badges,dot)=>`<div class="node-wrap"><div class="node-card ${semSel===id?'selected':''}" data-sem="${esc(id)}"><span class="node-dot ${dot||'question'}"></span><span class="node-label">${esc(title)}${sub?`<span class="node-sub">${esc(sub)}</span>`:''}</span>${badges||''}</div></div>`;
+ if(semTab==='summary'){
+  const m=S.method||{};
+  body=`<div class="study-panel"><div class="study-panel-heading">${esc(semTxt('一句话','IN ONE LINE'))}</div><p>${esc(S.one_line)}</p><h4>${esc(semTxt('研究背景','Background'))}</h4><p>${esc(S.background)}</p><h4>${esc(semTxt('方法','Method'))}: ${esc(m.name)}</h4><p>${esc(m.idea)}</p></div>`+
+   `<ul class="tree-list">${(m.components||[]).map((c,i)=>row('comp:'+i,c.name,c.role,'','cell')).join('')}${(S.reading_order||[]).map((r,i)=>row('read:'+i,semTxt('先读 ','Read ')+r.path.split('/').pop(),r.why,'','run')).join('')}</ul>`;
+ } else if(semTab==='claims'){
+  body=`<ul class="tree-list">${(S.claims||[]).map((c,i)=>q(c.statement+c.id)?row('claim:'+i,c.id+' · '+c.statement,'',semBadge(c.status,SEM_ST[c.status]??'')+semBadge(SEM_CK[c._check]||'·'),'cell'):'').join('')}</ul>`;
+ } else if(semTab==='experiments'){
+  const g={};(S.experiments||[]).forEach((e,i)=>{(g[e.type]=g[e.type]||[]).push([e,i])});
+  body=Object.entries(g).map(([k,es])=>`<div class="tree-hint" style="padding:12px 0 2px">${esc(k)} · ${es.length}</div><ul class="tree-list">${es.map(([e,i])=>q(e.question+e.finding+e.id)?row('exp:'+i,e.id+' · '+e.question,e.finding,semBadge(e.status,SEM_ST[e.status]??'')+semBadge(SEM_CK[e._check]||'·'),'question'):'').join('')}</ul>`).join('');
+ } else if(semTab==='timeline'){
+  body=`<div class="history">${(S.phases||[]).map((p,i)=>q(p.title+p.summary)?`<div class="history-item" data-sem="phase:${i}" style="cursor:pointer"><b>${esc(p.period)}</b>${esc(p.title)}<small>${esc(p.summary)}</small></div>`:'').join('')}</div>`;
+ } else if(semTab==='invalid'){
+  body=`<ul class="tree-list">${(S.invalidated||[]).map((x,i)=>q(x.what+x.why)?row('inv:'+i,x.what,(x.why||'')+(x.replaced_by?' → '+x.replaced_by:''),'','run'):'').join('')}</ul>`;
+ } else {
+  body=`<ul class="tree-list">${(S.open_questions||[]).map((x,i)=>q(x.question)?row('open:'+i,x.question,'','','run'):'').join('')}</ul>`;
+ }
+ const cs=S._check_summary;
+ $('content').innerHTML=`<div class="panel-head"><div><h2>${esc(semTxt('研究语义 · 论文视图','Paper view'))}</h2><small>${esc(semTxt('按研究问题组织；数字由 trace verify-map 在项目中逐条核对','Organized by research question; numbers checked in the project by trace verify-map'))}${cs?` · ${Math.round(100*((cs.ok||0)+(cs.ok_derived||0))/cs.checked)}% ✓`:''}</small></div><div class="view-switch">${tabs.map(([k,l])=>`<button type="button" data-semtab="${k}" class="${semTab===k?'active':''}">${esc(l)}</button>`).join('')}</div></div><div class="search-wrap"><input class="search" id="sem-q" placeholder="${esc(semTxt('筛选…','Filter…'))}" value="${esc(semQuery)}"></div><div class="tree">${body}</div>`;
+ $('content').querySelectorAll('[data-semtab]').forEach(b=>b.onclick=()=>{semTab=b.dataset.semtab;semSel=null;semQuery='';renderSemantic();renderSemanticDetail();});
+ $('content').querySelectorAll('[data-sem]').forEach(b=>b.onclick=()=>{semSel=b.dataset.sem;renderSemantic();renderSemanticDetail();});
+ const qi=$('sem-q');qi.oninput=e=>{semQuery=e.target.value.toLowerCase();const p=e.target.selectionStart;renderSemantic();$('sem-q').focus();$('sem-q').setSelectionRange(p,p);};
+}
+function semEvidence(list){
+ const S=data.semantic,L=S._links||{};
+ if(!(list||[]).length)return '';
+ return `<div class="detail-section"><h3>${esc(t('sources'))}</h3>${list.map(loc=>{const path=String(loc).replace(/:(\d+)(\s*[-–]\s*\d+)?\s*$/,''),k=L[path];
+  const open=k&&canOpenEvidence(k.sha256)?`<button type="button" class="evidence-btn" data-sem-sha="${esc(k.sha256)}" data-title="${esc(loc)}">${esc(loc)}<small>${esc(t('view'))}</small></button>`:`<div class="evidence-btn" style="cursor:default">${esc(loc)}</div>`;
+  const nodes=(k?.nodes||[]).filter(id=>data.nodes[id]).slice(0,4).map(id=>`<button type="button" class="relation-btn" data-sem-node="${esc(id)}">→ ${esc(label(data.nodes[id]))}: ${esc(displayLabel(data.nodes[id]))}</button>`).join('');
+  return open+nodes;}).join('')}</div>`;
+}
+function renderSemanticDetail(){
+ const S=data.semantic;let h='';
+ if(!S||!semSel){h=`<div class="eyebrow">${esc(semTxt('研究语义','PAPER VIEW'))}</div><h2>${esc(S?.project||data.project?.name||'')}</h2><p class="description">${esc(S?.one_line||'')}</p>`;
+  if(S?._check_summary)h+=`<div class="detail-section"><h3>${esc(semTxt('证据核验','Evidence check'))}</h3>${kv(S._check_summary)}</div>`;
+  $('detail').innerHTML=h;return;}
+ const [kind,idx]=semSel.split(':'),i=+idx;
+ if(kind==='claim'){const c=S.claims[i];h=`<div class="eyebrow">${esc(semTxt('结论','CLAIM'))} ${esc(c.id)}</div><h2>${esc(c.statement)}</h2><p>${semBadge(c.status,SEM_ST[c.status]??'')} ${semBadge((SEM_CK[c._check]||'·')+' '+(c._check||''))}</p>`;
+  if((c.numbers||[]).length)h+=`<div class="detail-section"><h3>${esc(semTxt('关键数字','Key numbers'))}</h3>${c.numbers.map(n=>`<div class="note" style="margin:6px 0"><strong>${esc(n.value)}</strong> ${semBadge(SEM_NC[n._check]||'?')}<br>${esc(n.meaning||'')}<br><small>${esc(n.source||'')}</small></div>`).join('')}</div>`;
+  if(c.caveats)h+=`<div class="detail-section"><h3>${esc(t('scope'))}</h3><p class="description">${esc(c.caveats)}</p></div>`;
+  const ex=(S.experiments||[]).map((e,j)=>[e,j]).filter(([e])=>(e.supports||[]).includes(c.id));
+  if(ex.length)h+=`<div class="detail-section"><h3>${esc(semTxt('支撑实验','Supporting experiments'))}</h3>${ex.map(([e,j])=>`<button type="button" class="relation-btn" data-sem-goto="exp:${j}">${esc(e.id)} · ${esc(e.question)}</button>`).join('')}</div>`;
+  h+=semEvidence(c.evidence);
+ } else if(kind==='exp'){const e=S.experiments[i],d=e.design||{};h=`<div class="eyebrow">${esc(e.type)} · ${esc(e.id)}</div><h2>${esc(e.question)}</h2><p>${semBadge(e.status,SEM_ST[e.status]??'')} ${semBadge((SEM_CK[e._check]||'·')+' '+(e._check||''))}</p>${kv({[semTxt('对比','Compared')]:(d.compared||[]).join(' / '),[semTxt('固定','Fixed')]:(d.fixed||[]).join(' / '),[semTxt('重复','Replicates')]:d.seeds,[t('metric')]:d.metric})}`;
+  if((e.results||[]).length)h+=`<div class="detail-section"><h3>${esc(t('results'))}</h3><div class="study-table-wrap"><table class="matrix" style="min-width:0"><tbody>${e.results.map(r=>`<tr><td>${esc(r.condition)}${r.note?`<span class="matrix-sub">${esc(r.note)}</span>`:''}</td><td><strong>${esc(r.value)}</strong>${r.sd!=null?' ± '+esc(r.sd):''} ${semBadge(SEM_NC[r._check]||'?')}<span class="matrix-sub">${esc(r.n||'')}</span></td></tr>`).join('')}</tbody></table></div></div>`;
+  h+=`<div class="detail-section"><h3>${esc(semTxt('结论','Finding'))}</h3><div class="note">${esc(e.finding)}</div></div>`;
+  if((e.supports||[]).length)h+=`<div class="detail-section"><h3>${esc(semTxt('支撑的结论','Supports'))}</h3>${e.supports.map(id=>{const j=(S.claims||[]).findIndex(c=>c.id===id);return j<0?'':`<button type="button" class="relation-btn" data-sem-goto="claim:${j}">${esc(id)} · ${esc(S.claims[j].statement)}</button>`}).join('')}</div>`;
+  h+=semEvidence(e.evidence);
+ } else if(kind==='phase'){const p=S.phases[i];h=`<div class="eyebrow">${esc(p.period)}</div><h2>${esc(p.title)}</h2><p class="description">${esc(p.summary)}</p>`+semEvidence(p.evidence);
+ } else if(kind==='inv'){const x=S.invalidated[i];h=`<div class="eyebrow">${esc(semTxt('作废与取代','SUPERSEDED'))}</div><h2>${esc(x.what)}</h2>${kv({[semTxt('原因','Why')]:x.why,[semTxt('替代','Replaced by')]:x.replaced_by})}`+semEvidence(x.evidence);
+ } else if(kind==='open'){const x=S.open_questions[i];h=`<div class="eyebrow">${esc(semTxt('待解决','OPEN'))}</div><h2>${esc(x.question)}</h2>`+semEvidence(x.evidence);
+ } else if(kind==='comp'){const c=S.method.components[i];h=`<div class="eyebrow">${esc(semTxt('方法组件','COMPONENT'))}</div><h2>${esc(c.name)}</h2><p class="description">${esc(c.role)}</p>`;
+ } else if(kind==='read'){const r=S.reading_order[i];h=`<div class="eyebrow">${esc(semTxt('建议阅读','READ FIRST'))}</div><h2>${esc(r.path.split('/').pop())}</h2><p class="description">${esc(r.why)}</p>`+semEvidence([r.path]);}
+ $('detail').innerHTML=h;
+ $('detail').querySelectorAll('[data-sem-sha]').forEach(b=>b.onclick=()=>showEvidence(b.dataset.semSha,b.dataset.title));
+ $('detail').querySelectorAll('[data-sem-node]').forEach(b=>b.onclick=()=>{setView('map');select(b.dataset.semNode);});
+ $('detail').querySelectorAll('[data-sem-goto]').forEach(b=>b.onclick=()=>{const g=b.dataset.semGoto;semTab=g.startsWith('exp')?'experiments':'claims';semSel=g;renderSemantic();renderSemanticDetail();});
+}
+Object.assign(words.zh,{navSemantic:'研究语义',semanticTitle:'像读论文一样读你的项目。',semanticSubtitle:'结论 → 支撑实验 → 数字 → 原始证据；每个数字都在项目里核对过。'});
+Object.assign(words.en,{navSemantic:'Paper view',semanticTitle:'Read your project like a paper.',semanticSubtitle:'Claims → supporting experiments → numbers → raw evidence; every number checked in the project.'});
+
+
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();

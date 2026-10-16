@@ -18,7 +18,14 @@ STATIC = Path(__file__).parent / "static"
 
 def presentation(store: Store) -> dict:
     state = store.load()
-    return {**state, "comparison": compare(state), "drift": drift(state), "organization": organization(state), "mode": "live"}
+    out = {**state, "comparison": compare(state), "drift": drift(state), "organization": organization(state), "mode": "live"}
+    sem = store.root / "semantic_map.json"
+    if sem.is_file():  # paper view published by `labweft trace publish-map`
+        try:
+            out["semantic"] = json.loads(sem.read_text(encoding="utf-8"))
+        except ValueError:
+            pass
+    return out
 
 
 def export_html(store: Store, output: Path, *, include_evidence: bool = False,
