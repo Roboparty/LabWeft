@@ -16,7 +16,15 @@ from ..store import HarnessError
 from . import index, navigate, source
 
 LOC = re.compile(r"^(?P<path>.+?):(?P<a>\d+)(?:\s*[-–]\s*(?P<b>\d+))?\s*$")
-NUM = re.compile(r"[-+]?\d+(?:\.\d+)?")
+NUM = re.compile(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
+THOUSANDS = re.compile(r"(?<=\d),(?=\d{3}\b)")
+
+
+def _nums(text: str) -> list:
+    t = text.replace("−", "-")
+    if t.count(",") < 3:  # prose "3,276 jobs"; never inside CSV rows, where commas separate cells
+        t = THOUSANDS.sub("", t)
+    return NUM.findall(t)
 
 
 def parse(loc: str):
@@ -79,8 +87,11 @@ def _tokens(value) -> list:
         d = len(s.split(".")[1].rstrip("0")) if "." in s else 0
         return [(float(value), min(d, 6))]
     out = []
-    for t in NUM.findall(str(value)):
-        d = len(t.split(".")[1]) if "." in t else 0
+    for t in _nums(str(value)):
+        mant = t.split("e")[0].split("E")[0]
+        d = len(mant.split(".")[1]) if "." in mant else 0
+        if "e" in t.lower():
+            d += max(0, -int(t.lower().split("e")[1]))
         out.append((float(t), d))
     return out
 
@@ -88,7 +99,7 @@ def _tokens(value) -> list:
 def _found(x: float, d: int, lines: list) -> bool:
     tol = 0.5 * 10 ** (-d) + 1e-9
     for line in lines:
-        for t in NUM.findall(line.replace("−", "-")):
+        for t in _nums(line):
             y = float(t)
             for sc in (1.0, 100.0, 0.01):
                 if abs(abs(y * sc) - abs(x)) <= tol:
@@ -99,26 +110,47 @@ def _found(x: float, d: int, lines: list) -> bool:
     return False
 
 
-def _derived(x: float, d: int, lines: list) -> bool:
-    """The number is an aggregate of a table printed there: mean / sample SD / population SD of one column over
-    2-5 consecutive rows of the window (a report quoting `95.08 ± 0.69` next to the per-seed CSV rows)."""
-    import math
+def _columns(lines: list) -> list:
     rows = []
     for line in lines:
-        cells = [c for c in re.split(r"[,\t|]", line)]
+        cells = re.split(r"[,\t|]", line)
         rows.append([float(c) if re.fullmatch(r"\s*[-+]?\d+(?:\.\d+)?\s*", c) else None for c in cells])
-    tol = 0.5 * 10 ** (-d) + 1e-9
     width = max((len(r) for r in rows), default=0)
-    for col in range(width):
-        vals = [r[col] if col < len(r) else None for r in rows]
+    return [[r[c] for r in rows if c < len(r) and r[c] is not None] for c in range(width)], [
+        [r[c] if c < len(r) else None for r in rows] for c in range(width)]
+
+
+def _derived(x: float, d: int, lines: list, sd: tuple | None = None) -> bool:
+    """The number is an aggregate of a table printed there. A single value must be the mean / SD of 2-5 CONSECUTIVE
+    rows of one column; a `mean ± SD` pair may use any 2-5 rows (replicates are often interleaved with other
+    conditions) because matching both numbers at once is not a coincidence."""
+    import math
+    from itertools import combinations
+    tol = 0.5 * 10 ** (-d) + 1e-9
+    compact, full = _columns(lines)
+    def stats(seg):
+        k = len(seg)
+        m = sum(seg) / k
+        ss = sum((v - m) ** 2 for v in seg)
+        return m, math.sqrt(ss / (k - 1)), math.sqrt(ss / k)
+    if sd is not None:
+        y, dy = sd
+        tol_sd = 0.5 * 10 ** (-dy) + 1e-9
+        for vals in compact:
+            for k in range(2, 6):
+                for seg in combinations(vals[:14], k):
+                    m, s1, s0 = stats(seg)
+                    for sc in (1.0, 100.0):
+                        if abs(m * sc - x) <= tol and (abs(s1 * sc - y) <= tol_sd or abs(s0 * sc - y) <= tol_sd):
+                            return True
+        return False
+    for vals in full:
         for i in range(len(vals)):
             for k in range(2, 6):
                 seg = vals[i:i + k]
                 if len(seg) < k or any(v is None for v in seg):
                     continue
-                m = sum(seg) / k
-                ss = sum((v - m) ** 2 for v in seg)
-                for cand in (m, math.sqrt(ss / (k - 1)), math.sqrt(ss / k)):
+                for cand in stats(seg):
                     for sc in (1.0, 100.0):
                         if abs(cand * sc - x) <= tol:
                             return True
@@ -183,7 +215,13 @@ def verify(ws: Path, name: str, sem: dict, slack: int = 2) -> dict:
                 toks = [t for v in (vals if isinstance(vals, list) else [vals]) for t in _tokens(v)]
                 miss = [x for x, d in toks if not _found(x, d, window)]
                 wide = lines[max(0, a - 1 - 6): b + 6] if a else lines
-                derived = [x for x, d in toks if x in miss and _derived(x, d, wide)]
+                derived = []
+                if len(toks) == 2 and miss:  # mean ± SD stated together: match them as a pair
+                    near = lines[max(0, a - 2): b + 1] if a else lines
+                    if _derived(toks[0][0], toks[0][1], near if len(near) <= 14 else wide, sd=toks[1]):
+                        derived = [t[0] for t in toks]
+                else:
+                    derived = [x for x, d in toks if x in miss and _derived(x, d, wide)]
                 miss = [x for x in miss if x not in derived]
                 st["status"] = ("ok" if not derived else "ok_derived") if toks and not miss else ("number_not_at_source" if toks else "no_number")
                 if miss:
