@@ -1,0 +1,65 @@
+{
+  "project": "Synthetic policy study",
+  "one_line": "A synthetic, hand-authored fixture: adding three steps of observation history lifts held-out success from 0.64 to 0.72, and an auxiliary prediction loss adds another 0.03; moving the same recipe from GPU-A to GPU-B changes nothing beyond seed noise.",
+  "background": "All numbers in this example are hand-authored fixtures written to demonstrate LabWeft; no training was executed. The toy study asks how much a small policy benefits from seeing recent observations, whether an auxiliary next-observation prediction objective helps on top of that, and whether a hardware change needs a new ablation.",
+  "method": {
+    "name": "History-conditioned policy with an auxiliary prediction loss",
+    "idea": "Encode the last k observations instead of the current one only, and optionally add a weighted next-observation prediction loss. Every condition is trained for 20k steps on toy-v1 and evaluated with the held-out protocol heldout-v1, three training seeds each.",
+    "components": [
+      {"name": "HistoryEncoder (history_length)", "role": "Keeps the last k observations; k = 0 reduces to the current observation only."},
+      {"name": "Auxiliary prediction objective (prediction_weight)", "role": "Weighted squared error on predicted next observations; 0 disables it."},
+      {"name": "Fixed protocol", "role": "toy-v1 data, fp32, 20k steps, heldout-v1 evaluation, seeds 0/1/2."}
+    ]
+  },
+  "glossary": [
+    {"term": "success_rate", "meaning": "Fraction of held-out episodes solved (0 to 1)."},
+    {"term": "C0-C3", "meaning": "The four recorded conditions; each folder name ends in its training seed."}
+  ],
+  "phases": [
+    {"period": "Step 1", "title": "Baseline without history", "summary": "C0 trains the policy on the current observation only (history_length 0) and sets the reference: 0.64 ± 0.01 over three seeds.", "evidence": ["results/C0-seed-0/config.json:5", "results/C0-seed-0/metrics.json:3"]},
+    {"period": "Step 2", "title": "Add three steps of history", "summary": "C1 changes only history_length to 3; success rises to 0.72 ± 0.01 on every seed.", "evidence": ["results/C1-seed-0/config.json:5", "results/C1-seed-0/metrics.json:3"]},
+    {"period": "Step 3", "title": "Auxiliary prediction on top of history", "summary": "C2 keeps history and sets prediction_weight 0.1; success reaches 0.75 ± 0.01.", "evidence": ["results/C2-seed-0/config.json:8", "results/C2-seed-0/metrics.json:3"]},
+    {"period": "Step 4", "title": "Same recipe on GPU-B", "summary": "C3 repeats C2 on GPU-B; 0.74 ± 0.01 overlaps C2, and the researcher's note scopes when the hardware judgment may be reused.", "evidence": ["results/C3-seed-0/config.json:4", "research-notes.md:13"]}
+  ],
+  "claims": [
+    {"id": "C1", "statement": "Three steps of observation history improve held-out success from 0.64 to 0.72 (three seeds each, same data, steps and protocol).", "status": "成立",
+     "numbers": [{"value": "0.64 ± 0.01", "meaning": "C0, no history, mean ± SD over seeds", "source": "results/C0-seed-0/metrics.json:3"},
+                 {"value": "0.72 ± 0.01", "meaning": "C1, history_length 3, mean ± SD over seeds", "source": "results/C1-seed-0/metrics.json:3"}],
+     "evidence": ["results/C0-seed-0/config.json:5", "results/C1-seed-0/config.json:5"], "caveats": "Synthetic fixture; toy-v1 data and heldout-v1 protocol only."},
+    {"id": "C2", "statement": "With history enabled, an auxiliary prediction loss (weight 0.1) adds a further 0.03 of success.", "status": "成立",
+     "numbers": [{"value": "0.75 ± 0.01", "meaning": "C2, history 3 + prediction_weight 0.1", "source": "results/C2-seed-0/metrics.json:3"}],
+     "evidence": ["results/C2-seed-0/config.json:8"], "caveats": "One weight tested; the dose-response is unknown."},
+    {"id": "C3", "statement": "Moving the C2 recipe from GPU-A to GPU-B does not change success beyond seed noise, so a new hardware-only ablation is not needed under the recorded scope.", "status": "部分成立",
+     "numbers": [{"value": "0.74 ± 0.01", "meaning": "C3, C2 recipe on GPU-B", "source": "results/C3-seed-0/metrics.json:3"}],
+     "evidence": ["results/C3-seed-0/config.json:4", "research-notes.md:13"], "caveats": "Three seeds do not establish equivalence; reopen if implementation, precision, data, budget or protocol change."}
+  ],
+  "experiments": [
+    {"id": "E1", "question": "Does seeing recent observations help the policy?", "type": "主实验", "status": "有效", "supports": ["C1"],
+     "design": {"compared": ["history_length 0 (C0)", "history_length 3 (C1)"], "fixed": ["toy-v1", "fp32", "20k steps", "heldout-v1", "GPU-A"], "seeds": "3 training seeds", "metric": "held-out success_rate"},
+     "results": [{"condition": "C0 · no history", "value": 0.64, "sd": 0.01, "n": "3 seeds", "source": "results/C0-seed-0/metrics.json:3"},
+                 {"condition": "C1 · history 3", "value": 0.72, "sd": 0.01, "n": "3 seeds", "source": "results/C1-seed-0/metrics.json:3"}],
+     "finding": "History helps on every seed: +0.08 absolute success.", "evidence": ["results/C1-seed-0/config.json:5"]},
+    {"id": "E2", "question": "Does an auxiliary prediction loss add anything once history is on?", "type": "消融", "status": "有效", "supports": ["C2"],
+     "design": {"compared": ["prediction_weight 0 (C1)", "prediction_weight 0.1 (C2)"], "fixed": ["history_length 3", "toy-v1", "20k steps", "heldout-v1", "GPU-A"], "seeds": "3 training seeds", "metric": "held-out success_rate"},
+     "results": [{"condition": "C1 · history only", "value": 0.72, "sd": 0.01, "n": "3 seeds", "source": "results/C1-seed-0/metrics.json:3"},
+                 {"condition": "C2 · history + aux 0.1", "value": 0.75, "sd": 0.01, "n": "3 seeds", "source": "results/C2-seed-0/metrics.json:3"}],
+     "finding": "A small, consistent gain of 0.03; only one weight was tried.", "evidence": ["results/C2-seed-0/config.json:8"]},
+    {"id": "E3", "question": "Does the same recipe behave the same on different hardware?", "type": "对照", "status": "有效", "supports": ["C3"],
+     "design": {"compared": ["GPU-A (C2)", "GPU-B (C3)"], "fixed": ["history 3 + aux 0.1", "toy-v1", "fp32", "heldout-v1"], "seeds": "3 training seeds", "metric": "held-out success_rate"},
+     "results": [{"condition": "C2 · GPU-A", "value": 0.75, "sd": 0.01, "n": "3 seeds", "source": "results/C2-seed-0/metrics.json:3"},
+                 {"condition": "C3 · GPU-B", "value": 0.74, "sd": 0.01, "n": "3 seeds", "source": "results/C3-seed-0/metrics.json:3"}],
+     "finding": "Within seed noise; the researcher accepts reusing the hardware judgment for this recorded scope only.", "evidence": ["research-notes.md:13"]}
+  ],
+  "invalidated": [
+    {"what": "Re-running the hardware-only ablation for every new training seed", "why": "A new seed is replication, not a new hardware condition.", "replaced_by": "Reopen the hardware question only if implementation, precision, data, budget or protocol change.", "evidence": ["research-notes.md:18-19"]}
+  ],
+  "open_questions": [
+    {"question": "How does success change with other prediction weights (0.03, 0.3)?", "evidence": []},
+    {"question": "Does the history gain hold beyond three steps or on a second dataset?", "evidence": []}
+  ],
+  "reading_order": [
+    {"path": "research-notes.md", "why": "The questions and the researcher's scoped hardware decision."},
+    {"path": "results/C1-seed-0/config.json", "why": "What one condition fixes and varies."},
+    {"path": "results/C2-seed-0/metrics.json", "why": "The result format every run shares."}
+  ]
+}

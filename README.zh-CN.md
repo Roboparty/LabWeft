@@ -3,13 +3,38 @@
 </p>
 
 <p align="center"><a href="README.md">English</a> · <strong>简体中文</strong></p>
-<p align="center">Python 3.11+ · MIT · 本地优先 · Alpha 0.1.0</p>
 
-LabWeft 把实验、结果与研究决策整理成可追溯的研究工作空间。你已有的 coding agent 读取并理解项目；轻量的本地 harness 保存记录，让研究内容可以浏览、对照和追踪。
+<p align="center">
+  <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-1f4a3a?style=flat-square">
+  <img alt="MIT" src="https://img.shields.io/badge/license-MIT-1f4a3a?style=flat-square">
+  <img alt="本地优先" src="https://img.shields.io/badge/local--first-read--only-2f7a5f?style=flat-square">
+  <img alt="CORE-Bench Easy 40/45" src="https://img.shields.io/badge/CORE--Bench%20Easy-40%2F45-2f7a5f?style=flat-square">
+  <img alt="Alpha 0.1.0" src="https://img.shields.io/badge/status-alpha%200.1.0-a0702a?style=flat-square">
+</p>
 
-**看清改了什么、为什么改，以及证据到底支持什么。**
+<h3 align="center">像读论文一样，读懂一个乱糟糟的科研项目。</h3>
 
-<p align="center"><a href="#快速开始">快速开始</a> · <a href="#接入你的项目">接入项目</a> · <a href="docs/AUTORESEARCH.zh-CN.md">自动研究</a> · <a href="docs/ARCHITECTURE.zh-CN.md">架构</a> · <a href="CONTRIBUTING.md">参与贡献</a></p>
+<p align="center">LabWeft 让任何 coding agent 把几个月里散落的运行、日志和报告，整理成一张证据可追溯的研究地图：<br>问过哪些问题、比较了哪些条件、支撑了哪些结论，每个数字都能追到它所在的那一行原文。</p>
+
+<p align="center"><a href="#快速开始">快速开始</a> · <a href="#从文件夹到论文式地图">研究语义</a> · <a href="#与同类做法的对比">测评</a> · <a href="docs/ARCHITECTURE.zh-CN.md">架构</a> · <a href="CONTRIBUTING.md">参与贡献</a></p>
+
+<p align="center"><img src="docs/assets/paper-view.zh.jpg" alt="LabWeft 研究语义页：刊头、已核对的数字、方法组件" width="100%"></p>
+
+<table>
+<tr>
+<td width="25%" valign="top"><b>不用写提示词</b><br><sub>调查方法随工具自带。对 agent 说一句"整理这个项目"，它就知道先读什么、怎么核对。</sub></td>
+<td width="25%" valign="top"><b>按研究组织，而非按文件夹</b><br><sub>实验类型 → 研究问题 → 对照条件 → 结论；散落在副本、压缩包和汇总表里的同一个实验会被合并。</sub></td>
+<td width="25%" valign="top"><b>每个数字都核对过</b><br><sub>逐个对回引用的那一行，跨种子算出的均值 ± SD 也会被复算。</sub></td>
+<td width="25%" valign="top"><b>大型、远程、只读</b><br><sub>标准库探针通过 SSH 在数据旁边为 60 万文件规模的目录建索引，不改动你的任何文件。</sub></td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td width="50%"><img src="docs/assets/paper-view-experiments.zh.jpg" alt="带核对标记的实验结果条形图"><p align="center"><sub>实验按研究问题呈现，结果用已核对的条形图对比</sub></p></td>
+<td width="50%"><img src="docs/assets/paper-view-claim.zh.jpg" alt="结论详情：关键数字、适用范围与证据"><p align="center"><sub>结论附带关键数字、适用范围和可打开的原文证据</sub></p></td>
+</tr>
+</table>
 
 ## 先看看研究树
 
@@ -94,6 +119,15 @@ python labweft.py export ./ws --include-evidence --output map.html
 ```
 
 `verify-map` 按印出的精度把每个数字对回引用行，也接受由那里的表格算出来的值：跨种子的均值 ± SD，无论是同一张表里隔行排列的种子行、`run_s7/ run_s8/ run_s9` 这样的兄弟文件，还是训练种子 × 评估种子的网格。在三个持续数月的私有真实科研项目上，引用的 357、976、1,021 个数字全部核对通过。`publish-map --build-map` 把地图写进工作空间：实验类型 → 研究问题（附结果表）→ 每个对照条件一个 Cell，链接到它所引用那一行的哈希快照；论断链接到支撑它的实验。"研究语义"页和研究树可离线查看。
+
+**试一试**自带的合成示例（数值为手写演示数据，27/27 处引用核对通过）：
+
+```sh
+python labweft.py init ./demo-ws --name "Synthetic policy study"
+python labweft.py trace collect ./demo-ws --source policy-study --root examples/policy-study --exclude .research
+python labweft.py trace publish-map ./demo-ws --source policy-study --semantic examples/policy-study/semantic_map.json --build-map
+python labweft.py export ./demo-ws --include-evidence --output demo.html   # 用浏览器打开 demo.html
+```
 
 ## 审查整个项目
 

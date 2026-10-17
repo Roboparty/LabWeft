@@ -3,13 +3,38 @@
 </p>
 
 <p align="center"><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a></p>
-<p align="center">Python 3.11+ · MIT · Local first · Alpha 0.1.0</p>
 
-LabWeft turns experiments, results, and research decisions into an evidence-linked workspace. Your existing coding agent reads and interprets the project; a small local harness preserves the records and makes them explorable.
+<p align="center">
+  <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-1f4a3a?style=flat-square">
+  <img alt="MIT" src="https://img.shields.io/badge/license-MIT-1f4a3a?style=flat-square">
+  <img alt="Local first" src="https://img.shields.io/badge/local--first-read--only-2f7a5f?style=flat-square">
+  <img alt="CORE-Bench Easy 40/45" src="https://img.shields.io/badge/CORE--Bench%20Easy-40%2F45-2f7a5f?style=flat-square">
+  <img alt="Alpha 0.1.0" src="https://img.shields.io/badge/status-alpha%200.1.0-a0702a?style=flat-square">
+</p>
 
-**Understand what changed, why it changed, and what the evidence actually supports.**
+<h3 align="center">Read a messy research project like a paper.</h3>
 
-<p align="center"><a href="#quick-start">Quick start</a> · <a href="#connect-your-project">Connect your project</a> · <a href="docs/AUTORESEARCH.md">Automatic research</a> · <a href="docs/ARCHITECTURE.md">Architecture</a> · <a href="CONTRIBUTING.md">Contribute</a></p>
+<p align="center">LabWeft lets any coding agent turn months of scattered runs, logs and reports into an evidence-linked map:<br>the questions that were asked, the conditions compared, the claims they support, and every number traced to the line it came from.</p>
+
+<p align="center"><a href="#quick-start">Quick start</a> · <a href="#from-folders-to-a-paper-style-map">Paper view</a> · <a href="#how-it-compares">Benchmarks</a> · <a href="docs/ARCHITECTURE.md">Architecture</a> · <a href="CONTRIBUTING.md">Contribute</a></p>
+
+<p align="center"><img src="docs/assets/paper-view.en.jpg" alt="LabWeft paper view: masthead, verified numbers, method components" width="100%"></p>
+
+<table>
+<tr>
+<td width="25%" valign="top"><b>No prompt engineering</b><br><sub>The investigation playbook ships with the tool. Ask your agent to "organize this project"; it knows what to read and how to check it.</sub></td>
+<td width="25%" valign="top"><b>Organized by research, not folders</b><br><sub>Experiment type → question → compared conditions → claims, merged across copies, archives and summary tables.</sub></td>
+<td width="25%" valign="top"><b>Every number verified</b><br><sub>Each value is checked against its cited line, including means ± SD recomputed over seed replicates.</sub></td>
+<td width="25%" valign="top"><b>Large, remote, read-only</b><br><sub>A stdlib probe indexes 600k-file trees next to the data over SSH. Your folders are never modified.</sub></td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td width="50%"><img src="docs/assets/paper-view-experiments.en.jpg" alt="Experiments with verified result bars"><p align="center"><sub>Experiments as research questions, results as verified bars</sub></p></td>
+<td width="50%"><img src="docs/assets/paper-view-claim.en.jpg" alt="A claim with its key numbers and sources"><p align="center"><sub>Claims with key numbers, scope and openable sources</sub></p></td>
+</tr>
+</table>
 
 ## See a research tree
 
@@ -94,6 +119,15 @@ python labweft.py export ./ws --include-evidence --output map.html
 ```
 
 `verify-map` checks each stated number against the cited line at its printed precision, and also accepts values the table there yields: a mean ± SD over seed replicates, whether they are interleaved rows of one table, sibling `run_s7/ run_s8/ run_s9` files, or a train × eval seed grid. On three private multi-month research projects, all 357, 976 and 1,021 cited numbers verified. `publish-map --build-map` turns the map into the workspace: experiment type → research question (with its result table) → one Cell per compared condition, each linked to a hash-pinned snapshot of the line it came from, plus claims linked to the experiments that support them. The paper view (研究语义) and the research tree show it offline.
+
+**Try it** on the bundled synthetic study (hand-authored numbers, 27/27 references verified):
+
+```sh
+python labweft.py init ./demo-ws --name "Synthetic policy study"
+python labweft.py trace collect ./demo-ws --source policy-study --root examples/policy-study --exclude .research
+python labweft.py trace publish-map ./demo-ws --source policy-study --semantic examples/policy-study/semantic_map.json --build-map
+python labweft.py export ./demo-ws --include-evidence --output demo.html   # open demo.html in a browser
+```
 
 ## Audit a whole project
 
