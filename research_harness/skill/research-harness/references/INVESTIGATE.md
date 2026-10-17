@@ -234,3 +234,6 @@ file (archive members as `<archive>.members/<member>`) as hash-pinned snapshots,
 paper semantics: experiment type -> the question an experiment answers (with its result table) -> one Cell per compared
 condition (value ± SD, verification status, link to the cited line), plus claim nodes the supporting experiments point
 to. Earlier folder-derived draft nodes are archived, not deleted; re-publishing an edited map updates only what changed.
+
+Machine names in paths (`collected/h204/`, `node6.jsonl`) are reported as host hints. Site-specific names go in the
+environment, not in the code: `LABWEFT_HOST_PATTERN='box\d+|lab-gpu\d+'` (a regex for one path component).

@@ -3,6 +3,7 @@ and find likely producers of a result the way a person would (scripts in the sam
 from __future__ import annotations
 
 import json
+import os
 import posixpath
 import re
 from collections import Counter, defaultdict
@@ -385,12 +386,23 @@ HOST_TOKEN = re.compile(r"^(?:h(?:20|200)?[-_]?\d{1,3}|h20[-_]\d|h200[-_]\d|4090
                         r"5090[-_]?d?[-_]\d+|(?:a100|h100|pro6000)[-_]?\d+|node\d+|gpu\d{2,})$", re.I)
 
 
+def _site_hosts():
+    """Site-specific machine names (`LABWEFT_HOST_PATTERN`, a regex for one path component) stay in the user's
+    environment, not in the code."""
+    pat = os.environ.get("LABWEFT_HOST_PATTERN")
+    try:
+        return re.compile(rf"^(?:{pat})$", re.I) if pat else None
+    except re.error:
+        return None
+
+
 def host_hints(path: str) -> list[dict]:
-    """Host names encoded in the layout (`collected/h204/`, `queues/final/rp6.jsonl`). Authority: path-token (inferred)."""
+    """Host names encoded in the layout (`collected/h204/`, `queues/final/node6.jsonl`). Authority: path-token (inferred)."""
     out = []
+    site = _site_hosts()
     for comp in path.split("/"):
         stem = posixpath.splitext(comp)[0]
-        if HOST_TOKEN.match(stem):
+        if HOST_TOKEN.match(stem) or site and site.match(stem):
             out.append({"token": stem, "from": comp, "authority": "path-token"})
     return out
 

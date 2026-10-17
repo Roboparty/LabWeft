@@ -1,4 +1,5 @@
 import json
+import os
 import statistics
 import tempfile
 import unittest
@@ -752,3 +753,17 @@ class ScaleOutlierPrecisionTests(unittest.TestCase):
             tools.t_collect(str(ws), "p", str(Path(tmp) / "p"))
             out = tools.t_audit(str(ws), "p", scope="study")
             self.assertFalse([f for f in out["findings"]["items"] if f["kind"] == "scale-outlier"], out)
+
+
+class SiteHostPatternTests(unittest.TestCase):
+    def test_site_host_names_come_from_the_environment(self):
+        from research_harness.trace import navigate
+        old = os.environ.pop("LABWEFT_HOST_PATTERN", None)
+        try:
+            self.assertEqual(navigate.host_hints("runs/box7/out.json"), [])
+            os.environ["LABWEFT_HOST_PATTERN"] = r"box\d+"
+            self.assertEqual([h["token"] for h in navigate.host_hints("runs/box7/out.json")], ["box7"])
+        finally:
+            os.environ.pop("LABWEFT_HOST_PATTERN", None)
+            if old is not None:
+                os.environ["LABWEFT_HOST_PATTERN"] = old
