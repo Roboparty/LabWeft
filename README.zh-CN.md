@@ -83,6 +83,38 @@ python labweft.py mcp ./ws                                             # 同一�
 
 它按内容（而不是文件名）判断配置、结果表、日志、启动脚本、报告；从配置、表格列和编码在 run 名里的超参（如 `aw0.1_lw0.1_rh1_s7`）恢复受控因子、重复 seed 与一因子对照；同一实验散落在汇总表、原始结果、画图数据、历史副本中时归为一个实验的多个证据位置；压缩包内的文本也会被解析。详见 [调查流程](research_harness/skill/research-harness/references/TRACE.md)。
 
+## 从文件夹到论文式地图
+
+文件夹名不等于研究内容。agent 先读作者的报告，再按 [SEMANTIC_MAP.md](research_harness/skill/research-harness/references/SEMANTIC_MAP.md) 的格式写一份**语义地图**：背景与方法、带数字和状态的论断、按"回答什么问题"归组的实验、时间线、被取代的工作和待解决的问题。每一条都引用 `path:line`。
+
+```sh
+python labweft.py trace verify-map ./ws --source PROJ --semantic map.json            # 每个 path:line 都存在、每个数字确实印在那里
+python labweft.py trace publish-map ./ws --source PROJ --semantic map.json --build-map
+python labweft.py export ./ws --include-evidence --output map.html
+```
+
+`verify-map` 按印出的精度把每个数字对回引用行，也接受由那里的表格算出来的值：跨种子的均值 ± SD，无论是同一张表里隔行排列的种子行、`run_s7/ run_s8/ run_s9` 这样的兄弟文件，还是训练种子 × 评估种子的网格。在三个持续数月的私有真实科研项目上，引用的 357、976、1,021 个数字全部核对通过。`publish-map --build-map` 把地图写进工作空间：实验类型 → 研究问题（附结果表）→ 每个对照条件一个 Cell，链接到它所引用那一行的哈希快照；论断链接到支撑它的实验。"研究语义"页和研究树可离线查看。
+
+## 审查整个项目
+
+```sh
+python labweft.py trace audit ./ws --source PROJ          # 线索：复制的重复实验、中断的运行、种子/checkpoint 不符、表格算术、过期汇总……
+python labweft.py trace worklist ./ws --source PROJ       # 每份带数字的报告，以及文件夹里找不到出处的表格行
+```
+
+对 61.3 万文件、11.5 GB 索引的全项目审查约 11 分钟完成。审查结果是给 agent 核对的线索，不是结论。
+
+## 与同类做法的对比
+
+同一模型、同一任务说明、盲评。
+
+| 测评 | shell 直接读文件夹（Claude Code 式） | LabWeft | repomix | gitingest |
+|---|---|---|---|---|
+| [CORE-Bench](https://github.com/siegelz/core-bench) Easy，45 个任务，官方打分 | 40/45（88.9%） | **40/45（88.9%）** | 30/45（66.7%） | 27/45（60.0%） |
+| 三个真实项目上的新题（最多约 60 万文件） | 基线 | 得分持平或更高、错误更少、工具调用约少 70%、耗时约 1/8 | 装不进模型上下文 | 装不进模型上下文 |
+
+打包工具在 capsule 能装进上下文时与其他组接近，装不下就明显落后：45 个包里有 17 个超过 20 万 token。CORE-Bench 的 capsule 都很小，所以 LabWeft 在那里只和直接读文件夹持平；项目越大越乱，优势越明显。不足：找人为埋入的缺陷时，耐心逐份核对的 shell agent 仍比用 LabWeft 的 agent 多找约 1–2 处，LabWeft 目前主要节省调用和时间。公开参照：CORE-Agent + GPT-4o 在 Easy 上为 60%（[论文](https://arxiv.org/abs/2409.11363)）。
+
 ## 本地使用，按需分享
 
 ```sh

@@ -83,6 +83,38 @@ python labweft.py mcp ./ws                                             # the sam
 
 Files are classified by content, not name; controlled factors, replicate seeds and one-factor comparisons are recovered from configs, table columns and hyperparameters encoded in run names (e.g. `aw0.1_lw0.1_rh1_s7`); one experiment spread over summary tables, raw results, figure data and legacy copies is one experiment with several evidence locations; text inside tar/zip bundles is parsed. See [the investigation guide](research_harness/skill/research-harness/references/TRACE.md).
 
+## From folders to a paper-style map
+
+Folder names are not research. The agent reads the authors' reports and writes a **semantic map** in the format of [SEMANTIC_MAP.md](research_harness/skill/research-harness/references/SEMANTIC_MAP.md): background and method, claims with their numbers and status, experiments grouped by the question they answer, the timeline, superseded work and open questions. Every item cites `path:line`.
+
+```sh
+python labweft.py trace verify-map ./ws --source PROJ --semantic map.json            # every path:line exists, every number is printed there
+python labweft.py trace publish-map ./ws --source PROJ --semantic map.json --build-map
+python labweft.py export ./ws --include-evidence --output map.html
+```
+
+`verify-map` checks each stated number against the cited line at its printed precision, and also accepts values the table there yields: a mean ± SD over seed replicates, whether they are interleaved rows of one table, sibling `run_s7/ run_s8/ run_s9` files, or a train × eval seed grid. On three private multi-month research projects, all 357, 976 and 1,021 cited numbers verified. `publish-map --build-map` turns the map into the workspace: experiment type → research question (with its result table) → one Cell per compared condition, each linked to a hash-pinned snapshot of the line it came from, plus claims linked to the experiments that support them. The paper view (研究语义) and the research tree show it offline.
+
+## Audit a whole project
+
+```sh
+python labweft.py trace audit ./ws --source PROJ          # leads: copied replicates, truncated runs, seed/checkpoint mismatches, table arithmetic, stale summaries...
+python labweft.py trace worklist ./ws --source PROJ       # every report with numbers and the rows nothing in the folder reproduces
+```
+
+A whole-project audit of a 613k-file, 11.5 GB index runs in about 11 minutes. Audit findings are leads for the agent to verify, not verdicts.
+
+## How it compares
+
+Same model, same task text, blind grading.
+
+| Benchmark | Reading the folder with shell (Claude Code style) | LabWeft | repomix | gitingest |
+|---|---|---|---|---|
+| [CORE-Bench](https://github.com/siegelz/core-bench) Easy, 45 tasks, official scoring | 40/45 (88.9%) | **40/45 (88.9%)** | 30/45 (66.7%) | 27/45 (60.0%) |
+| Held-out questions on three real projects (up to ~600k files) | baseline | equal or better score, fewer errors, ~70% fewer tool calls, ~1/8 of the time | does not fit in a model context | does not fit in a model context |
+
+Packing tools score close to the others when a capsule fits in the context and fall behind when it does not: 17 of 45 packs exceed 200k tokens. CORE-Bench capsules are small, so LabWeft only ties direct reading there; its advantage grows with project size and disorder. Weakness: when hunting planted defects, a patient shell agent still finds about one to two more than an agent using LabWeft, which mainly saves calls and time. Published reference: CORE-Agent with GPT-4o scores 60% on Easy ([paper](https://arxiv.org/abs/2409.11363)).
+
 ## Keep it local, share deliberately
 
 ```sh

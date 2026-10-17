@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-10-17 — Semantic maps, whole-project audit, benchmarks
+
+- `trace verify-map` / `publish-map --build-map`: agent-written paper-style maps are checked number by number
+  (including seed-replicate means, sibling seed files and train × eval grids) and become the workspace's research
+  map: experiment type → question → condition Cells with hash-pinned line evidence, claims linked by `supports`.
+- The research tree draws the question hierarchy when there is no cell lineage; `#node=` deep links.
+- Whole-project `trace audit` on a 613k-file index in ~11 min (was hours) with identical findings; fewer
+  scale-outlier false leads (low success rates on the episode grid, activation statistics, learning curves).
+- `LABWEFT_HOST_PATTERN` for site-specific machine names.
+- Benchmarks: CORE-Bench Easy 40/45 (same as direct shell reading; repomix 30/45, gitingest 27/45).
+
 ## 2026-10-03 — Public presentation refresh
 
 Integrated the latest main, including the contributor's research-organization
